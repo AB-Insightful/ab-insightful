@@ -148,34 +148,30 @@ export default function Experimentsindex() {
             </s-button>
             <s-popover id={`popover-${curExp.id}`}>
               <s-stack direction="block">
-                {/* Adding command="hide" ensures the popover closes when the button is clicked */}
+                {/* command="hide" closes the popover when the button is clicked */}
                 <s-button 
                   variant="tertiary" 
-                  command="hide" 
-                  commandTarget={`popover-${curExp.id}`}
+                  commandFor={`popover-${curExp.id}`}
                 >
                   Rename
                 </s-button>
                 <s-button 
                   variant="tertiary" 
-                  command="hide" 
-                  commandTarget={`popover-${curExp.id}`}
-                >
-                  Archive
-                </s-button>
-                <s-button 
-                  variant="tertiary" 
-                  command="hide" 
-                  commandTarget={`popover-${curExp.id}`}
+                  commandFor={`popover-${curExp.id}`}
                 >
                   Pause
                 </s-button>
                 <s-button 
                   variant="tertiary" 
-                  command="hide" 
-                  commandTarget={`popover-${curExp.id}`}
+                  commandFor={`popover-${curExp.id}`}
                 >
                   Resume
+                </s-button>
+                <s-button 
+                  variant="tertiary" 
+                  commandFor={`popover-${curExp.id}`}
+                >
+                  Archive
                 </s-button>
               </s-stack>
             </s-popover>

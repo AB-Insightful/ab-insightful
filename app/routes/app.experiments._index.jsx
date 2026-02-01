@@ -62,7 +62,8 @@ export default function Experimentsindex() {
     const rows = [];
 
     //retrieves the highest probability of best from the experiment and the winning variant's name
-    //PLEASE NOTE: This function does not account for an experiment having multiple entries with different goals. It will simply pick the highest probability (apples to oranges comparison). 
+    //PLEASE NOTE: This function does not account for an experiment having multiple entries with different goals. 
+    //It will simply pick the highest probability (apples to oranges comparison). 
     const getProbabilityOfBest = (experiment) => {
     //check for analysis data
       if (experiment.analyses && experiment.analyses.length > 0) {
@@ -122,13 +123,63 @@ export default function Experimentsindex() {
       rows.push(
         <s-table-row key={curExp.id}>
           <s-table-cell>
+            {/* Name Cell*/}
             <s-link href={("./app/routes/reports/" + curExp.id)}>{curExp.name ?? "empty-name"}</s-link>
           </s-table-cell> {/* displays N/A when data is null */}
+          {/* Status Cell */}
           <s-table-cell> {curExp.status ?? "N/A"} </s-table-cell>
-          <s-table-cell> {runtime} </s-table-cell> 
+          {/* Runtime Cell */}
+          <s-table-cell> {runtime} </s-table-cell>
+          {/* Goal Completion Cell */} 
           <s-table-cell>N/A</s-table-cell>
+          {/* Improvement Cell */}
           <s-table-cell>{formatImprovement(improvement)}</s-table-cell>
+          {/* Probability Cell */}
           <s-table-cell>{getProbabilityOfBest(curExp)}</s-table-cell>
+          {/* Quic Access Menu */}
+          <s-table-cell>
+            <s-button 
+              commandFor={`popover-${curExp.id}`}
+              variant="tertiary"
+              icon="horizontal-dots"
+              accessibilityLabel="More options"
+            >
+              ...
+            </s-button>
+            <s-popover id={`popover-${curExp.id}`}>
+              <s-stack direction="block">
+                {/* Adding command="hide" ensures the popover closes when the button is clicked */}
+                <s-button 
+                  variant="tertiary" 
+                  command="hide" 
+                  commandTarget={`popover-${curExp.id}`}
+                >
+                  Rename
+                </s-button>
+                <s-button 
+                  variant="tertiary" 
+                  command="hide" 
+                  commandTarget={`popover-${curExp.id}`}
+                >
+                  Archive
+                </s-button>
+                <s-button 
+                  variant="tertiary" 
+                  command="hide" 
+                  commandTarget={`popover-${curExp.id}`}
+                >
+                  Pause
+                </s-button>
+                <s-button 
+                  variant="tertiary" 
+                  command="hide" 
+                  commandTarget={`popover-${curExp.id}`}
+                >
+                  Resume
+                </s-button>
+              </s-stack>
+            </s-popover>
+          </s-table-cell>
         </s-table-row>
       )
     }
@@ -145,7 +196,9 @@ export default function Experimentsindex() {
           <s-box  background="base"
                   border="base"
                   borderRadius="base"
-                  overflow="hidden"> {/*box used to provide a curved edge table */}
+                  //overflow="hidden"
+                  > 
+                  {/*box used to provide a curved edge table */}
             <s-table>
               <s-table-header-row>
                 <s-table-header listslot='primary'>Name</s-table-header>
@@ -154,6 +207,7 @@ export default function Experimentsindex() {
                 <s-table-header listSlot="labeled" format="numeric">Goal Completion Rate</s-table-header>
                 <s-table-header listSlot="labeled" format="numeric">Improvement (%)</s-table-header>
                 <s-table-header listSlot="labeled" format="numeric">Probability to be the best</s-table-header>
+                <s-table-header></s-table-header> {/* New empty header for the action column */}
                 {/*Place Quick Access Button here */}
               </s-table-header-row>
                 <s-table-body>

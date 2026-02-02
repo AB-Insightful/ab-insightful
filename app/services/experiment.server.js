@@ -340,11 +340,164 @@ export function isExperimentActive(experiment, timeCheck = new Date()) {
   //if we don't get kicked out from the above conditions, experiment must be actively running
   return true;
 }
+async function handleExperiment_IncludeEvent(payload) {
+  // TODO ask what this corresponds to
+  // handle that
+  // Create user if they don't exist, otherwise update latest session
+  const user = await db.user.upsert({
+    where: {
+      shopifyCustomerID: payload.user_id,
+    },
+    update: {
+      latestSession: payload.timestamp,
+    },
+    create: {
+      shopifyCustomerID: payload.user_id,
+    },
+  });
 
+  // Then, tie that user to the experiment
+  // First, get the variant ID from the variant name
+  const variant = await getVariant(payload.experiment_id, payload.variant);
+
+  if (!variant) {
+    // [notes | ryan] currently, even though this is an error path, the client gets no notice that things went wrong.
+    // should probably return a payload to the client so it can inspect what the server was working with and retry if it differs from
+    // what the client sent
+    console.error(
+      `Variant "${payload.variant}" not found for experiment ${payload.experiment_id}`,
+    );
+    return;
+  }
+
+  // Now create or update the allocation
+  // TODO seems like there needs to be more error handling with this result variable here.
+  const result = await db.allocation.upsert({
+    where: {
+      // The where clause must match the unique constraint: [userId, experimentId]
+      userId_experimentId: {
+        userId: user.id,
+        experimentId: payload.experiment_id,
+      },
+    },
+    create: {
+      // When creating, connect to existing records using their IDs
+      userId: user.id,
+      experimentId: payload.experiment_id,
+      variantId: variant.id,
+    },
+    update: {
+      // If allocation already exists, update the variant (in case it changed)
+      variantId: variant.id,
+    },
+  });
+  return; // should probably return the result to the client in the body of the response.
+}
+async function handle_NewVisitorEvent(payload) {
+  // potentially already handled?
+  console.log("[handle_NewVisitorEvent] Not implemented", payload);
+}
+async function handle_CompletedCheckoutEvent(payload) {
+  console.log("[handle_CompletedCheckoutEvent] Not Implemented", payload);
+}
+async function handle_StartedCheckoutEvent(payload) {
+  console.log("[handle_StartedCheckoutEvent] Not Implemented", payload);
+}
+async function handle_ViewedPageEvent(payload) {
+  console.log("[handle_ViewedPageEvent] Not Implemented", payload);
+  // for now, assume that every piece of information is there.
+  // create or upsert?
+  const result = await db.conversion.upsert({
+    where: {
+      name,
+    },
+  });
+  // payload needs to have the following:
+  //Time
+
+  //Customer ID
+
+  //Page URL
+
+  //Products in cart (if any)
+
+  //Page Associated resource (product, blog, etc)
+}
+async function handle_AddedToCartEvent(payload) {
+  console.log("[handle_AddedToCartEvent] Not Implemented", payload);
+}
 // Handler function for incoming events
+// todo refactor "event type" as an ENUM
+// [notes | ryan] the Conversion table will be on of the primary tables you update.
+// do I also need to update the goal table? Find the ID of
 export async function handleCollectedEvent(payload) {
   // If the "event" is to update user inclusion, handle that
+
+  // normalize time
+  // TODO rewrite this logic, a little round-about
+  let timeCheck = payload.timestamp;
+  if (!payload.timestamp) {
+    timeCheck = new Date();
+  } else if (!(payload.timestamp instanceof Date)) {
+    timeCheck = new Date(payload.timestamp);
+  }
+
+  // Look up experiment (flesh this out in the future) // what exactly needs to be fleshed out here?
+  let experiment = null;
+
+  // receive pixel experimentId here
+  if (payload.experimentId) {
+    const id =
+      typeof payload.experimentId === "string"
+        ? parseInt(payload.experimentId, 10)
+        : payload.experimentId;
+    experiment = await getExperimentById(id);
+  }
+
+  // check for if the experiment is inactive, if so move on
+  if (experiment && !isExperimentActive(experiment, timeCheck)) {
+    console.log("handleCollectedEvent: experiment inactive, ignoring event");
+    return { ignored: true };
+  }
+
+  // this is where we would put all the DB writes for the experiment
+  // if I had one
+
+  // for now, if experiment is active, log it
+  console.log("handleCollectedEvent: event accepted:", payload);
+
+  let result = null;
+  switch (payload.event_type) {
+    // do new_visitor and experiment_include correspond to the same event?
+    case "experiment_include":
+      result = await handleExperiment_IncludeEvent(payload);
+      break;
+    case "new_visitor":
+      result = await handle_NewVisitorEvent(payload);
+      break;
+    case "completed_checkout":
+      result = await handle_CompletedCheckoutEvent(payload);
+      break;
+    case "started_checkout":
+      result = await handle_StartedCheckoutEvent(payload);
+      break;
+    case "viewed_page":
+      result = await handle_ViewedPageEvent(payload);
+      break;
+    case "added_to_cart":
+      result = await handle_AddedToCartEvent(payload);
+      break;
+    default:
+      console.error("Received an event with an unknown event type");
+      // todo look into side effects of this function, is there any upstream error handling that needs to be handled?
+      break;
+
+      return { ignored: false };
+  }
+  /*
+  This code has been refactored to a separate function
   if (payload.event_type === "experiment_include") {
+    // TODO ask what this corresponds to
     // handle that
     // Create user if they don't exist, otherwise update latest session
     const user = await db.user.upsert({
@@ -392,6 +545,10 @@ export async function handleCollectedEvent(payload) {
     });
     return;
   }
+    */
+  // so, from the looks of things, this code needs to be ran FIRST, to check the timestamp, and if the experiment is still active. If either of those
+  // are bad, we fail and communicate the error to the client.
+  /*
   // normalize time
   let timeCheck = payload.timestamp;
   if (!payload.timestamp) {
@@ -425,6 +582,7 @@ export async function handleCollectedEvent(payload) {
   console.log("handleCollectedEvent: event accepted:", payload);
 
   return { ignored: false };
+*/
 }
 
 // function to manually end an experiment

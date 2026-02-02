@@ -56,9 +56,7 @@ register(({ analytics, browser, init, settings }) => {
 
   // get device type. sniff the User-Agent String using the above regex patterns.
   const user_agent_string = init.context.navigator.userAgent ?? "";
-  console.log("user agent string: ", user_agent_string);
   const device_type = detectDeviceType(user_agent_string);
-  console.log("device type ", device_type);
   const appUrl = settings.appUrl;
   const collectUrl = `${appUrl}/api/collect`;
 

@@ -1,5 +1,5 @@
 import { useLoaderData, useFetcher } from "react-router";
-import {useEffect, useRef} from "react";
+import { useEffect, useRef } from "react";
 import { json } from "@remix-run/node";
 //import Decimal from 'decimal.js';
 import { formatRuntime } from "../utils/formatRuntime.js";
@@ -8,7 +8,6 @@ import { formatImprovement } from "../utils/formatImprovement.js";
 
 // Server side code
 
-
 export async function loader() {
   // Get the list of experiments & return them if there are any
   /**const { getExperimentsWithAnalyses } = await import("../services/experiment.server");
@@ -16,17 +15,16 @@ export async function loader() {
   const { getExperimentsList } = await import("../services/experiment.server");
   const experiments = await getExperimentsList();
 
- // compute improvements on the server
+  // compute improvements on the server
   const enriched = await Promise.all(
     experiments.map(async (e) => ({
       ...e,
       improvement: await getImprovement(e.id),
-    }))
+    })),
   );
 
   return enriched; // resolved data only
 } //end loader
-
 
 export async function action() {
   const { getExperimentsWithAnalyses, updateProbabilityOfBest } = await import(
@@ -37,75 +35,73 @@ export async function action() {
   return json({ ok: true });
 }
 
-  // ---------------------------------Client side code----------------------------------------------------
+// ---------------------------------Client side code----------------------------------------------------
 export default function Experimentsindex() {
   // Get list of experiments
   const experiments = useLoaderData();
   const fetcher = useFetcher();
   const didStatsRun = useRef(false); //useRef is a modifier that ensure the didStatsRun value mutation is retained across re-renders of page
 
-  //applying calculations of stats here to retain read/write separation between action and loader. 
+  //applying calculations of stats here to retain read/write separation between action and loader.
   useEffect(() => {
     if (didStatsRun.current == true) return;
     if (fetcher.state === "idle") {
       didStatsRun.current = true;
-      fetcher.submit(null, {method: "post"});
+      fetcher.submit(null, { method: "post" });
     }
   }, [fetcher]);
 
   //function responsible for render of table rows based off db
 
   //TODO: restrict based on experiment goal
-    //- re
-  function renderTableData(experiments)
-  {
+  //- re
+  function renderTableData(experiments) {
     const rows = [];
 
     //retrieves the highest probability of best from the experiment and the winning variant's name
-    //PLEASE NOTE: This function does not account for an experiment having multiple entries with different goals. It will simply pick the highest probability (apples to oranges comparison). 
+    //PLEASE NOTE: This function does not account for an experiment having multiple entries with different goals. It will simply pick the highest probability (apples to oranges comparison).
     const getProbabilityOfBest = (experiment) => {
-    //check for analysis data
+      //check for analysis data
       if (experiment.analyses && experiment.analyses.length > 0) {
         let probabilityOfBestArr = [];
         let probabilityOfBestName = [];
-        let i = 0
-        for ( i in experiment.analyses)
-        {
-
+        let i = 0;
+        for (i in experiment.analyses) {
           const analysisInstance = experiment.analyses[i];
           const nameInstance = experiment.analyses[i].variant;
           probabilityOfBestArr.push(analysisInstance.probabilityOfBeingBest);
-          probabilityOfBestName.push(nameInstance.name)
+          probabilityOfBestName.push(nameInstance.name);
         }
 
         let maxValue = Math.max(...probabilityOfBestArr);
-        const maxIndex = probabilityOfBestArr.indexOf(maxValue)
+        const maxIndex = probabilityOfBestArr.indexOf(maxValue);
         const maxTrunc = Math.trunc(maxValue * 10000) / 10000; //manual truncation to avoid judicious rounding
         const bestName = probabilityOfBestName[maxIndex];
         const maxValueFormatted = (100 * maxTrunc).toFixed(2); //shifts decimals over to string version (e.g. .6789 to 67.89)
 
-        
         //get the most recent analysis
-        const latestAnalysis = experiment.analyses[experiment.analyses.length - 1]; //assumes there are not multiple analyses
+        const latestAnalysis =
+          experiment.analyses[experiment.analyses.length - 1]; //assumes there are not multiple analyses
         //get the conversions and users from analysis
         const { otherThing, probabilityOfBeingBest } = latestAnalysis;
-        
+
         //(parseFloat(probabilityOfBeingBest) * 100).toFixed(2)
         //check for valid data
         //checks for negative or illogical values (should be between 1 and 0)
-        if(maxValue < 0 || maxValue > 1)
-        {
+        if (maxValue < 0 || maxValue > 1) {
           return "N/A";
         }
-        if (probabilityOfBeingBest !== null && probabilityOfBeingBest !== undefined) {
+        if (
+          probabilityOfBeingBest !== null &&
+          probabilityOfBeingBest !== undefined
+        ) {
           return `${bestName} (${maxValueFormatted}%)`;
         }
       }
       return "inconclusive";
     };
 
-    for(let i = 0; i < experiments.length; i++)
-    {
+    for (let i = 0; i < experiments.length; i++) {
       //single tuple of the experiment data
       const curExp = experiments[i];
 
@@ -113,84 +109,99 @@ export default function Experimentsindex() {
       const runtime = formatRuntime(
         curExp.startDate,
         curExp.endDate,
-        curExp.status
+        curExp.status,
       );
 
       const improvement = curExp.improvement; // placeholder for improvement calculation
-      
+
       //pushes javascripts elements into the array
       rows.push(
         <s-table-row key={curExp.id}>
           <s-table-cell>
-            <s-link href={("./app/routes/reports/" + curExp.id)}>{curExp.name ?? "empty-name"}</s-link>
-          </s-table-cell> {/* displays N/A when data is null */}
+            <s-link href={"/app/reports/" + curExp.id}>
+              {curExp.name ?? "empty-name"}
+            </s-link>
+          </s-table-cell>{" "}
+          {/* displays N/A when data is null */}
           <s-table-cell> {curExp.status ?? "N/A"} </s-table-cell>
-          <s-table-cell> {runtime} </s-table-cell> 
+          <s-table-cell> {runtime} </s-table-cell>
           <s-table-cell>N/A</s-table-cell>
           <s-table-cell>{formatImprovement(improvement)}</s-table-cell>
           <s-table-cell>{getProbabilityOfBest(curExp)}</s-table-cell>
-        </s-table-row>
-      )
+        </s-table-row>,
+      );
     }
-    return rows
+    return rows;
   } // end renderTableData function
 
-  if(experiments.length > 0){
+  if (experiments.length > 0) {
     return (
       <s-page heading="Experiment Management">
-        <s-section> {/*might be broken */}
+        <s-section>
+          {" "}
+          {/*might be broken */}
           <s-heading>Experiment List</s-heading>
-
           {/* Table Section of experiment list page */}
-          <s-box  background="base"
-                  border="base"
-                  borderRadius="base"
-                  overflow="hidden"> {/*box used to provide a curved edge table */}
+          <s-box
+            background="base"
+            border="base"
+            borderRadius="base"
+            overflow="hidden"
+          >
+            {" "}
+            {/*box used to provide a curved edge table */}
             <s-table>
               <s-table-header-row>
-                <s-table-header listslot='primary'>Name</s-table-header>
+                <s-table-header listslot="primary">Name</s-table-header>
                 <s-table-header listSlot="secondary">Status</s-table-header>
                 <s-table-header listSlot="labeled">Runtime</s-table-header>
-                <s-table-header listSlot="labeled" format="numeric">Goal Completion Rate</s-table-header>
-                <s-table-header listSlot="labeled" format="numeric">Improvement (%)</s-table-header>
-                <s-table-header listSlot="labeled" format="numeric">Probability to be the best</s-table-header>
+                <s-table-header listSlot="labeled" format="numeric">
+                  Goal Completion Rate
+                </s-table-header>
+                <s-table-header listSlot="labeled" format="numeric">
+                  Improvement (%)
+                </s-table-header>
+                <s-table-header listSlot="labeled" format="numeric">
+                  Probability to be the best
+                </s-table-header>
                 {/*Place Quick Access Button here */}
               </s-table-header-row>
-                <s-table-body>
-                    {renderTableData(experiments)} {/* function call that returns the jsx data for table rows */}
-                </s-table-body>
-              </s-table>
-          </s-box> {/*end of table section*/}
+              <s-table-body>
+                {renderTableData(experiments)}{" "}
+                {/* function call that returns the jsx data for table rows */}
+              </s-table-body>
+            </s-table>
+          </s-box>{" "}
+          {/*end of table section*/}
         </s-section>
       </s-page>
     );
-  //if there are no experiments, alternate display page
-  }else{
-      return (
-    <s-section heading="Experiments">
-      <s-grid gap="base" justifyItems="center" paddingBlock="large-500">
-        <s-box maxInlineSize="400px" maxBlockSize="400px">
-          <s-image
-            aspectRatio="1/1.5"
-            src="/Group-182.svg"
-            alt="Empty state image"
-          />
-        </s-box>
-        <s-grid justifyItems="center" maxInlineSize="450px" gap="base">
-          <s-stack alignItems="center">
-            <s-heading>Your experiments will show here</s-heading>
-            <s-paragraph>
-              This is where you will examine and select from your list of
-              experiments.
-            </s-paragraph>
-            <s-button variant="primary" href="/app/experiments/new">
-              Create Experiment
-            </s-button>
-          </s-stack>
+    //if there are no experiments, alternate display page
+  } else {
+    return (
+      <s-section heading="Experiments">
+        <s-grid gap="base" justifyItems="center" paddingBlock="large-500">
+          <s-box maxInlineSize="400px" maxBlockSize="400px">
+            <s-image
+              aspectRatio="1/1.5"
+              src="/Group-182.svg"
+              alt="Empty state image"
+            />
+          </s-box>
+          <s-grid justifyItems="center" maxInlineSize="450px" gap="base">
+            <s-stack alignItems="center">
+              <s-heading>Your experiments will show here</s-heading>
+              <s-paragraph>
+                This is where you will examine and select from your list of
+                experiments.
+              </s-paragraph>
+              <s-button variant="primary" href="/app/experiments/new">
+                Create Experiment
+              </s-button>
+            </s-stack>
+          </s-grid>
         </s-grid>
-      </s-grid>
-    </s-section>
-      );
+      </s-section>
+    );
   }
-
 } //end of Experimentsindex

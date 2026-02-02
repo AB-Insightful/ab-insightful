@@ -26,5 +26,21 @@ export default function Report() {
   const { experiment } = useLoaderData();
   console.log(experiment);
   const heading = experiment?.name ? `Report - ${experiment.name}` : "Report";
-  return <s-page heading={heading}></s-page>;
+  return (
+    <s-page heading={heading}>
+      <s-button
+        slot="primary-action"
+        href={`/app/experiments/${experiment.id}`}
+      >
+        Edit Experiment
+      </s-button>
+      <div style={{ marginBottom: "16px", marginTop: "16px" }}>
+        <s-heading>Experiment Reports</s-heading>
+      </div>
+      <s-section heading="Probability To Be The Best">
+        Visualization goes here
+      </s-section>
+      <s-section heading="Expected Loss">Visualization goes here</s-section>
+    </s-page>
+  );
 }

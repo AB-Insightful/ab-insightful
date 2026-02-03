@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useLoaderData } from "react-router";
 import { formatRuntime } from "../utils/formatRuntime.js";
+import { useDateRange } from "../contexts/DateRangeContext";
+import DateRangePicker from "../components/DateRangePicker";
 
 //server side code
 export async function loader() {
@@ -17,9 +19,10 @@ export default function Reports() {
   //get list of experiments
   const experiments = useLoaderData();
 
-  //state variables
-  const [dateRange, setDateRange] = useState(null);
-  const [tempDateRange, setTempDateRange] = useState(null);
+  //get date range from context
+  const { dateRange } = useDateRange();
+
+  //state for filtered experiments
   const [filteredExperiments, setFilteredExperiments] = useState(experiments);
 
   //calculate runtime using formatRuntime utility
@@ -116,18 +119,6 @@ export default function Reports() {
     return rows;
   }
 
-  //function to retrieve the current date
-  const getCurrentDate = () => {
-    return new Date().toISOString().split("T")[0];
-  };
-
-  //input a number of days, retrieve days ago based on current day
-  const getDateDaysAgo = (days) => {
-    const date = new Date();
-    date.setDate(date.getDate() - days);
-    return date.toISOString().split("T")[0];
-  };
-
   //filter experiments based on date range
   //updated to exclude archived experiments
   const filterByDateRange = (start, end) => {
@@ -144,120 +135,24 @@ export default function Reports() {
     });
   };
 
-  //handle date range selection
-  const handleDateRangeChange = (value) => {
-    const currentDay = getCurrentDate();
-    if (value === "7") {
-      const startDate = getDateDaysAgo(7);
-      const newDateRange = { start: startDate, end: currentDay };
-      setDateRange(newDateRange);
-      setFilteredExperiments(filterByDateRange(startDate, currentDay));
-    } else if (value === "30") {
-      const startDate = getDateDaysAgo(30);
-      const newDateRange = { start: startDate, end: currentDay };
-      setDateRange(newDateRange);
-      setFilteredExperiments(filterByDateRange(startDate, currentDay));
-    }
+  //handle date range change from DateRangePicker component
+  const handleDateRangeChange = (newDateRange) => {
+    setFilteredExperiments(
+      filterByDateRange(newDateRange.start, newDateRange.end),
+    );
   };
 
-  //handle custom date picker change (store data temporarily)
-  const handleDatePickerChange = (event) => {
-    const value = event.target.value;
-    if (value && value.includes("--")) {
-      const [start, end] = value.split("--");
-      setTempDateRange({ start, end });
-    }
-  };
-
-  //handle save button click (apply the date range)
-  const handleSaveDateRange = () => {
-    if (tempDateRange) {
-      setDateRange(tempDateRange);
-      setFilteredExperiments(
-        filterByDateRange(tempDateRange.start, tempDateRange.end),
-      );
-    }
-  };
-
-  //initialize with last 30 days
+  //filter experiments when dateRange from context changes or experiments load
   useEffect(() => {
-    const currentDay = getCurrentDate();
-    const startDate = getDateDaysAgo(30);
-    setDateRange({ start: startDate, end: currentDay });
-    setFilteredExperiments(filterByDateRange(startDate, currentDay));
-  }, [experiments]);
+    if (dateRange && experiments) {
+      setFilteredExperiments(filterByDateRange(dateRange.start, dateRange.end));
+    }
+  }, [dateRange, experiments]);
 
   return (
     <s-page heading="Reports">
-      {/* custom date range popover */}
-      <div style={{ marginRight: "16px" }}>
-        <s-button
-          commandFor="date-range-popover"
-          icon="calendar"
-          accessibilityLabel="Select date range"
-        >
-          {dateRange
-            ? `${new Date(dateRange.start).toLocaleDateString()} - ${new Date(dateRange.end).toLocaleDateString()}`
-            : "Select date range"}
-        </s-button>
-        <s-popover id="date-range-popover">
-          <div style={{ display: "flex" }}>
-            {/* left side - 30 days, 7 days */}
-            <div
-              style={{
-                width: "120px",
-                padding: "12px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "4px",
-              }}
-            >
-              <s-button
-                variant="tertiary"
-                alignment="start"
-                onClick={() => handleDateRangeChange("7")}
-                commandFor="date-range-popover"
-              >
-                Last 7 days
-              </s-button>
-              <s-button
-                variant="tertiary"
-                alignment="start"
-                onClick={() => handleDateRangeChange("30")}
-                commandFor="date-range-popover"
-              >
-                Last 30 days
-              </s-button>
-            </div>
-
-            {/* right side - calendar + buttons */}
-            <div>
-              <s-date-picker type="range" onChange={handleDatePickerChange} />
-
-              {/* confirm/cancel buttons */}
-              <div
-                style={{
-                  padding: "12px",
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  gap: "8px",
-                }}
-              >
-                <s-button commandFor="date-range-popover" variant="secondary">
-                  Cancel
-                </s-button>
-                <s-button
-                  onClick={handleSaveDateRange}
-                  commandFor="date-range-popover"
-                  variant="primary"
-                >
-                  Apply
-                </s-button>
-              </div>
-            </div>
-          </div>
-        </s-popover>
-      </div>
+      {/* date range picker component */}
+      <DateRangePicker onDateRangeChange={handleDateRangeChange} />
       <div style={{ marginBottom: "16px", marginTop: "16px" }}>
         <s-heading>Experiment Reports</s-heading>
       </div>
@@ -286,6 +181,7 @@ export default function Reports() {
           </s-table>
         </s-box>
       </s-section>
+      <s-button href="/app/reports/2001">click</s-button>
       <s-page heading="Reports" variant="headingLg"></s-page>
     </s-page>
   );

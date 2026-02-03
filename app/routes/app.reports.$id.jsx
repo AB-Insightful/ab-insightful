@@ -1,6 +1,10 @@
 // Report page for an individual experiment
 
 import { useLoaderData } from "react-router";
+import {
+  useDateRange,
+  formatDateForDisplay,
+} from "../contexts/DateRangeContext";
 
 // Server-side loader. params is for the id
 export async function loader({ params }) {
@@ -24,7 +28,13 @@ export async function loader({ params }) {
 export default function Report() {
   // Load report information
   const { experiment } = useLoaderData();
+
+  // Access the date range from context (persists from reports list)
+  const { dateRange } = useDateRange();
+
   console.log(experiment);
+  console.log("Selected date range:", dateRange);
+
   const heading = experiment?.name ? `Report - ${experiment.name}` : "Report";
   return (
     <s-page heading={heading}>
@@ -36,6 +46,12 @@ export default function Report() {
       </s-button>
       <div style={{ marginBottom: "16px", marginTop: "16px" }}>
         <s-heading>Experiment Reports</s-heading>
+        {dateRange && (
+          <s-text tone="subdued">
+            Viewing data from {formatDateForDisplay(dateRange.start)} to{" "}
+            {formatDateForDisplay(dateRange.end)}
+          </s-text>
+        )}
       </div>
       <s-section heading="Probability To Be The Best">
         Visualization goes here

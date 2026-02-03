@@ -181,7 +181,6 @@ export default function Reports() {
           </s-table>
         </s-box>
       </s-section>
-      <s-button href="/app/reports/2001">click</s-button>
       <s-page heading="Reports" variant="headingLg"></s-page>
     </s-page>
   );

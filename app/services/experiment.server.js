@@ -409,8 +409,10 @@ async function handle_ViewedPageEvent(payload) {
   // create or upsert?
   const result = await db.conversion.upsert({
     where: {
-      name,
+      user_id: payload.client_id,
     },
+    update: {},
+    create: {},
   });
   // payload needs to have the following:
   //Time

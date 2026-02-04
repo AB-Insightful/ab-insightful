@@ -1,9 +1,7 @@
 import { useLoaderData, useFetcher } from "react-router";
 import { useEffect, useRef } from "react";
-import { json } from "@remix-run/node";
 //import Decimal from 'decimal.js';
 import { formatRuntime } from "../utils/formatRuntime.js";
-import { getImprovement } from "../services/experiment.server";
 import { formatImprovement } from "../utils/formatImprovement.js";
 
 // Server side code
@@ -12,7 +10,8 @@ export async function loader() {
   // Get the list of experiments & return them if there are any
   /**const { getExperimentsWithAnalyses } = await import("../services/experiment.server");
   const { updateProbabilityOfBest } = await import("../services/experiment.server");  */
-  const { getExperimentsList } = await import("../services/experiment.server");
+  const { getExperimentsList, getImprovement } = await import("../services/experiment.server");
+
   const experiments = await getExperimentsList();
 
   // compute improvements on the server

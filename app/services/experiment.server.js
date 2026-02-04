@@ -28,6 +28,55 @@ export async function getExperimentById(id) {
   return null;
 }
 
+// Function to pause an experiment 
+export async function pauseExperiment(experimentId){
+  // Validate and normalize the ID for the SQLite database
+  if (!experimentId) throw new Error("pauseExperiment: experimentId is required");
+  
+  const id = typeof experimentId === "string" 
+    ? parseInt(experimentId, 10) 
+    : experimentId;
+
+  // Fetch current experiment to verify existence and capture state
+  const experiment = await db.experiment.findUnique({
+    where: { id },
+  });
+
+  if (!experiment) {
+    throw new Error(`pauseExperiment: Experiment with ID ${id} not found`);
+  }
+
+  // Prevent redundant updates if already paused
+  if (experiment.status === "paused") {
+    console.log(`pauseExperiment: Experiment ${id} is already paused.`);
+    return experiment;
+  }
+
+  const prevStatus = experiment.status;
+
+  // This nested write to the DB ensure atomicity 
+  const updated = await db.experiment.update({
+    where: { id },
+    data: {
+      status: "paused",
+      history: {
+        create: {
+          prevStatus: prevStatus,
+          newStatus: "paused",
+          // changedAt defaults to now() per Prisma schema
+        },
+      },
+    },
+    include: {
+      history: true,
+    },
+  });
+
+  console.log(`pauseExperiment: Experiment ${id} moved from ${prevStatus} to paused.`);
+  return updated;
+}
+// end pauseExperiment()
+
 //finds all the experiments that can be analyzed
 export async function getExperimentsWithAnalyses() {
   return db.experiment.findMany({

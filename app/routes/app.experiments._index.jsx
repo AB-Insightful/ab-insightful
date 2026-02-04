@@ -26,15 +26,6 @@ export async function loader() {
   return enriched; // resolved data only
 } //end loader
 
-<<<<<<< HEAD
-export async function action() {
-  const { getExperimentsWithAnalyses, updateProbabilityOfBest } = await import(
-    "../services/experiment.server"
-  );
-  const list = await getExperimentsWithAnalyses();
-  await updateProbabilityOfBest(list);
-  return json({ ok: true });
-=======
 
 export async function action({ request }) {
   const formData = await request.formData();
@@ -73,7 +64,6 @@ export async function action({ request }) {
         return { ok: false, error: "Stats calculation failed" }, { status: 500 };
       }
   }
->>>>>>> 2b0162d (ET-13: feat: implement pause action trigger & backend routing)
 }
 
 // ---------------------------------Client side code----------------------------------------------------
@@ -245,21 +235,12 @@ export default function Experimentsindex() {
                   {/*box used to provide a curved edge table */}
             <s-table>
               <s-table-header-row>
-<<<<<<< HEAD
                 <s-table-header listslot="primary">Name</s-table-header>
                 <s-table-header listSlot="secondary">Status</s-table-header>
                 <s-table-header listSlot="labeled">Runtime</s-table-header>
                 <s-table-header listSlot="labeled" format="numeric">Goal Completion Rate</s-table-header>
                 <s-table-header listSlot="labeled" format="numeric">Improvement (%)</s-table-header>
                 <s-table-header listSlot="labeled" format="numeric">Probability to be the best</s-table-header>
-=======
-                <s-table-header listslot='primary'>Name</s-table-header>
-                <s-table-header listslot="secondary">Status</s-table-header>
-                <s-table-header listslot="labeled">Runtime</s-table-header>
-                <s-table-header listslot="labeled" format="numeric">Goal Completion Rate</s-table-header>
-                <s-table-header listslot="labeled" format="numeric">Improvement (%)</s-table-header>
-                <s-table-header listslot="labeled" format="numeric">Probability to be the best</s-table-header>
->>>>>>> 2b0162d (ET-13: feat: implement pause action trigger & backend routing)
                 <s-table-header></s-table-header> {/* New empty header for the action column */}
                 {/*Place Quick Access Button here */}
               </s-table-header-row>

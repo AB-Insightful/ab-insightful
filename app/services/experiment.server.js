@@ -131,8 +131,9 @@ export async function resumeExperiment(experimentId) {
   const experiment = await db.experiment.findUnique({ where: { id } });
   if (!experiment) throw new Error(`Experiment with ID ${id} not found`);
 
-  // Only resume if it's actually paused or archived
-  if (experiment.status === "active" || experiment.status === "running") {
+  // Only resume if it's actually paused
+  if (experiment.status === "active") {
+    console.log(`resumeExperiment: Experiment ${id} is already active.`)
     return experiment;
   }
 

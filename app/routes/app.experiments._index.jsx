@@ -49,8 +49,10 @@ export async function action({ request }) {
       }
 
     case "rename":
-      // Placeholder for future ET-13 functionality
-      return { ok: true };
+      // dynamically imported redirect utility
+      const { redirect } = await import("@remix-run/node")
+      // return the rediret of the unique experiment page 
+      return redirect(`/app/experiments/${experimentId}`);
 
     default:
       /* The default case, where experiment stats are queried from the DB & rendered */
@@ -177,6 +179,15 @@ export default function Experimentsindex() {
                 <s-button 
                   variant="tertiary" 
                   commandFor={`popover-${curExp.id}`}
+                  onClick={() => {
+                    fetcher.submit(
+                      {
+                        intent: "rename",
+                        experimentId: curExp.id
+                      },
+                      { method: "post" }
+                    );
+                  }}
                 >
                   Rename
                 </s-button>

@@ -48,13 +48,33 @@ export async function action({ request }) {
         return { ok: false, error: "Failed to pause experiment" }, { status: 500 };
       }
 
+    case "resume":
+      try {
+        const { resumeExperiment } = await import("../services/experiment.server");
+        await resumeExperiment(experimentId);
+        return { ok: true, action: "resumed" };
+      } catch (error) {
+        console.error("Resume Error:", error);
+        return { ok: false, error: "Failed to resume experiment" }, { status: 500 };
+      }
+
     case "rename":
       // dynamically imported redirect utility
       const { redirect } = await import("@remix-run/node")
       // return the rediret of the unique experiment page 
       return redirect(`/app/experiments/${experimentId}`);
 
-    default:
+    case "archive":
+      try {
+        const { archiveExperiment } = await import("../services/experiment.server");
+        await archiveExperiment(experimentId);
+        return {ok: true, action: "archived"}; 
+      } catch (error) {
+        console.error("Archive Error:", error);
+        return {ok: false, error: "Failed to archive experiment"}, { status: 500};
+      }
+
+      default:
       /* The default case, where experiment stats are queried from the DB & rendered */
       try {
         const list = await getExperimentsWithAnalyses();
@@ -194,6 +214,7 @@ export default function Experimentsindex() {
                 <s-button 
                   variant="tertiary" 
                   commandFor={`popover-${curExp.id}`}
+                  disabled={curExp.status === "paused" || curExp.status === "archived" || fetcher.state !== "idle"}
                   onClick={() => {
                     console.log(`%c [PAUSE TRIGGERED] ID: ${curExp.id}`, "color: #008060; font-weight: bold;");
                     fetcher.submit(
@@ -204,19 +225,38 @@ export default function Experimentsindex() {
                       { method: "post"}
                     );
                   }}
-                  disabled={fetcher.state != "idle"}
                 >
                   Pause
                 </s-button>
                 <s-button 
                   variant="tertiary" 
                   commandFor={`popover-${curExp.id}`}
+                  disabled={curExp.status === "active" || fetcher.state !== "idle"}
+                  onClick={() => {
+                    fetcher.submit(
+                      {
+                        intent: "resume",
+                        experimentId: curExp.id
+                      },
+                      { method: "post" }
+                    );
+                  }}
                 >
                   Resume
                 </s-button>
                 <s-button 
                   variant="tertiary" 
                   commandFor={`popover-${curExp.id}`}
+                  disabled={curExp.status === "archived" || fetcher.state !== "idle"}
+                  onClick={() => {
+                    fetcher.submit(
+                      {
+                        intent: "archive",
+                        experimentId: curExp.id
+                      },
+                      { method: "post"}
+                    );
+                  }}
                 >
                   Archive
                 </s-button>

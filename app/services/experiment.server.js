@@ -77,6 +77,81 @@ export async function pauseExperiment(experimentId){
 }
 // end pauseExperiment()
 
+export async function archiveExperiment(experimentId){
+   if (!experimentId) throw new Error("archiveExperiment: experimentId is required");
+  
+  const id = typeof experimentId === "string" 
+    ? parseInt(experimentId, 10) 
+    : experimentId;
+
+  // Fetch current experiment to verify existence and capture state
+  const experiment = await db.experiment.findUnique({
+    where: { id },
+  });
+
+  if (!experiment) {
+    throw new Error(`archiveExperiment: Experiment with ID ${id} not found`);
+  }
+
+  // Prevent redundant updates if already archived
+  if (experiment.status === "archived") {
+    console.log(`archiveExperiment: Experiment ${id} is already archived.`);
+    return experiment;
+  }
+
+  const prevStatus = experiment.status;
+
+  // This nested write to the DB ensure atomicity 
+  const updated = await db.experiment.update({
+    where: { id },
+    data: {
+      status: "archived",
+      history: {
+        create: {
+          prevStatus: prevStatus,
+          newStatus: "archived",
+          // changedAt defaults to now() per Prisma schema
+        },
+      },
+    },
+    include: {
+      history: true,
+    },
+  });
+
+  console.log(`archiveExperiment: Experiment ${id} moved from ${prevStatus} to archived.`);
+  return updated;
+} // end archiveExperiment()
+
+export async function resumeExperiment(experimentId) {
+  if (!experimentId) throw new Error("resumeExperiment: experimentId is required");
+
+  const id = typeof experimentId === "string" ? parseInt(experimentId, 10) : experimentId;
+
+  const experiment = await db.experiment.findUnique({ where: { id } });
+  if (!experiment) throw new Error(`Experiment with ID ${id} not found`);
+
+  // Only resume if it's actually paused or archived
+  if (experiment.status === "active" || experiment.status === "running") {
+    return experiment;
+  }
+
+  const prevStatus = experiment.status;
+
+  return await db.experiment.update({
+    where: { id },
+    data: {
+      status: "active", // Resuming typically moves it back to active
+      history: {
+        create: {
+          prevStatus: prevStatus,
+          newStatus: "active",
+        },
+      },
+    },
+  });
+} // end resumeExperiment()
+
 //finds all the experiments that can be analyzed
 export async function getExperimentsWithAnalyses() {
   return db.experiment.findMany({

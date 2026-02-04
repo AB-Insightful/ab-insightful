@@ -48,6 +48,25 @@ export async function getExperimentsWithAnalyses() {
   });
 }
 
+export async function getExperimentReportData(experimentId) {
+  const experiment = await db.experiment.findUnique({
+    where: {
+      id: experimentId,
+    },
+    include: {
+      analyses: {
+        include: {
+          variant: true,
+          goal: true,
+        },
+        orderBy: { calculatedWhen: "desc" }, // newest analyses first
+      },
+      variants: true,
+    },
+  });
+  return experiment;
+}
+
 //takes a list of experiment objects and updates their analyses
 //Needs to change function parameter to take PK and FK to iterate through multiple setProbabilityOfBest
 export async function updateProbabilityOfBest(experiment) {

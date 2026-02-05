@@ -7,6 +7,7 @@ import { register } from "@shopify/web-pixels-extension";
 
 // limitations of my approach:
 // does not give which blog post it is. merely, the URL is given.
+console.log("hello from pixel!");
 const associated_resources_search = {
   // enum for the list of resources to parse.
   // add an entry here if you would like the url parser to be able to
@@ -248,7 +249,10 @@ register(({ analytics, browser, init, settings }) => {
         "Content-Type": "application/json", // Indicate that the body is JSON
       },
       body: JSON.stringify(payload),
-    });
+    })
+      .then((response) => response.json())
+      .then((data) => console.log(data))
+      .catch((error) => console.error("Error fetching data: ", error));
   }
 
   analytics.subscribe("product_viewed", (event) => {
@@ -260,6 +264,7 @@ register(({ analytics, browser, init, settings }) => {
       url: event.context.document.location.href,
       device_type: device_type,
     };
+    console.log("product view about to fire!");
     sendData(payload);
   });
 
@@ -286,6 +291,7 @@ register(({ analytics, browser, init, settings }) => {
       associated_resource: resource,
       device_type: device_type,
     };
+    console.log("page view about to fire!");
     sendData(payload);
   });
 
@@ -297,6 +303,7 @@ register(({ analytics, browser, init, settings }) => {
       products: event.data.checkout.lineItems,
       device_type: device_type,
     };
+    console.log("checkout completed about to fire!");
     sendData(payload);
   });
 
@@ -309,6 +316,7 @@ register(({ analytics, browser, init, settings }) => {
       add_to_cart_source: event.context.document.referrer,
       device_type: device_type,
     };
+    console.log("product added about to fire!");
     sendData(payload);
   });
 
@@ -320,6 +328,7 @@ register(({ analytics, browser, init, settings }) => {
       products: event.data.checkout.lineItems,
       device_type: device_type,
     };
+    console.log("checkout started aout to fire!");
     sendData(payload);
   });
 });

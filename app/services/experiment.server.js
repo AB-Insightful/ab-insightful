@@ -1,7 +1,7 @@
 // Helper functions for experiment related operations
 import db from "../db.server";
 import betaFactory from "@stdlib/random-base-beta";
-
+import { parse as uuidParse } from "uuid";
 // Function to create an experiment. Returns the created experiment object.
 export async function createExperiment(experimentData) {
   console.log("Creating experiment with data:", experimentData);
@@ -363,15 +363,16 @@ async function handleExperiment_IncludeEvent(payload) {
   // TODO ask what this corresponds to
   // handle that
   // Create user if they don't exist, otherwise update latest session
+  console.log("[handle experiment include]");
   const user = await db.user.upsert({
     where: {
-      shopifyCustomerID: payload.user_id,
+      shopifyCustomerID: payload.client_id,
     },
     update: {
       latestSession: payload.timestamp,
     },
     create: {
-      shopifyCustomerID: payload.user_id,
+      shopifyCustomerID: payload.client_id,
     },
   });
 
@@ -395,13 +396,13 @@ async function handleExperiment_IncludeEvent(payload) {
     where: {
       // The where clause must match the unique constraint: [userId, experimentId]
       userId_experimentId: {
-        userId: user.id,
+        id: user.id,
         experimentId: payload.experiment_id,
       },
     },
     create: {
       // When creating, connect to existing records using their IDs
-      userId: user.id,
+      id: user.id,
       experimentId: payload.experiment_id,
       variantId: variant.id,
     },
@@ -410,29 +411,216 @@ async function handleExperiment_IncludeEvent(payload) {
       variantId: variant.id,
     },
   });
-  return; // should probably return the result to the client in the body of the response.
+  if (!result) {
+    console.log(
+      "[handle experiment include] an error occurred while publishing the allocation",
+      result,
+    );
+  } else {
+    console.log(
+      "[handle experiment include] successful allocation upsert: ",
+      result,
+    );
+  }
+  return { result: result }; // should probably return the result to the client in the body of the response.
 }
 async function handle_NewVisitorEvent(payload) {
   // potentially already handled?
   console.log("[handle_NewVisitorEvent] Not implemented", payload);
 }
 async function handle_CompletedCheckoutEvent(payload) {
-  console.log("[handle_CompletedCheckoutEvent] Not Implemented", payload);
+  //console.log("[handle_CompletedCheckoutEvent] in progress", payload);
+
+  // i need:
+  // goal_id // check?
+  // variant id
+  // user id :check
+  //device type  :check
+  // money value???
+  // experiment id
+  // timestamp :check
+  // i'm trying real hard to figure out how to get all the infromation, i think allocation is my link
+
+  const allocation = db.allocation.findFirst({
+    where: {
+      id: payload.client_id,
+      experiment: { status: "active" },
+    },
+    orderBy: { assignedWhen: "desc" },
+    select: {
+      experimentId: true,
+      variantId: true,
+    },
+  });
+  if (!allocation) {
+    return { error: "No active experiment found for that user." };
+  }
+  const goal_id = db.goal.findFirst({
+    where: {
+      name: "Completed Purchase",
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!goal_id) {
+    console.error(
+      'Critical! Could not find goal with the name "Completed Purchase"! Conversions are being dropped!',
+    );
+    return { error: "fatal server error" };
+  }
+  let ResultOfNewConversion = db.conversion.upsert({
+    where: {
+      experimentId_goalId_userId: {
+        experiment_id: allocation.experiment_id,
+        goal_id: goal_id,
+        variant_id: allocation.variant_id,
+      },
+    },
+    create: {
+      id: payload.client_id,
+      goalId: goal_id,
+      variantId: allocation.variant_id,
+      device_type: payload.device_type,
+      money_value: 0, // TODO change to actually compute this (why do we need this anyways?)
+      experimentId: allocation.experiment_id,
+    },
+    update: {
+      money_value: payload.money_value,
+    },
+  });
+
+  if (ResultOfNewConversion) {
+    return { "db result": ResultOfNewConversion };
+  } else {
+    return { error: "failed to create New Conversion row in DB" };
+  }
 }
 async function handle_StartedCheckoutEvent(payload) {
   console.log("[handle_StartedCheckoutEvent] Not Implemented", payload);
+  const allocation = await db.allocation.findFirst({
+    where: {
+      userId: payload.client_id,
+      experiment: { status: "active" },
+    },
+    orderBy: { assignedWhen: "desc" },
+    select: {
+      experimentId: true,
+      variantId: true,
+    },
+  });
+  if (!allocation) {
+    console.log("no allocation");
+    return { error: "No active experiment found for that user." };
+  }
+  const goal_id = await db.goal.findFirst({
+    where: {
+      name: "Started Checkout",
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!goal_id) {
+    console.error(
+      'Critical! Could not find goal with the name "Completed Purchase"! Conversions are being dropped!',
+    );
+    return { error: "fatal server error" };
+  }
+  let ResultOfNewConversion = await db.conversion.upsert({
+    where: {
+      experimentId_goalId_userId: {
+        experiment_id: allocation.experiment_id,
+        goal_id: goal_id,
+        variant_id: allocation.variant_id,
+      },
+    },
+    create: {
+      id: payload.client_id,
+      goalId: goal_id,
+      variantId: allocation.variant_id,
+      device_type: payload.device_type,
+      money_value: 0, // TODO change to actually compute this (why do we need this anyways?)
+      experimentId: allocation.experiment_id,
+    },
+    update: {
+      money_value: payload.money_value,
+    },
+  });
+  console.log("result: ", ResultOfNewConversion);
+  if (ResultOfNewConversion) {
+    console.log(ResultOfNewConversion);
+    return { "db result": ResultOfNewConversion };
+  } else {
+    return { error: "failed to create New Conversion row in DB" };
+  }
 }
 async function handle_ViewedPageEvent(payload) {
-  console.log("[handle_ViewedPageEvent] Not Implemented", payload);
+  // jump
+  //console.log("[handle_ViewedPageEvent] Not Implemented", payload);
   // for now, assume that every piece of information is there.
   // create or upsert?
-  const result = await db.conversion.upsert({
+
+  const allocation = await db.allocation.findFirst({
     where: {
-      user_id: payload.client_id,
+      userId: payload.client_id,
+      experiment: { status: "active" },
     },
-    update: {},
-    create: {},
+    orderBy: { assignedWhen: "desc" },
+    select: {
+      experimentId: true,
+      variantId: true,
+    },
   });
+  if (!allocation) {
+    console.log("no allocation");
+    return { error: "No active experiment found for that user." };
+  }
+  const goal_id = await db.goal.findFirst({
+    where: {
+      name: "Viewed Page",
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!goal_id) {
+    console.error(
+      'Critical! Could not find goal with the name "Completed Purchase"! Conversions are being dropped!',
+    );
+    return { error: "fatal server error" };
+  }
+  let ResultOfNewConversion = await db.conversion.upsert({
+    where: {
+      experimentId_goalId_userId: {
+        experiment_id: allocation.experiment_id,
+        goal_id: goal_id,
+        variant_id: allocation.variant_id,
+      },
+    },
+    create: {
+      id: payload.client_id,
+      goalId: goal_id,
+      variantId: allocation.variant_id,
+      device_type: payload.device_type,
+      money_value: 0, // TODO change to actually compute this (why do we need this anyways?)
+      experimentId: allocation.experiment_id,
+    },
+    update: {
+      money_value: payload.money_value,
+    },
+  });
+  console.log("result: ", ResultOfNewConversion);
+  if (ResultOfNewConversion) {
+    console.log(ResultOfNewConversion);
+    return { "db result": ResultOfNewConversion };
+  } else {
+    return { error: "failed to create New Conversion row in DB" };
+  }
+
   // payload needs to have the following:
   //Time
 
@@ -445,7 +633,64 @@ async function handle_ViewedPageEvent(payload) {
   //Page Associated resource (product, blog, etc)
 }
 async function handle_AddedToCartEvent(payload) {
-  console.log("[handle_AddedToCartEvent] Not Implemented", payload);
+  //console.log("[handle_AddedToCartEvent] Not Implemented", payload);
+  const allocation = await db.allocation.findFirst({
+    where: {
+      userId: payload.client_id,
+      experiment: { status: "active" },
+    },
+    orderBy: { assignedWhen: "desc" },
+    select: {
+      experimentId: true,
+      variantId: true,
+    },
+  });
+  if (!allocation) {
+    console.log("[handle AddedToCartEvent] no allocation for that user");
+    return { error: "No active experiment found for that user." };
+  }
+  const goal_id = await db.goal.findFirst({
+    where: {
+      name: "Added Product To Cart",
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!goal_id) {
+    console.error(
+      'Critical! Could not find goal with the name "Completed Purchase"! Conversions are being dropped!',
+    );
+    return { error: "fatal server error" };
+  }
+  let ResultOfNewConversion = await db.conversion.upsert({
+    where: {
+      experimentId_goalId_userId: {
+        experiment_id: allocation.experiment_id,
+        goal_id: goal_id,
+        variant_id: allocation.variant_id,
+      },
+    },
+    create: {
+      id: payload.client_id,
+      goalId: goal_id,
+      variantId: allocation.variant_id,
+      device_type: payload.device_type,
+      money_value: 0, // TODO change to actually compute this (why do we need this anyways?)
+      experimentId: allocation.experiment_id,
+    },
+    update: {
+      money_value: payload.money_value,
+    },
+  });
+  console.log("result: ", ResultOfNewConversion);
+  if (ResultOfNewConversion) {
+    console.log(ResultOfNewConversion);
+    return { "db result": ResultOfNewConversion };
+  } else {
+    return { error: "failed to create New Conversion row in DB" };
+  }
 }
 // Handler function for incoming events
 // todo refactor "event type" as an ENUM
@@ -453,7 +698,6 @@ async function handle_AddedToCartEvent(payload) {
 // do I also need to update the goal table? Find the ID of
 export async function handleCollectedEvent(payload) {
   // If the "event" is to update user inclusion, handle that
-
   // normalize time
   // TODO rewrite this logic, a little round-about
   let timeCheck = payload.timestamp;
@@ -485,12 +729,13 @@ export async function handleCollectedEvent(payload) {
   // if I had one
 
   // for now, if experiment is active, log it
-  console.log("handleCollectedEvent: event accepted:", payload);
-
+  // console.log("handleCollectedEvent: event accepted:", payload);
+  // database writes go after here?
   let result = null;
   switch (payload.event_type) {
     // do new_visitor and experiment_include correspond to the same event?
     case "experiment_include":
+      console.log("about to process experiment include event");
       result = await handleExperiment_IncludeEvent(payload);
       break;
     case "new_visitor":
@@ -502,108 +747,23 @@ export async function handleCollectedEvent(payload) {
     case "started_checkout":
       result = await handle_StartedCheckoutEvent(payload);
       break;
-    case "viewed_page":
+    case "page_viewed":
       result = await handle_ViewedPageEvent(payload);
       break;
-    case "added_to_cart":
+    case "product_viewed":
       result = await handle_AddedToCartEvent(payload);
       break;
     default:
       console.error("Received an event with an unknown event type");
       // todo look into side effects of this function, is there any upstream error handling that needs to be handled?
       break;
-
-      return { ignored: false };
-  }
-  /*
-  This code has been refactored to a separate function
-  if (payload.event_type === "experiment_include") {
-    // TODO ask what this corresponds to
-    // handle that
-    // Create user if they don't exist, otherwise update latest session
-    const user = await db.user.upsert({
-      where: {
-        shopifyCustomerID: payload.user_id,
-      },
-      update: {
-        latestSession: payload.timestamp,
-      },
-      create: {
-        shopifyCustomerID: payload.user_id,
-      },
-    });
-
-    // Then, tie that user to the experiment
-    // First, get the variant ID from the variant name
-    const variant = await getVariant(payload.experiment_id, payload.variant);
-
-    if (!variant) {
-      console.error(
-        `Variant "${payload.variant}" not found for experiment ${payload.experiment_id}`,
-      );
-      return;
-    }
-
-    // Now create or update the allocation
-    const result = await db.allocation.upsert({
-      where: {
-        // The where clause must match the unique constraint: [userId, experimentId]
-        userId_experimentId: {
-          userId: user.id,
-          experimentId: payload.experiment_id,
-        },
-      },
-      create: {
-        // When creating, connect to existing records using their IDs
-        userId: user.id,
-        experimentId: payload.experiment_id,
-        variantId: variant.id,
-      },
-      update: {
-        // If allocation already exists, update the variant (in case it changed)
-        variantId: variant.id,
-      },
-    });
-    return;
-  }
-    */
-  // so, from the looks of things, this code needs to be ran FIRST, to check the timestamp, and if the experiment is still active. If either of those
-  // are bad, we fail and communicate the error to the client.
-  /*
-  // normalize time
-  let timeCheck = payload.timestamp;
-  if (!payload.timestamp) {
-    timeCheck = new Date();
-  } else if (!(payload.timestamp instanceof Date)) {
-    timeCheck = new Date(payload.timestamp);
   }
 
-  // Look up experiment (flesh this out in the future)
-  let experiment = null;
-
-  // receive pixel experimentId here
-  if (payload.experimentId) {
-    const id =
-      typeof payload.experimentId === "string"
-        ? parseInt(payload.experimentId, 10)
-        : payload.experimentId;
-    experiment = await getExperimentById(id);
-  }
-
-  // check for if the experiment is inactive, if so move on
-  if (experiment && !isExperimentActive(experiment, timeCheck)) {
-    console.log("handleCollectedEvent: experiment inactive, ignoring event");
+  if (!result) {
     return { ignored: true };
+  } else {
+    return { result };
   }
-
-  // this is where we would put all the DB writes for the experiment
-  // if I had one
-
-  // for now, if experiment is active, log it
-  console.log("handleCollectedEvent: event accepted:", payload);
-
-  return { ignored: false };
-*/
 }
 
 // function to manually end an experiment

@@ -1,11 +1,12 @@
 // Report page for an individual experiment
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLoaderData } from "react-router";
 import {
   useDateRange,
   formatDateForDisplay,
 } from "../contexts/DateRangeContext";
+import DateRangePicker from "../components/DateRangePicker";
 import {
   LineChart,
   Line,
@@ -14,6 +15,7 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
+  ResponsiveContainer,
 } from "recharts";
 
 // Server-side loader. params is for the id
@@ -49,7 +51,6 @@ export default function Report() {
   }, []);
 
   // Rearrange data from experiment to be visualized
-
   const probabilityDataMap = {};
   const expectedLossDataMap = {};
 
@@ -70,6 +71,29 @@ export default function Report() {
   const probabilityData = Object.values(probabilityDataMap);
   const expectedLossData = Object.values(expectedLossDataMap);
 
+  const filteredPData = useMemo(() => {
+    return probabilityData
+      .filter((item) => {
+        // Parse the en-US date string (e.g., "1/6/2026")
+        const itemDate = new Date(item.name);
+        const startDate = new Date(dateRange.start + "T00:00:00");
+        const endDate = new Date(dateRange.end + "T23:59:59");
+        return itemDate >= startDate && itemDate <= endDate;
+      })
+      .sort((a, b) => new Date(a.name) - new Date(b.name));
+  }, [probabilityData, dateRange]);
+
+  const filteredELData = useMemo(() => {
+    return expectedLossData
+      .filter((item) => {
+        const itemDate = new Date(item.name);
+        const startDate = new Date(dateRange.start + "T00:00:00");
+        const endDate = new Date(dateRange.end + "T23:59:59");
+        return itemDate >= startDate && itemDate <= endDate;
+      })
+      .sort((a, b) => new Date(a.name) - new Date(b.name));
+  }, [expectedLossData, dateRange]);
+
   const heading = experiment?.name ? `Report - ${experiment.name}` : "Report";
   return (
     <s-page heading={heading}>
@@ -81,6 +105,7 @@ export default function Report() {
       </s-button>
       <div style={{ marginBottom: "16px", marginTop: "16px" }}>
         <s-heading>Experiment Reports</s-heading>
+        <DateRangePicker />
         {dateRange && (
           <s-text tone="subdued">
             Viewing data from {formatDateForDisplay(dateRange.start)} to{" "}
@@ -90,86 +115,70 @@ export default function Report() {
       </div>
       <s-section heading="Probability To Be The Best">
         {isClient ? (
-          <LineChart
-            style={{
-              width: "100%",
-              maxWidth: "1000px",
-              height: "100%",
-              maxHeight: "400px",
-              aspectRatio: 1.5,
-            }}
-            responsive
-            data={probabilityData}
-          >
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis
-              width="auto"
-              tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
-              label={{
-                value: "Probability to be the best (%)",
-                angle: -90,
-                position: "insideLeft",
-                style: { textAnchor: "middle" },
-              }}
-            />
-            <Tooltip />
-            <Legend />
-            <Line
-              type="monotone"
-              dataKey={experiment.variants[0].name}
-              stroke="#8884d8"
-              activeDot={{ r: 8 }}
-            />
-            <Line
-              type="monotone"
-              dataKey={experiment.variants[1].name}
-              stroke="#82ca9d"
-            />
-          </LineChart>
+          <ResponsiveContainer width="100%" height={400}>
+            <LineChart data={filteredPData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis
+                width={80}
+                tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
+                label={{
+                  value: "Probability to be the best (%)",
+                  angle: -90,
+                  position: "insideLeft",
+                  style: { textAnchor: "middle" },
+                }}
+              />
+              <Tooltip />
+              <Legend />
+              <Line
+                type="monotone"
+                dataKey={experiment.variants[0].name}
+                stroke="#8884d8"
+                activeDot={{ r: 8 }}
+              />
+              <Line
+                type="monotone"
+                dataKey={experiment.variants[1].name}
+                stroke="#82ca9d"
+              />
+            </LineChart>
+          </ResponsiveContainer>
         ) : (
           <div style={{ width: 700, height: 400 }}>Loading chart...</div>
         )}
       </s-section>
       <s-section heading="Expected Loss">
         {isClient ? (
-          <LineChart
-            style={{
-              width: "100%",
-              maxWidth: "1000px",
-              height: "100%",
-              maxHeight: "400px",
-              aspectRatio: 1.5,
-            }}
-            responsive
-            data={expectedLossData}
-          >
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis
-              width="auto"
-              tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
-              label={{
-                value: "Expected Loss (%)",
-                angle: -90,
-                position: "insideLeft",
-                style: { textAnchor: "middle" },
-              }}
-            />
-            <Tooltip />
-            <Legend />
-            <Line
-              type="monotone"
-              dataKey={experiment.variants[0].name}
-              stroke="#8884d8"
-              activeDot={{ r: 8 }}
-            />
-            <Line
-              type="monotone"
-              dataKey={experiment.variants[1].name}
-              stroke="#82ca9d"
-            />
-          </LineChart>
+          <ResponsiveContainer width="100%" height={400}>
+            <LineChart data={filteredELData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis
+                width={80}
+                tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
+                label={{
+                  value: "Expected Loss (%)",
+                  angle: -90,
+                  position: "insideLeft",
+                  style: { textAnchor: "middle" },
+                }}
+              />
+              <Tooltip />
+              <Legend />
+              <Line
+                type="monotone"
+                dataKey={experiment.variants[0].name}
+                stroke="#8884d8"
+                activeDot={{ r: 8 }}
+              />
+              <Line
+                type="monotone"
+                dataKey={experiment.variants[1].name}
+                stroke="#82ca9d"
+              />
+            </LineChart>
+          </ResponsiveContainer>
         ) : (
           <div style={{ width: 700, height: 400 }}>Loading chart...</div>
         )}

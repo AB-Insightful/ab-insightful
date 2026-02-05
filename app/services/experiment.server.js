@@ -1,6 +1,7 @@
 // Helper functions for experiment related operations
 import db from "../db.server";
 import betaFactory from "@stdlib/random-base-beta";
+import {Prisma} from '@prisma/client'
 import { parse as uuidParse } from "uuid";
 // Function to create an experiment. Returns the created experiment object.
 export async function createExperiment(experimentData) {
@@ -424,26 +425,10 @@ async function handleExperiment_IncludeEvent(payload) {
   }
   return { result: result }; // should probably return the result to the client in the body of the response.
 }
-async function handle_NewVisitorEvent(payload) {
-  // potentially already handled?
-  console.log("[handle_NewVisitorEvent] Not implemented", payload);
-}
 async function handle_CompletedCheckoutEvent(payload) {
-  //console.log("[handle_CompletedCheckoutEvent] in progress", payload);
-
-  // i need:
-  // goal_id // check?
-  // variant id
-  // user id :check
-  //device type  :check
-  // money value???
-  // experiment id
-  // timestamp :check
-  // i'm trying real hard to figure out how to get all the infromation, i think allocation is my link
-
-  const allocation = db.allocation.findFirst({
+  const allocation = await db.allocation.findFirst({
     where: {
-      id: payload.client_id,
+      userId: payload.client_id,
       experiment: { status: "active" },
     },
     orderBy: { assignedWhen: "desc" },
@@ -453,44 +438,41 @@ async function handle_CompletedCheckoutEvent(payload) {
     },
   });
   if (!allocation) {
+    console.log("no allocation");
     return { error: "No active experiment found for that user." };
   }
-  const goal_id = db.goal.findFirst({
+  const goal = await db.goal.findFirst({
     where: {
       name: "Completed Purchase",
     },
-    select: {
-      id: true,
-    },
   });
 
-  if (!goal_id) {
+  if (!goal) {
     console.error(
       'Critical! Could not find goal with the name "Completed Purchase"! Conversions are being dropped!',
     );
     return { error: "fatal server error" };
   }
-  let ResultOfNewConversion = db.conversion.upsert({
+  let ResultOfNewConversion = await db.conversion.upsert({
     where: {
       experimentId_goalId_userId: {
-        experiment_id: allocation.experiment_id,
-        goal_id: goal_id,
-        variant_id: allocation.variant_id,
+        experimentId: allocation.experimentId,
+        goalId: goal.id,
+        userId: payload.client_id
       },
     },
     create: {
-      id: payload.client_id,
-      goalId: goal_id,
-      variantId: allocation.variant_id,
-      device_type: payload.device_type,
-      money_value: 0, // TODO change to actually compute this (why do we need this anyways?)
-      experimentId: allocation.experiment_id,
+      deviceType: payload.device_type,
+      moneyValue: 0, // TODO change to actually compute this (why do we need this anyways?)
+      user: {connect: {id: payload.client_id}},
+      variant: {connect: {id: allocation.variantId}},
+      goal: {connect: {id: goal.id}},
+      experiment:{connect:{id:allocation.experimentId}} 
     },
     update: {
-      money_value: payload.money_value,
+      moneyValue: new Prisma.Decimal(0),
     },
   });
-
   if (ResultOfNewConversion) {
     return { "db result": ResultOfNewConversion };
   } else {
@@ -498,7 +480,6 @@ async function handle_CompletedCheckoutEvent(payload) {
   }
 }
 async function handle_StartedCheckoutEvent(payload) {
-  console.log("[handle_StartedCheckoutEvent] Not Implemented", payload);
   const allocation = await db.allocation.findFirst({
     where: {
       userId: payload.client_id,
@@ -514,16 +495,13 @@ async function handle_StartedCheckoutEvent(payload) {
     console.log("no allocation");
     return { error: "No active experiment found for that user." };
   }
-  const goal_id = await db.goal.findFirst({
+  const goal = await db.goal.findFirst({
     where: {
       name: "Started Checkout",
     },
-    select: {
-      id: true,
-    },
   });
 
-  if (!goal_id) {
+  if (!goal) {
     console.error(
       'Critical! Could not find goal with the name "Completed Purchase"! Conversions are being dropped!',
     );
@@ -532,37 +510,30 @@ async function handle_StartedCheckoutEvent(payload) {
   let ResultOfNewConversion = await db.conversion.upsert({
     where: {
       experimentId_goalId_userId: {
-        experiment_id: allocation.experiment_id,
-        goal_id: goal_id,
-        variant_id: allocation.variant_id,
+        experimentId: allocation.experimentId,
+        goalId: goal.id,
+        userId: payload.client_id
       },
     },
     create: {
-      id: payload.client_id,
-      goalId: goal_id,
-      variantId: allocation.variant_id,
-      device_type: payload.device_type,
-      money_value: 0, // TODO change to actually compute this (why do we need this anyways?)
-      experimentId: allocation.experiment_id,
+      deviceType: payload.device_type,
+      moneyValue: 0, // TODO change to actually compute this (why do we need this anyways?)
+      user: {connect: {id: payload.client_id}},
+      variant: {connect: {id: allocation.variantId}},
+      goal: {connect: {id: goal.id}},
+      experiment:{connect:{id:allocation.experimentId}} 
     },
     update: {
-      money_value: payload.money_value,
+      moneyValue: new Prisma.Decimal(0),
     },
   });
-  console.log("result: ", ResultOfNewConversion);
   if (ResultOfNewConversion) {
-    console.log(ResultOfNewConversion);
     return { "db result": ResultOfNewConversion };
   } else {
     return { error: "failed to create New Conversion row in DB" };
   }
 }
 async function handle_ViewedPageEvent(payload) {
-  // jump
-  //console.log("[handle_ViewedPageEvent] Not Implemented", payload);
-  // for now, assume that every piece of information is there.
-  // create or upsert?
-
   const allocation = await db.allocation.findFirst({
     where: {
       userId: payload.client_id,
@@ -578,16 +549,13 @@ async function handle_ViewedPageEvent(payload) {
     console.log("no allocation");
     return { error: "No active experiment found for that user." };
   }
-  const goal_id = await db.goal.findFirst({
+  const goal = await db.goal.findFirst({
     where: {
       name: "Viewed Page",
     },
-    select: {
-      id: true,
-    },
   });
 
-  if (!goal_id) {
+  if (!goal) {
     console.error(
       'Critical! Could not find goal with the name "Completed Purchase"! Conversions are being dropped!',
     );
@@ -596,44 +564,32 @@ async function handle_ViewedPageEvent(payload) {
   let ResultOfNewConversion = await db.conversion.upsert({
     where: {
       experimentId_goalId_userId: {
-        experiment_id: allocation.experiment_id,
-        goal_id: goal_id,
-        variant_id: allocation.variant_id,
+        experimentId: allocation.experimentId,
+        goalId: goal.id,
+        userId: payload.client_id
       },
     },
     create: {
-      id: payload.client_id,
-      goalId: goal_id,
-      variantId: allocation.variant_id,
-      device_type: payload.device_type,
-      money_value: 0, // TODO change to actually compute this (why do we need this anyways?)
-      experimentId: allocation.experiment_id,
+      deviceType: payload.device_type,
+      moneyValue: 0, // TODO change to actually compute this (why do we need this anyways?)
+      user: {connect: {id: payload.client_id}},
+      variant: {connect: {id: allocation.variantId}},
+      goal: {connect: {id: goal.id}},
+      experiment:{connect:{id:allocation.experimentId}} 
     },
     update: {
-      money_value: payload.money_value,
+      moneyValue: new Prisma.Decimal(0),
     },
   });
-  console.log("result: ", ResultOfNewConversion);
   if (ResultOfNewConversion) {
-    console.log(ResultOfNewConversion);
     return { "db result": ResultOfNewConversion };
   } else {
     return { error: "failed to create New Conversion row in DB" };
   }
-
-  // payload needs to have the following:
-  //Time
-
-  //Customer ID
-
-  //Page URL
-
-  //Products in cart (if any)
-
-  //Page Associated resource (product, blog, etc)
 }
-async function handle_AddedToCartEvent(payload) {
-  //console.log("[handle_AddedToCartEvent] Not Implemented", payload);
+async function handle_ProductViewedEvent(payload){
+
+  
   const allocation = await db.allocation.findFirst({
     where: {
       userId: payload.client_id,
@@ -646,19 +602,16 @@ async function handle_AddedToCartEvent(payload) {
     },
   });
   if (!allocation) {
-    console.log("[handle AddedToCartEvent] no allocation for that user");
+    console.log("no allocation");
     return { error: "No active experiment found for that user." };
   }
-  const goal_id = await db.goal.findFirst({
+  const goal = await db.goal.findFirst({
     where: {
-      name: "Added Product To Cart",
-    },
-    select: {
-      id: true,
+      name: "Product Viewed",
     },
   });
 
-  if (!goal_id) {
+  if (!goal) {
     console.error(
       'Critical! Could not find goal with the name "Completed Purchase"! Conversions are being dropped!',
     );
@@ -667,26 +620,78 @@ async function handle_AddedToCartEvent(payload) {
   let ResultOfNewConversion = await db.conversion.upsert({
     where: {
       experimentId_goalId_userId: {
-        experiment_id: allocation.experiment_id,
-        goal_id: goal_id,
-        variant_id: allocation.variant_id,
+        experimentId: allocation.experimentId,
+        goalId: goal.id,
+        userId: payload.client_id
       },
     },
     create: {
-      id: payload.client_id,
-      goalId: goal_id,
-      variantId: allocation.variant_id,
-      device_type: payload.device_type,
-      money_value: 0, // TODO change to actually compute this (why do we need this anyways?)
-      experimentId: allocation.experiment_id,
+      deviceType: payload.device_type,
+      moneyValue: 0, // TODO change to actually compute this (why do we need this anyways?)
+      user: {connect: {id: payload.client_id}},
+      variant: {connect: {id: allocation.variantId}},
+      goal: {connect: {id: goal.id}},
+      experiment:{connect:{id:allocation.experimentId}} 
     },
     update: {
-      money_value: payload.money_value,
+      moneyValue: new Prisma.Decimal(0),
     },
   });
-  console.log("result: ", ResultOfNewConversion);
   if (ResultOfNewConversion) {
-    console.log(ResultOfNewConversion);
+    return { "db result": ResultOfNewConversion };
+  } else {
+    return { error: "failed to create New Conversion row in DB" };
+  }
+}
+async function handle_AddedToCartEvent(payload) {
+  const allocation = await db.allocation.findFirst({
+    where: {
+      userId: payload.client_id,
+      experiment: { status: "active" },
+    },
+    orderBy: { assignedWhen: "desc" },
+    select: {
+      experimentId: true,
+      variantId: true,
+    },
+  });
+  if (!allocation) {
+    console.log("no allocation");
+    return { error: "No active experiment found for that user." };
+  }
+  const goal = await db.goal.findFirst({
+    where: {
+      name: "Product Added To Cart",
+    },
+  });
+
+  if (!goal) {
+    console.error(
+      'Critical! Could not find goal with the name "Completed Purchase"! Conversions are being dropped!',
+    );
+    return { error: "fatal server error" };
+  }
+  let ResultOfNewConversion = await db.conversion.upsert({
+    where: {
+      experimentId_goalId_userId: {
+        experimentId: allocation.experimentId,
+        goalId: goal.id,
+        userId: payload.client_id
+      },
+    },
+    create: {
+      deviceType: payload.device_type,
+      moneyValue: 0, // TODO change to actually compute this (why do we need this anyways?)
+      user: {connect: {id: payload.client_id}},
+      variant: {connect: {id: allocation.variantId}},
+      goal: {connect: {id: goal.id}},
+      experiment:{connect:{id:allocation.experimentId}} 
+    },
+    update: {
+      moneyValue: new Prisma.Decimal(0),
+    },
+  });
+  if (ResultOfNewConversion) {
     return { "db result": ResultOfNewConversion };
   } else {
     return { error: "failed to create New Conversion row in DB" };
@@ -733,13 +738,16 @@ export async function handleCollectedEvent(payload) {
   // database writes go after here?
   let result = null;
   switch (payload.event_type) {
-    // do new_visitor and experiment_include correspond to the same event?
+    // for an in depth explanation of how the event is persisited, jump to handleViewedPageEvent  
+    // all the other functions are basically just copy and pasted. 
+    // if that is the case i really ought to just pass in the event name and consolidate all as 1 function with name: event_type
+    // i did this switch because i thought each event type would require logic specific to the type but now i don't think so
+    // 
     case "experiment_include":
-      console.log("about to process experiment include event");
       result = await handleExperiment_IncludeEvent(payload);
       break;
-    case "new_visitor":
-      result = await handle_NewVisitorEvent(payload);
+    case "product_viewed":
+      result = await handle_ProductViewedEvent(payload);
       break;
     case "completed_checkout":
       result = await handle_CompletedCheckoutEvent(payload);
@@ -750,7 +758,7 @@ export async function handleCollectedEvent(payload) {
     case "page_viewed":
       result = await handle_ViewedPageEvent(payload);
       break;
-    case "product_viewed":
+    case "product_added_to_cart":
       result = await handle_AddedToCartEvent(payload);
       break;
     default:
@@ -762,6 +770,7 @@ export async function handleCollectedEvent(payload) {
   if (!result) {
     return { ignored: true };
   } else {
+    console.log("[handle collected event: ", result);
     return { result };
   }
 }

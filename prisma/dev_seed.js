@@ -269,7 +269,7 @@ async function seed(prisma) {
   }
 
   // ----- User + Allocation (requested additions) -----
-  const seededUserId = 'df6a7311-081b-47fb-8518-41f7c203a314';
+  const seededUserId = '25483AF2-8116-495D-a412-dfbb395adb42';
 
   const seededUser = await prisma.user.upsert({
     where: { id: seededUserId },
@@ -283,7 +283,12 @@ async function seed(prisma) {
   });
 
   await prisma.allocation.upsert({
-    where: { id: seededUserId },
+    where: {
+      userId_experimentId: {
+        userId: seededUserId,
+        experimentId: 2003
+      }
+    },
     update: {
       userId: seededUser.id,
       experimentId: 2003,
@@ -292,7 +297,6 @@ async function seed(prisma) {
     create: {
       // Allocation.id is Int in your schema; this will only work if your actual DB/client uses String for this field.
       // Keeping your requested value as-is.
-      id: seededUserId,
       userId: seededUser.id,
       experimentId: 2003,
       variantId: 3003,

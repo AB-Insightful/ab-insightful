@@ -3,27 +3,42 @@ import { useLoaderData } from "react-router";
 import { formatRuntime } from "../utils/formatRuntime.js";
 import { useDateRange } from "../contexts/DateRangeContext";
 import DateRangePicker from "../components/DateRangePicker";
+import SessionsCard from "../components/SessionsCard.jsx";
+import shopify from "../shopify.server";
 
 //server side code
-export async function loader() {
+export async function loader({request}) {
+const {admin } = await shopify.authenticate.admin(request);
+
   //get the list of experiments & return them if there are any
-  const { getExperimentsList1 } = await import("../services/experiment.server");
-  const experiments = await getExperimentsList1();
-  if (experiments) {
-    return experiments;
-  }
-  return null;
+  const [
+    { getExperimentsList1 },
+    { getSessionReportData }
+  ] = await Promise.all([
+    import("../services/experiment.server"),
+    import("../services/analytics.server")
+  ]);
+
+  const [experiments, sessionData] = await Promise.all([
+    getExperimentsList1(),
+    getSessionReportData(admin) // Pass the authenticated admin here
+  ]);
+
+  return { 
+    experiments: experiments || [], 
+    sessionData 
+  };
 }
 
 export default function Reports() {
   //get list of experiments
-  const experiments = useLoaderData();
+  const {experiments, sessionData} = useLoaderData();
 
   //get date range from context
   const { dateRange } = useDateRange();
 
   //state for filtered experiments
-  const [filteredExperiments, setFilteredExperiments] = useState(experiments);
+  const [filteredExperiments, setFilteredExperiments] = useState(experiments || []);
 
   //calculate runtime using formatRuntime utility
   const getRuntime = (experiment) => {
@@ -153,9 +168,37 @@ export default function Reports() {
     <s-page heading="Reports">
       {/* date range picker component */}
       <DateRangePicker onDateRangeChange={handleDateRangeChange} />
+
+      {/* Analytics Dashboard Grid Section */}
+      <div style={{ margin: "24px 0" }}>
+        <s-layout>
+          <s-layout-section variant="oneHalf">
+            {/* Placeholder for Conversion Rate Card to match mockup */}
+            <s-card>
+              <div style={{ padding: "16px" }}>
+                <s-text variant="headingMd" as="h2">Conversion rate</s-text>
+                <div style={{ fontSize: "28px", fontWeight: "bold", margin: "8px 0" }}>
+                  0.95%
+                </div>
+                {/* Visual placeholder for the conversion chart */}
+                <div style={{ height: "150px", background: "#f6f6f7", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <s-text tone="subdued">Chart Placeholder</s-text>
+                </div>
+              </div>
+            </s-card>
+          </s-layout-section>
+
+          <s-layout-section variant="oneHalf">
+            {/* The newly implemented Sessions Card component */}
+            <SessionsCard sessionData={sessionData} />
+          </s-layout-section>
+        </s-layout>
+      </div>
+
       <div style={{ marginBottom: "16px", marginTop: "16px" }}>
         <s-heading>Experiment Reports</s-heading>
       </div>
+
       <s-section>
         <s-box
           background="base"
@@ -177,11 +220,11 @@ export default function Reports() {
                 Conversions
               </s-table-header>
             </s-table-header-row>
+            {/* This uses the destructured filteredExperiments array */}
             <s-table-body>{renderTableData(filteredExperiments)}</s-table-body>
           </s-table>
         </s-box>
       </s-section>
-      <s-page heading="Reports" variant="headingLg"></s-page>
     </s-page>
   );
 }

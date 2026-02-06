@@ -556,8 +556,11 @@ async function persistConversion(payload, Goal_Type) {
   //  persisting the event,
   //  ascertaining whether or not the user's experiment is still active (exiting early and not persisting if not)
   //  conferring all errors to the caller and client.
-  // this function is the result of a refactor, consolidating all the "handle_<>Event" functions
 
+  // the flow of queries is: 
+  // - get the experiment_id and variantId of that experiment
+  // - get the goal with the correspondig goal type
+  // - push the conversion
   const allocation = await db.allocation.findFirst({
     where: {
       userId: payload.client_id,
@@ -615,13 +618,9 @@ async function persistConversion(payload, Goal_Type) {
   }
 }
 // Handler function for incoming events
-// todo refactor "event type" as an ENUM
-// [notes | ryan] the Conversion table will be on of the primary tables you update.
-// do I also need to update the goal table? Find the ID of
 export async function handleCollectedEvent(payload) {
   // If the "event" is to update user inclusion, handle that
   // normalize time
-  // TODO rewrite this logic, a little round-about
   let timeCheck = payload.timestamp;
   if (!payload.timestamp) {
     timeCheck = new Date();
@@ -646,7 +645,6 @@ export async function handleCollectedEvent(payload) {
     console.log("handleCollectedEvent: experiment inactive, ignoring event");
     return { ignored: true };
   }
-  // for now, if experiment is active, log it
   let result = null;
   switch (payload.event_type) {
     case "experiment_include":

@@ -2,7 +2,7 @@
 import db from "../db.server";
 import betaFactory from "@stdlib/random-base-beta";
 import { Prisma } from "@prisma/client";
-import { parse as uuidParse } from "uuid";
+
 // Function to create an experiment. Returns the created experiment object.
 export async function createExperiment(experimentData) {
   console.log("Creating experiment with data:", experimentData);

@@ -11,6 +11,7 @@ export async function loader({request}) {
 const {admin } = await shopify.authenticate.admin(request);
 
   //get the list of experiments & return them if there are any
+  // Promise.all to fetch both experiments and session data in parallel for efficiency
   const [
     { getExperimentsList1 },
     { getSessionReportData }
@@ -24,9 +25,11 @@ const {admin } = await shopify.authenticate.admin(request);
     getSessionReportData(admin) // Pass the authenticated admin here
   ]);
 
+  // loader now returns a structured object containing both experiments and session data
+  // if either is missing, it defaults to an empty array or object to prevent client-side errors
   return { 
     experiments: experiments || [], 
-    sessionData 
+    sessionData: sessionData || { sessions: [], total: 0 } 
   };
 }
 
@@ -39,6 +42,7 @@ export default function Reports() {
 
   //state for filtered experiments
   const [filteredExperiments, setFilteredExperiments] = useState(experiments || []);
+  const [filteredSessionData, setFilteredSessionData] = useState(sessionData || { sessions: [], total: 0 });
 
   //calculate runtime using formatRuntime utility
   const getRuntime = (experiment) => {
@@ -155,14 +159,33 @@ export default function Reports() {
     setFilteredExperiments(
       filterByDateRange(newDateRange.start, newDateRange.end),
     );
+
+    const start = new Date(newDateRange.start+"T00:00:00");
+    const end = new Date(newDateRange.end+"T23:59:59");
+
+    const updatedSessions = sessionData.sessions.filter((s) => {
+      const d = new Date(s.date);
+      return d >= start && d <= end;
+    });
+    setFilteredSessionData({ sessions: updatedSessions, total: updatedSessions.reduce((acc, curr) => acc + curr.count, 0) });
   };
 
   //filter experiments when dateRange from context changes or experiments load
   useEffect(() => {
-    if (dateRange && experiments) {
+    if (dateRange && experiments && sessionData) {
       setFilteredExperiments(filterByDateRange(dateRange.start, dateRange.end));
+
+      const start = new Date(dateRange.start+"T00:00:00");
+      const end = new Date(dateRange.end+"T23:59:59");
+
+      const updatedSession = sessionData.sessions.filter((s) => {
+        const d = new Date(s.date);
+        return d >= start && d <= end;
+      });
+    setFilteredSessionData({ sessions: updatedSession, total: updatedSession.reduce((acc, curr) => acc + curr.count, 0) 
+    });
     }
-  }, [dateRange, experiments]);
+  }, [dateRange, experiments, sessionData]);
 
   return (
     <s-page heading="Reports">
@@ -190,7 +213,7 @@ export default function Reports() {
 
           <s-layout-section variant="oneHalf">
             {/* The newly implemented Sessions Card component */}
-            <SessionsCard sessionData={sessionData} />
+            <SessionsCard sessionData={filteredSessionData} />
           </s-layout-section>
         </s-layout>
       </div>

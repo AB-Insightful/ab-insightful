@@ -459,7 +459,7 @@ async function persistConversion(payload, Goal_Type) {
 
   if (!goal) {
     console.error(
-      'Critical! Could not find goal with the name "Completed Purchase"! Conversions are being dropped!',
+      'Critical! Could not find goal with the name "! Conversions are being dropped!',
     );
     return { error: "fatal server error" };
   }
@@ -527,20 +527,20 @@ export async function handleCollectedEvent(payload) {
     case "experiment_include":
       result = await handleExperiment_IncludeEvent(payload);
       break;
-    case "completed_checkout":
-      result = await persistConversion(payload, "Completed Purchase");
+    case "checkout_completed":
+      result = await persistConversion(payload, "Completed Checkout");
       break;
-    case "started_checkout":
-      result = await persistConversion(payload, "Checkout Started");
+    case "checkout_started":
+      result = await persistConversion(payload, "Started Checkout");
       break;
     case "page_viewed":
       result = await persistConversion(payload, "Viewed Page");
       break;
     case "product_added_to_cart":
-      result = await persistConversion(payload, "Product Add To Cart");
+      result = await persistConversion(payload, "Added Product To Cart");
       break;
     default:
-      console.error("Received an event with an unknown event type");
+      console.error("Received an event with an unknown event type", payload.event_type);
       return {
         ignored: true,
         error: "received an event with an unknown event type",

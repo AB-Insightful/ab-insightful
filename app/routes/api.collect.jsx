@@ -32,7 +32,8 @@ export const action = async ({ request }) => {
   const data = await request.json();
   console.log("Event happened:", data);
 
-  // Don't await - need to return as possible
+  // Don't await - need to return as possible // [ryan] I am assuming so we can service other events asap
+  // but how do i surface the errors?
   handleCollectedEvent(data);
 
   return Response.json(null, {

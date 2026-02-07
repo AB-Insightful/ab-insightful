@@ -4,6 +4,8 @@
  * 
  */
 
+import { error } from "console";
+
 
 
 async function seed(prisma) {
@@ -253,7 +255,7 @@ async function seed(prisma) {
     });
   }
 
-  const goalRoles= [
+  const goalRoles = [
     { goalId: completedCheckoutGoal.id, role: 'primary' },
     { goalId: startedCheckoutGoal.id, role: 'secondary' },
     { goalId: viewedPageGoal.id, role: 'secondary' },
@@ -265,6 +267,41 @@ async function seed(prisma) {
       await upsertExperimentGoal(exp.id, g.goalId, g.role);
     }
   }
+
+  // ----- User + Allocation (requested additions) -----
+  const seededUserId = '25483AF2-8116-495D-a412-dfbb395adb42';
+
+  const seededUser = await prisma.user.upsert({
+    where: { id: seededUserId },
+    update: {
+      shopifyCustomerID: seededUserId,
+    },
+    create: {
+      id: seededUserId,
+      shopifyCustomerID: seededUserId,
+    },
+  });
+
+  await prisma.allocation.upsert({
+    where: {
+      userId_experimentId: {
+        userId: seededUserId,
+        experimentId: 2003
+      }
+    },
+    update: {
+      userId: seededUser.id,
+      experimentId: 2003,
+      variantId: 3003,
+    },
+    create: {
+      // Allocation.id is Int in your schema; this will only work if your actual DB/client uses String for this field.
+      // Keeping your requested value as-is.
+      userId: seededUser.id,
+      experimentId: 2003,
+      variantId: 3003,
+    },
+  });
 
   // ----- Analysis Data for Active/Paused Experiments -----
   // Generate time-series analysis data for experiments 2003 (active) and 2004 (paused)
@@ -396,16 +433,15 @@ async function seed(prisma) {
   console.log('✅ Database successfully seeded.');
 }
 
+export function run_dev_seeding(prisma) {
 
-
-export function run_dev_seeding(prisma){
-
-seed(prisma)
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+  seed(prisma)
+    .catch((e) => {
+      console.error(e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
 }
+

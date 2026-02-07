@@ -124,7 +124,7 @@ model Audience {
   projectId Int     @map("project_id") // Foreign key
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade) // Connects to Project's PK
 
-  experimentAudeinces ExperimentAudience[]
+  experimentAudiences ExperimentAudience[]
 
   @@map("Audience")
 }
@@ -143,7 +143,7 @@ model ExperimentAudience {
 }
 
 model ExperimentHistory {
-  id         Int      @id @default(autoincrement()) @map("histroy_id")
+  id         Int      @id @default(autoincrement()) @map("history_id")
   prevStatus String   @map("prev_status") // draft
   newStatus  String   @map("new_status") // active
   changedAt  DateTime @default(now()) @map("changed_at")

@@ -279,7 +279,6 @@ export async function getAnalysis(experimentId, variantId) {
   return db.analysis.findFirst({
     where: { experimentId, variantId },
     orderBy: { calculatedWhen: "desc" },
-    select: { id: true, conversionRate: true, calculatedWhen: true },
   });
 }
 

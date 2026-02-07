@@ -122,7 +122,7 @@ export default function Experimentsindex() {
       rows.push(
         <s-table-row key={curExp.id}>
           <s-table-cell>
-            <s-link href={("./app/routes/reports/" + curExp.id)}>{curExp.name ?? "empty-name"}</s-link>
+            <s-link href={`/app/testName/expStats/${curExp.id}`}>{curExp.name ?? "empty-name"}</s-link>
           </s-table-cell> {/* displays N/A when data is null */}
           <s-table-cell> {curExp.status ?? "N/A"} </s-table-cell>
           <s-table-cell> {runtime} </s-table-cell> 

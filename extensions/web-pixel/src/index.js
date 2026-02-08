@@ -7,6 +7,7 @@ import { register } from "@shopify/web-pixels-extension";
 
 // limitations of my approach:
 // does not give which blog post it is. merely, the URL is given.
+console.log("hello from pixel!");
 const associated_resources_search = {
   // enum for the list of resources to parse.
   // add an entry here if you would like the url parser to be able to
@@ -49,198 +50,11 @@ function detectDeviceType(s) {
   }
 }
 register(({ analytics, browser, init, settings }) => {
-  // todo, add some sort of client side cache. It seems like on every page view,
-  // everything defined in here will fire. So we could potentially be hammering our APIs with requests.
-  // We don't want to send a new request when we already know the user is registered.
-  // Get shop from the current page URL or from pixel context
-
   // get device type. sniff the User-Agent String using the above regex patterns.
   const user_agent_string = init.context.navigator.userAgent ?? "";
-  console.log("user agent string: ", user_agent_string);
   const device_type = detectDeviceType(user_agent_string);
-  console.log("device type ", device_type);
   const appUrl = settings.appUrl;
   const collectUrl = `${appUrl}/api/collect`;
-
-  // Below likely not needed
-  // const cookie_name = "exp_table_identification_cookie";
-  // const cookieAPIURL = `${appUrl}/api/pixel`;
-  // below is a refactor of the block-commented code.
-  // let customer_id = init?.data?.customer?.id ?? "";
-
-  // Likely removing all below code as it is not needed. Shopify already has a client_id cookie that is reliable.
-  // browser.cookie.get(cookie_name).then((cookie) => {
-  //   if (cookie == "") {
-  //     if (customer_id == "") { // TODO need to add a way to create a customer id, so we can track people with no account. My guess is we fallback to the browser's cookie API.
-  //       throw new Error("User has no ID. They likely don't have an account."); // for now, throw and catch.
-  //     } else {
-  //       console.log("performing cookie get with url: ",cookieAPIURL +"?"+new URLSearchParams({ customer_id: customer_id }).toString());
-  //       return fetch( // check to see if the user exists within the database
-  //         cookieAPIURL +"?"+
-  //           new URLSearchParams({ customer_id: customer_id }).toString(),
-  //         {
-  //           method: "GET",
-  //         },
-  //       ).then(async (response) => {
-  //         // a note on error handling:
-  //         // a 404 is not a critical error, and is sometimes expected to happen. Thus, only 500s are treated as critical errors.
-  //         if (response.status == 500) {
-  //           // an error occurred, throw and catch with the server's message.
-  //           const data = await response.text();
-  //           throw new Error(
-  //             `[web-pixel/index.js] @GET /api/pixel?<customer_id> Error: ${response.status} message: ${data}`,
-  //           );
-  //         }
-  //         else if(response.status == 400){
-  //           console.log("I sent a bad request!!!");
-  //         }
-  //         else if (response.status == 404) {
-  //           // user is not known to the database. post, and create the cookie.
-  //           console.log("@index.js server couldn't find that user!About to perform the post", JSON.stringify({shopifyCustomerID: customer_id, device_type:device_type,}));
-  //           return fetch(cookieAPIURL, {
-  //             method: "POST",
-  //             headers: {
-  //               "Content-Type": "application/json",
-  //             },
-  //             body: JSON.stringify({
-  //               shopifyCustomerID: customer_id,
-  //               deviceType: device_type,
-  //             }),
-  //           })
-  //             .then(async (response) => {
-  //               const data = await response.json();
-  //               if (!response.ok) {
-  //                 throw new Error(`error @POST /api/cookie: ${response.status}, message: ${data}`);
-  //               }
-  //               return data;
-  //             })
-  //             .then((data) => { // user was found. create the cookie.
-  //               browser.cookie.set(
-  //                 `${cookie_name}=${data.customer_id}; expires=${addDays(new Date(), 20)};`, // set the cookie to expire 20 days from now.
-  //               );
-  //             });
-  //         }
-  //       });
-  //     }
-  //   }else{ // a cookie exists. Send a PATCH to the server to update their latestSession
-  //     return fetch(cookieAPIURL,{
-  //       method: "PATCH",
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //       },
-  //       body: JSON.stringify({
-  //         customer_id: customer_id,
-  //         latestSession: Date.now(),
-  //       })
-  //     } )
-  //     .then(async res => {
-  //       if(!res.ok){
-  //         const text = await res.text();
-  //         throw new Error(`@PATCH ${cookieAPIURL}:  Failed to update record with custoemr id:  ${customer_id}. Status: ${res.status}: ${text} `);
-  //       }
-  //       return res.json();
-  //     })
-  //     .then(data => { // what should i do now?
-  //       console.log(`updated user with id: ${customer_id}\n data: \n${data}`);
-  //     })
-  //   }
-  // })
-  // .catch(error => {
-  //   console.log("an error occurred: ", error);
-  // });
-  /*
-  // check if our user has a cookie
-  browser.cookie
-    .get("user_id_exptable")
-    .then((cookie) => {
-      if (cookie == "") {
-        // the cookie doesn't exist. We need to register this user
-        let customer_id = init?.data?.customer?.id ?? "invalid id"; // get the customer's ID.
-        if (customer_id == "invalid id") {
-          console.log(
-            "This customer doesn't have an ID. We can't use this to create the cookie. Don't send the request",
-          );
-          return;
-        } else {
-          // first, check with the server to see if the user already exists within the database
-          console.log(
-            "[cookie.server.js] About to send GET request for user: ",
-            customer_id,
-          );
-          return fetch(
-            cookieURL +
-              new URLSearchParams({ customer_id: customer_id }).toString(),
-            {
-              method: "GET",
-            },
-          )
-            .then((response) => {
-              if (response.status == 200) {
-                // the user does exist in the database. The server will send information for creating the cookie, and then the pixel will update the "last seen" field in the database.
-                // response should have a body:
-                /*
-                body: {
-                  customer_id:customer_id,
-                  device_type: device_type,
-                  last_seen: <DateTime>,
-                  lastest_session: <DateTime>
-
-                }
-                // we should create a cookie with custoemr_id, and then send a PATCH request to update the record with new last_seen and latest_session
-              
-                return response
-                  .json()
-                  .then((data) => {
-                    browser.cookie.set(
-                      `user_id_exptable=${data.customer_id}; expires=${addDays(Date.now(), 20)};`, // set the cookie to expire 20 days from now.
-                    );
-                    // TODO replace with sending a patch request
-                  })
-                  .catch((error) => {
-                    console.log("an error occurred: ", error);
-                  });
-              } else if (response.status == 404) {
-                // the user does not exist in the database, we can consider this to be a new user. Send the post request, and create the cookie
-                console.log("About to send the post request for the cookie.");
-                return fetch(cookieURL, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    customer_id: customer_id,
-                    device_type: device_type,
-                  }),
-                })
-                  .then((response) => {
-                    return response.json();
-                  })
-                  .then((data) => {
-                    browser.cookie.set(
-                      `user_id_exptable=${data.customer_id}; expires=${addDays(Date.now(), 20)};`, // set the cookie to expire 20 days from now.
-                    );
-                  })
-                  .catch((error) => {
-                    console.log(`an error occurred: ${error}`);
-                  });
-              } else {
-                // an error occurred, likely a 500.
-                console.log("an error occurred");
-                // TODO replace with proper error handling
-              }
-            })
-            .catch((error) => {
-              console.log("An error occurred", error);
-            });
-        }
-      } else {
-        // send a PATCH to update the LAST_SEEN
-      }
-    })
-    .catch((err) => {
-      console.log("an error occurred", err);
-    });
-*/
 
   // Micro-function for sending events to server. Doesn't handle errors or responses.
   function sendData(payload) {
@@ -250,7 +64,10 @@ register(({ analytics, browser, init, settings }) => {
         "Content-Type": "application/json", // Indicate that the body is JSON
       },
       body: JSON.stringify(payload),
-    });
+    })
+      .then((response) => response.json())
+      .then((data) => console.log(data))
+      .catch((error) => console.error("Error fetching data: ", error));
   }
 
   analytics.subscribe("product_viewed", (event) => {
@@ -262,6 +79,7 @@ register(({ analytics, browser, init, settings }) => {
       url: event.context.document.location.href,
       device_type: device_type,
     };
+    console.log("product view about to fire!");
     sendData(payload);
   });
 
@@ -288,6 +106,7 @@ register(({ analytics, browser, init, settings }) => {
       associated_resource: resource,
       device_type: device_type,
     };
+    console.log("page view about to fire!");
     sendData(payload);
   });
 
@@ -299,6 +118,7 @@ register(({ analytics, browser, init, settings }) => {
       products: event.data.checkout.lineItems,
       device_type: device_type,
     };
+    console.log("checkout completed about to fire!");
     sendData(payload);
   });
 
@@ -311,6 +131,7 @@ register(({ analytics, browser, init, settings }) => {
       add_to_cart_source: event.context.document.referrer,
       device_type: device_type,
     };
+    console.log("product added about to fire!");
     sendData(payload);
   });
 
@@ -322,6 +143,7 @@ register(({ analytics, browser, init, settings }) => {
       products: event.data.checkout.lineItems,
       device_type: device_type,
     };
+    console.log("checkout started aout to fire!");
     sendData(payload);
   });
 });

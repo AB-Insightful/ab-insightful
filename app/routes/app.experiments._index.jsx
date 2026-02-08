@@ -1,9 +1,7 @@
 import { useLoaderData, useFetcher } from "react-router";
 import { useEffect, useRef } from "react";
-import { json } from "@remix-run/node";
 //import Decimal from 'decimal.js';
 import { formatRuntime } from "../utils/formatRuntime.js";
-import { getImprovement } from "../services/experiment.server";
 import { formatImprovement } from "../utils/formatImprovement.js";
 
 // Server side code
@@ -12,7 +10,8 @@ export async function loader() {
   // Get the list of experiments & return them if there are any
   /**const { getExperimentsWithAnalyses } = await import("../services/experiment.server");
   const { updateProbabilityOfBest } = await import("../services/experiment.server");  */
-  const { getExperimentsList } = await import("../services/experiment.server");
+  const { getExperimentsList, getImprovement } = await import("../services/experiment.server");
+
   const experiments = await getExperimentsList();
 
   // compute improvements on the server
@@ -26,13 +25,66 @@ export async function loader() {
   return enriched; // resolved data only
 } //end loader
 
-export async function action() {
-  const { getExperimentsWithAnalyses, updateProbabilityOfBest } = await import(
-    "../services/experiment.server"
-  );
-  const list = await getExperimentsWithAnalyses();
-  await updateProbabilityOfBest(list);
-  return json({ ok: true });
+
+export async function action({ request }) {
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+  const experimentId = formData.get("experimentId");
+
+  const { 
+    pauseExperiment, 
+    getExperimentsWithAnalyses, 
+    updateProbabilityOfBest 
+  } = await import("../services/experiment.server");
+
+  switch (intent) {
+    case "pause":
+      // Handles ET-22: Direct database update for one experiment
+      try {
+        await pauseExperiment(experimentId);
+        return { ok: true, action: "paused" };
+      } catch (error) {
+        console.error("Pause Error:", error);
+        return { ok: false, error: "Failed to pause experiment" }, { status: 500 };
+      }
+
+    case "resume":
+      try {
+        const { resumeExperiment } = await import("../services/experiment.server");
+        await resumeExperiment(experimentId);
+        return { ok: true, action: "resumed" };
+      } catch (error) {
+        console.error("Resume Error:", error);
+        return { ok: false, error: "Failed to resume experiment" }, { status: 500 };
+      }
+
+    case "rename":
+      // dynamically imported redirect utility
+      const { redirect } = await import("@remix-run/node")
+      // return the rediret of the unique experiment page 
+      return redirect(`/app/experiments/${experimentId}`);
+
+    case "archive":
+      try {
+        const { archiveExperiment } = await import("../services/experiment.server");
+        await archiveExperiment(experimentId);
+        return {ok: true, action: "archived"}; 
+      } catch (error) {
+        console.error("Archive Error:", error);
+        return {ok: false, error: "Failed to archive experiment"}, { status: 500};
+      }
+
+      default:
+      /* The default case, where experiment stats are queried from the DB & rendered */
+      try {
+        const list = await getExperimentsWithAnalyses();
+        await updateProbabilityOfBest(list);
+        return { ok: true, action: "analysis_updated" };
+      } catch (error) {
+        console.error("Analysis Error:", error);
+        return { ok: false, error: "Stats calculation failed" }, { status: 500 };
+      }
+  }
 }
 
 // ---------------------------------Client side code----------------------------------------------------
@@ -147,24 +199,64 @@ export default function Experimentsindex() {
                 <s-button 
                   variant="tertiary" 
                   commandFor={`popover-${curExp.id}`}
+                  onClick={() => {
+                    fetcher.submit(
+                      {
+                        intent: "rename",
+                        experimentId: curExp.id
+                      },
+                      { method: "post" }
+                    );
+                  }}
                 >
                   Rename
                 </s-button>
                 <s-button 
                   variant="tertiary" 
                   commandFor={`popover-${curExp.id}`}
+                  disabled={curExp.status === "paused" || curExp.status === "archived" || fetcher.state !== "idle"}
+                  onClick={() => {
+                    console.log(`%c [PAUSE TRIGGERED] ID: ${curExp.id}`, "color: #008060; font-weight: bold;");
+                    fetcher.submit(
+                      {
+                        intent:"pause",
+                        experimentId: curExp.id
+                      },
+                      { method: "post"}
+                    );
+                  }}
                 >
                   Pause
                 </s-button>
                 <s-button 
                   variant="tertiary" 
                   commandFor={`popover-${curExp.id}`}
+                  disabled={curExp.status === "active" || fetcher.state !== "idle"}
+                  onClick={() => {
+                    fetcher.submit(
+                      {
+                        intent: "resume",
+                        experimentId: curExp.id
+                      },
+                      { method: "post" }
+                    );
+                  }}
                 >
                   Resume
                 </s-button>
                 <s-button 
                   variant="tertiary" 
                   commandFor={`popover-${curExp.id}`}
+                  disabled={curExp.status === "archived" || fetcher.state !== "idle"}
+                  onClick={() => {
+                    fetcher.submit(
+                      {
+                        intent: "archive",
+                        experimentId: curExp.id
+                      },
+                      { method: "post"}
+                    );
+                  }}
                 >
                   Archive
                 </s-button>

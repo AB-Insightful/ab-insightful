@@ -1,6 +1,7 @@
 // Helper functions for experiment related operations
 import db from "../db.server";
 import betaFactory from "@stdlib/random-base-beta";
+import { Prisma } from "@prisma/client";
 
 // Function to create an experiment. Returns the created experiment object.
 export async function createExperiment(experimentData) {
@@ -27,6 +28,131 @@ export async function getExperimentById(id) {
   }
   return null;
 }
+
+// Function to pause an experiment 
+export async function pauseExperiment(experimentId){
+  // Validate and normalize the ID for the SQLite database
+  if (!experimentId) throw new Error("pauseExperiment: experimentId is required");
+  
+  const id = typeof experimentId === "string" 
+    ? parseInt(experimentId, 10) 
+    : experimentId;
+
+  // Fetch current experiment to verify existence and capture state
+  const experiment = await db.experiment.findUnique({
+    where: { id },
+  });
+
+  if (!experiment) {
+    throw new Error(`pauseExperiment: Experiment with ID ${id} not found`);
+  }
+
+  // Prevent redundant updates if already paused
+  if (experiment.status === "paused") {
+    console.log(`pauseExperiment: Experiment ${id} is already paused.`);
+    return experiment;
+  }
+
+  const prevStatus = experiment.status;
+
+  // This nested write to the DB ensure atomicity 
+  const updated = await db.experiment.update({
+    where: { id },
+    data: {
+      status: "paused",
+      history: {
+        create: {
+          prevStatus: prevStatus,
+          newStatus: "paused",
+          // changedAt defaults to now() per Prisma schema
+        },
+      },
+    },
+    include: {
+      history: true,
+    },
+  });
+
+  console.log(`pauseExperiment: Experiment ${id} moved from ${prevStatus} to paused.`);
+  return updated;
+}
+// end pauseExperiment()
+
+export async function archiveExperiment(experimentId){
+   if (!experimentId) throw new Error("archiveExperiment: experimentId is required");
+  
+  const id = typeof experimentId === "string" 
+    ? parseInt(experimentId, 10) 
+    : experimentId;
+
+  // Fetch current experiment to verify existence and capture state
+  const experiment = await db.experiment.findUnique({
+    where: { id },
+  });
+
+  if (!experiment) {
+    throw new Error(`archiveExperiment: Experiment with ID ${id} not found`);
+  }
+
+  // Prevent redundant updates if already archived
+  if (experiment.status === "archived") {
+    console.log(`archiveExperiment: Experiment ${id} is already archived.`);
+    return experiment;
+  }
+
+  const prevStatus = experiment.status;
+
+  // This nested write to the DB ensure atomicity 
+  const updated = await db.experiment.update({
+    where: { id },
+    data: {
+      status: "archived",
+      history: {
+        create: {
+          prevStatus: prevStatus,
+          newStatus: "archived",
+          // changedAt defaults to now() per Prisma schema
+        },
+      },
+    },
+    include: {
+      history: true,
+    },
+  });
+
+  console.log(`archiveExperiment: Experiment ${id} moved from ${prevStatus} to archived.`);
+  return updated;
+} // end archiveExperiment()
+
+export async function resumeExperiment(experimentId) {
+  if (!experimentId) throw new Error("resumeExperiment: experimentId is required");
+
+  const id = typeof experimentId === "string" ? parseInt(experimentId, 10) : experimentId;
+
+  const experiment = await db.experiment.findUnique({ where: { id } });
+  if (!experiment) throw new Error(`Experiment with ID ${id} not found`);
+
+  // Only resume if it's actually paused
+  if (experiment.status === "active") {
+    console.log(`resumeExperiment: Experiment ${id} is already active.`)
+    return experiment;
+  }
+
+  const prevStatus = experiment.status;
+
+  return await db.experiment.update({
+    where: { id },
+    data: {
+      status: "active", // Resuming typically moves it back to active
+      history: {
+        create: {
+          prevStatus: prevStatus,
+          newStatus: "active",
+        },
+      },
+    },
+  });
+} // end resumeExperiment()
 
 //finds all the experiments that can be analyzed
 export async function getExperimentsWithAnalyses() {
@@ -89,7 +215,7 @@ export async function updateProbabilityOfBest(experiment) {
   return experiment;
 }
 
-//takes a singular experiment and adds an entry with all relevant statistics update (probabilityOfBeingBest, alpha, beta, )
+//takes a singular experiment and adds an entry with all relevant statistics update (probabilityOfBeingBest, alpha, beta, expected loss )
 //uses random-base-beta from the stdlib to perform statistical simulation.
 //intended to be used in conjunction with other helper functions (e.g. getExperimentsWithAnalyses() and updateProbabilityOfBest) to perform batch calculation on multiple experiments
 export async function setProbabilityOfBest({
@@ -298,7 +424,6 @@ export async function getAnalysis(experimentId, variantId) {
   return db.analysis.findFirst({
     where: { experimentId, variantId },
     orderBy: { calculatedWhen: "desc" },
-    select: { id: true, conversionRate: true, calculatedWhen: true },
   });
 }
 
@@ -359,58 +484,141 @@ export function isExperimentActive(experiment, timeCheck = new Date()) {
   //if we don't get kicked out from the above conditions, experiment must be actively running
   return true;
 }
+async function handleExperiment_IncludeEvent(payload) {
+  // TODO ask what this corresponds to
+  // handle that
+  // Create user if they don't exist, otherwise update latest session
+  console.log("[handle experiment include]");
+  const user = await db.user.upsert({
+    where: {
+      shopifyCustomerID: payload.client_id,
+    },
+    update: {
+      latestSession: payload.timestamp,
+    },
+    create: {
+      shopifyCustomerID: payload.client_id,
+    },
+  });
 
+  // Then, tie that user to the experiment
+  // First, get the variant ID from the variant name
+  const variant = await getVariant(payload.experiment_id, payload.variant);
+
+  if (!variant) {
+    // [notes | ryan] currently, even though this is an error path, the client gets no notice that things went wrong.
+    // should probably return a payload to the client so it can inspect what the server was working with and retry if it differs from
+    // what the client sent
+    console.error(
+      `Variant "${payload.variant}" not found for experiment ${payload.experiment_id}`,
+    );
+    return;
+  }
+
+  // Now create or update the allocation
+  // TODO seems like there needs to be more error handling with this result variable here.
+  const result = await db.allocation.upsert({
+    where: {
+      // The where clause must match the unique constraint: [userId, experimentId]
+      userId_experimentId: {
+        id: user.id,
+        experimentId: payload.experiment_id,
+      },
+    },
+    create: {
+      // When creating, connect to existing records using their IDs
+      id: user.id,
+      experimentId: payload.experiment_id,
+      variantId: variant.id,
+    },
+    update: {
+      // If allocation already exists, update the variant (in case it changed)
+      variantId: variant.id,
+    },
+  });
+  if (!result) {
+    console.log(
+      "[handle experiment include] an error occurred while publishing the allocation",
+      result,
+    );
+  } else {
+    console.log(
+      "[handle experiment include] successful allocation upsert: ",
+      result,
+    );
+  }
+  return { result: result }; // should probably return the result to the client in the body of the response.
+}
+async function persistConversion(payload, Goal_Type) {
+  // Goal_Type is expected to be a string, is expected to be exactly one of the "Goals" in the database. (Goal.name)
+  // this function is responsible for:
+  //  persisting the event,
+  //  ascertaining whether or not the user's experiment is still active (exiting early and not persisting if not)
+  //  conferring all errors to the caller and client.
+
+  // the flow of queries is: 
+  // - get the experiment_id and variantId of that experiment
+  // - get the goal with the correspondig goal type
+  // - push the conversion
+  const allocation = await db.allocation.findFirst({
+    where: {
+      userId: payload.client_id,
+      experiment: { status: "active" }, // only find allocations with active experiments. if none, ignore the event.
+    },
+    orderBy: { assignedWhen: "desc" },
+    select: {
+      experimentId: true,
+      variantId: true,
+    },
+  });
+  if (!allocation) {
+    console.log("no allocation");
+    return {
+      ignored: true,
+      error: "No active experiment found for that user.",
+    };
+  }
+  const goal = await db.goal.findFirst({
+    where: {
+      name: Goal_Type,
+    },
+  });
+
+  if (!goal) {
+    console.error(
+      'Critical! Could not find goal with the name "! Conversions are being dropped!',
+    );
+    return { error: "fatal server error" };
+  }
+  let ResultOfNewConversion = await db.conversion.upsert({
+    where: {
+      experimentId_goalId_userId: {
+        experimentId: allocation.experimentId,
+        goalId: goal.id,
+        userId: payload.client_id,
+      },
+    },
+    create: {
+      deviceType: payload.device_type,
+      moneyValue: 0, // TODO change to actually compute this (why do we need this anyways?)
+      user: { connect: { id: payload.client_id } },
+      variant: { connect: { id: allocation.variantId } },
+      goal: { connect: { id: goal.id } },
+      experiment: { connect: { id: allocation.experimentId } },
+    },
+    update: {
+      moneyValue: new Prisma.Decimal(0),
+    },
+  });
+  if (ResultOfNewConversion) {
+    return { "db result": ResultOfNewConversion };
+  } else {
+    return { error: "failed to create New Conversion row in DB" };
+  }
+}
 // Handler function for incoming events
 export async function handleCollectedEvent(payload) {
   // If the "event" is to update user inclusion, handle that
-  if (payload.event_type === "experiment_include") {
-    // handle that
-    // Create user if they don't exist, otherwise update latest session
-    const user = await db.user.upsert({
-      where: {
-        shopifyCustomerID: payload.user_id,
-      },
-      update: {
-        latestSession: payload.timestamp,
-      },
-      create: {
-        shopifyCustomerID: payload.user_id,
-      },
-    });
-
-    // Then, tie that user to the experiment
-    // First, get the variant ID from the variant name
-    const variant = await getVariant(payload.experiment_id, payload.variant);
-
-    if (!variant) {
-      console.error(
-        `Variant "${payload.variant}" not found for experiment ${payload.experiment_id}`,
-      );
-      return;
-    }
-
-    // Now create or update the allocation
-    const result = await db.allocation.upsert({
-      where: {
-        // The where clause must match the unique constraint: [userId, experimentId]
-        userId_experimentId: {
-          userId: user.id,
-          experimentId: payload.experiment_id,
-        },
-      },
-      create: {
-        // When creating, connect to existing records using their IDs
-        userId: user.id,
-        experimentId: payload.experiment_id,
-        variantId: variant.id,
-      },
-      update: {
-        // If allocation already exists, update the variant (in case it changed)
-        variantId: variant.id,
-      },
-    });
-    return;
-  }
   // normalize time
   let timeCheck = payload.timestamp;
   if (!payload.timestamp) {
@@ -419,7 +627,7 @@ export async function handleCollectedEvent(payload) {
     timeCheck = new Date(payload.timestamp);
   }
 
-  // Look up experiment (flesh this out in the future)
+  // Look up experiment (flesh this out in the future) // what exactly needs to be fleshed out here?
   let experiment = null;
 
   // receive pixel experimentId here
@@ -436,14 +644,38 @@ export async function handleCollectedEvent(payload) {
     console.log("handleCollectedEvent: experiment inactive, ignoring event");
     return { ignored: true };
   }
+  let result = null;
+  switch (payload.event_type) {
+    case "experiment_include":
+      result = await handleExperiment_IncludeEvent(payload);
+      break;
+    case "checkout_completed":
+      result = await persistConversion(payload, "Completed Checkout");
+      break;
+    case "checkout_started":
+      result = await persistConversion(payload, "Started Checkout");
+      break;
+    case "page_viewed":
+      result = await persistConversion(payload, "Viewed Page");
+      break;
+    case "product_added_to_cart":
+      result = await persistConversion(payload, "Added Product To Cart");
+      break;
+    default:
+      console.error("Received an event with an unknown event type", payload.event_type);
+      return {
+        ignored: true,
+        error: "received an event with an unknown event type",
+      };
+    // todo look into side effects of this function, is there any upstream error handling that needs to be handled?
+  }
 
-  // this is where we would put all the DB writes for the experiment
-  // if I had one
-
-  // for now, if experiment is active, log it
-  console.log("handleCollectedEvent: event accepted:", payload);
-
-  return { ignored: false };
+  if (!result) {
+    return { ignored: true };
+  } else {
+    console.log("[handle collected event]: ", result);
+    return { result };
+  }
 }
 
 // function to manually end an experiment

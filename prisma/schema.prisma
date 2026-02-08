@@ -21,7 +21,7 @@ model Session {
   scope         String?
   expires       DateTime?
   accessToken   String
-  userId        BigInt?
+  userId        String?
   firstName     String?
   lastName      String?
   email         String?
@@ -124,7 +124,7 @@ model Audience {
   projectId Int     @map("project_id") // Foreign key
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade) // Connects to Project's PK
 
-  experimentAudeinces ExperimentAudience[]
+  experimentAudiences ExperimentAudience[]
 
   @@map("Audience")
 }
@@ -143,7 +143,7 @@ model ExperimentAudience {
 }
 
 model ExperimentHistory {
-  id         Int      @id @default(autoincrement()) @map("histroy_id")
+  id         Int      @id @default(autoincrement()) @map("history_id")
   prevStatus String   @map("prev_status") // draft
   newStatus  String   @map("new_status") // active
   changedAt  DateTime @default(now()) @map("changed_at")
@@ -169,7 +169,7 @@ model Variant {
 }
 
 model User {
-  id            Int      @id @default(autoincrement()) @map("user_id")
+  id            String @id @map("user_id")
   shopifyCustomerID String?  @unique @map("shopify_customer_id")
   firstSeen     DateTime @default(now()) @map("first_seen")
   latestSession DateTime @updatedAt @map("latest_session") // Prisma's @updatedAt automatically handles this
@@ -187,7 +187,7 @@ model Allocation {
   assignedWhen DateTime @default(now()) @map("assigned_when")
   deviceType   String?  @map("device_type") // The device used at the time of allocation
 
-  userId Int  @map("user_id") // Foreign Key
+  userId String @map("user_id") // Foreign Key
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade) // Connects User's PK
 
   experimentId Int        @map("experiment_id")
@@ -208,7 +208,7 @@ model Conversion {
   deviceType    String?  @map("device_type")
   moneyValue    Decimal? @map("money_value")
 
-  userId Int  @map("user_id") // Foreign Key
+  userId String @map("user_id") // Foreign Key
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade) // Connects to User's PK
 
   variantId Int     @map("variant_id")

@@ -29,7 +29,7 @@ export async function seedBase(prisma) {
   }
 
   const completedCheckoutGoal = await prisma.goal.upsert({
-    where: { projectId_name: { projectId: project.id, name: 'Completed Checkout' }},
+    where: { name: 'Completed Checkout' },
     update: {},
     create: {
       name: 'Completed Checkout',
@@ -39,7 +39,7 @@ export async function seedBase(prisma) {
   });
 
   const startedCheckoutGoal = await prisma.goal.upsert({
-    where: { projectId_name: { projectId: project.id, name: 'Started Checkout' }},
+    where: { name: 'Started Checkout' },
     update: {},
     create: {
       name: 'Started Checkout',
@@ -49,7 +49,7 @@ export async function seedBase(prisma) {
   });
 
   const viewedPageGoal = await prisma.goal.upsert({
-    where: { projectId_name: { projectId: project.id, name: 'Viewed Page' }},
+    where: { name: 'Viewed Page' },
     update: {},
     create: {
       name: 'Viewed Page',
@@ -59,7 +59,7 @@ export async function seedBase(prisma) {
   });
 
   const addedToCartGoal = await prisma.goal.upsert({
-    where: { projectId_name: { projectId: project.id, name: 'Added Product To Cart' }},
+    where: { name: 'Added Product To Cart' },
     update: {},
     create: {
       name: 'Added Product To Cart',

@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "react-router build",
-    "dev": "shopify app dev",
+    "dev": "npm run seed:dev && shopify app dev",
     "config:link": "shopify app config link",
     "generate": "shopify app generate",
     "deploy": "shopify app deploy",
@@ -19,10 +19,15 @@
     "vite": "vite",
     "typecheck": "react-router typegen && tsc --noEmit",
     "test": "vitest run --coverage",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "seed:dev": "node prisma/seed.js --environment=dev",
+    "seed:test": "node prisma/seed.js --environment=test",
+    "seed:demo": "node prisma/seed.js --environment=demo"
   },
   "prisma": {
-    "seed": "node prisma/seed.js"
+    "seed:dev": "node prisma/seed.js --environment=dev",
+    "seed:test": "node prisma/seed.js --environment=test",
+    "seed:demo": "node prisma/seed.js --environment=demo"
   },
   "type": "module",
   "engines": {

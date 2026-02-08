@@ -34,13 +34,83 @@ export async function loader({ params }) {
   );
   const experimentReportData = await getExperimentReportData(experimentId);
 
-  return { experiment: experimentReportData };
+  //additional loader data
+  if (!Number.isInteger(experimentId)) throw new Response("Invalid id", {status: 400}); //basic safety check for valid exp id
+
+  const { getVariants } = await import("../services/variant.server");
+  const variants = await getVariants(experimentId);
+  const { getAnalysis } = await import("../services/experiment.server");
+  
+  const {getExperimentById} = await import("../services/experiment.server");
+  const experimentInfo = await getExperimentById(experimentId);
+  const {getImprovement} = await import("../services/experiment.server");
+  const improvementPercent = await getImprovement(experimentId);
+
+  //improves performance by performing queries synchronized, then wait for all of queries to finish. 
+  const analysis = await Promise.all(
+    variants.map(async (v) => {
+      const a = await getAnalysis(experimentId, v.id);
+      if (!a) return null;
+      return {
+        ...a,
+        improvement: improvementPercent,
+        variantName: v.name,
+        experimentName: experimentInfo.name,
+
+      };
+    })
+  );
+
+  return { experiment: experimentReportData, analysis };
+
 }
 
 export default function Report() {
   // Load report information
-  const { experiment } = useLoaderData();
+  const { experiment, analysis } = useLoaderData();
+  
+  //table code
+  function renderTableData()
+  {
+    //const analysisInstance = analysis[0];
+    const rows = [];
+    for (let i = 0; i < analysis.length; i++ )
+    {
+      const curAnalysis = analysis[i];
+      let improvementPercentage;
+      if ( i == 0)
+      {
+        improvementPercentage = 'Baseline';
+      }
+      else
+      { 
+        improvementPercentage = curAnalysis.improvement + '%';
+      }
+      
+      rows.push(
+        <s-table-row key={curAnalysis.id}>
+          <s-table-cell> {curAnalysis.variantName} </s-table-cell>
+          {/*variant name*/}
+          <s-table-cell> {curAnalysis.conversionRate} </s-table-cell>
+          {/*goal Completion rate*/}
+          <s-table-cell> {improvementPercentage} </s-table-cell>
+          {/*improvement % */}
+          <s-table-cell> {curAnalysis.probabilityOfBeingBest} </s-table-cell>
+          {/*probability to be best */}
+          <s-table-cell> {curAnalysis.expectedLoss} </s-table-cell>
+          {/*expected loss */}
+          <s-table-cell> {curAnalysis.totalConversions + '/' + curAnalysis.totalUsers} </s-table-cell>
+          {/*goal completion/visitor */}
 
+
+        </s-table-row>
+      )
+    
+    }
+    return rows
+  } // end renderTableData()
+
+  //date range and graphical code.
   // Access the date range from context (persists from reports list)
   const { dateRange } = useDateRange();
 
@@ -112,7 +182,32 @@ export default function Report() {
             {formatDateForDisplay(dateRange.end)}
           </s-text>
         )}
+        {/*appears to be graph page render data */}
+        
       </div>
+      <s-section> {/*might be broken */}
+          <s-heading>Variant Success Rate</s-heading>
+
+          {/* Table Section of experiment list page */}
+          <s-box  background="base"
+                  border="base"
+                  borderRadius="base"
+                  overflow="hidden"> {/*box used to provide a curved edge table */}
+            <s-table>
+              <s-table-header-row>
+                <s-table-header listslot='primary'>Variant Name</s-table-header>
+                <s-table-header listSlot="secondary">Goal Completion Rate</s-table-header>
+                <s-table-header listSlot="labeled">Improvement %</s-table-header>
+                <s-table-header listSlot="labeled" format="numeric">Probability to be Best</s-table-header>
+                <s-table-header listSlot="labeled" format="numeric">Expected Loss</s-table-header>
+                <s-table-header listSlot="labeled" >Goal Completion / Visitor</s-table-header>
+              </s-table-header-row>
+                <s-table-body>
+                  {renderTableData()}
+                </s-table-body>
+              </s-table>
+          </s-box> {/*end of table section*/}
+        </s-section>
       <s-section heading="Probability To Be The Best">
         {isClient ? (
           <ResponsiveContainer width="100%" height={400}>

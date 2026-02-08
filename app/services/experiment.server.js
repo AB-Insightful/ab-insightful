@@ -215,7 +215,7 @@ export async function updateProbabilityOfBest(experiment) {
   return experiment;
 }
 
-//takes a singular experiment and adds an entry with all relevant statistics update (probabilityOfBeingBest, alpha, beta, )
+//takes a singular experiment and adds an entry with all relevant statistics update (probabilityOfBeingBest, alpha, beta, expected loss )
 //uses random-base-beta from the stdlib to perform statistical simulation.
 //intended to be used in conjunction with other helper functions (e.g. getExperimentsWithAnalyses() and updateProbabilityOfBest) to perform batch calculation on multiple experiments
 export async function setProbabilityOfBest({

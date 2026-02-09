@@ -39,7 +39,7 @@
     "@react-router/fs-routes": "^7.9.3",
     "@react-router/node": "^7.9.3",
     "@react-router/serve": "^7.9.3",
-    "@remix-run/node": "^2.17.2",
+    "@remix-run/node": "^2.17.4",
     "@shopify/app-bridge": "^3.7.11",
     "@shopify/app-bridge-react": "^4.2.4",
     "@shopify/polaris": "^13.9.5",

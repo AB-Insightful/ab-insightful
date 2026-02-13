@@ -272,6 +272,11 @@ export default function Experimentsindex() {
   if (experiments.length > 0) {
     return (
       <s-page heading="Experiment Management">
+        <s-button
+          slot="primary-action"
+          variant="primary"
+          href="/app/experiments/new"
+        >Create Experiment</s-button>
         <s-section>
           {" "}
           {/*might be broken */}
@@ -307,7 +312,14 @@ export default function Experimentsindex() {
     //if there are no experiments, alternate display page
   } else {
     return (
+      //todo put an button here
       <s-section heading="Experiments">
+        <s-button
+          slot="primary-action"
+          variant="primary"
+          href="/app/experiments/new"
+        >Create Experiment</s-button>
+        <s-section></s-section>
         <s-grid gap="base" justifyItems="center" paddingBlock="large-500">
           <s-box maxInlineSize="400px" maxBlockSize="400px">
             <s-image

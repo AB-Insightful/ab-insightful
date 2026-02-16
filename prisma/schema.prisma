@@ -37,6 +37,7 @@ model Project {
   shop       String   @unique
   name       String?
   created_at DateTime @default(now()) @map("created_at")
+  defaultGoal String  @default("completedCheckout") @map("default_goal")
 
   experiments Experiment[] // Virtual Field indicating "look @ the experiment model/table for any row that points back to me"
   audiences   Audience[] // List[] uses Foregin keys as links to models to know where to look

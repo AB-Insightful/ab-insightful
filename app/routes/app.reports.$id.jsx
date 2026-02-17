@@ -101,6 +101,16 @@ export default function Report() {
         else if (delta < -1) rateColor = "#d32f2f";
       }
 
+      // Improvement rule (> 50% Win, < 0% Loss)
+      let impColor = "inherit";
+      if (i>0){ // skips Control since it's BaseLine
+        if (cur.improvement > 50){
+          impColor = "#2e7d32";
+        } else if (cur.improvement < 0){
+          impColor = "#d32f2f";
+        }
+      }
+
       rows.push(
         <s-table-row key={cur.id}>
           <s-table-cell>{cur.variantName}</s-table-cell>
@@ -111,9 +121,11 @@ export default function Report() {
               {formatPercent(cur.conversionRate)}
             </span>
           </s-table-cell>
-
-          <s-table-cell>{i === 0 ? 'Baseline' : formatPercent(cur.improvement / 100)}</s-table-cell>
-
+          <s-table-cell>
+            <span style = {{color: impColor}}> 
+              {i === 0 ? 'Baseline' : formatPercent(cur.improvement / 100)}
+            </span>
+          </s-table-cell>
           {/* Probability to be Best: 80/20 significance rule */}
           <s-table-cell>
             <span style={{ color: probColor }}>

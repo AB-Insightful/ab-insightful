@@ -75,54 +75,63 @@ export default function Report() {
     return ( val * 100 ).toFixed(2)+"%";
   }
   
-  //table code
-  function renderTableData()
-  {
-    //const analysisInstance = analysis[0];
+  // Table code
+  function renderTableData() {
     const rows = [];
-    // Identifies the winner by finding the variant w/ high prob to be best
-    const winnderIndex = analysis.reduce((prev,curr,idx,arr) =>
-      curr.probabilityOfBeingBest > arr[prev].probabilityOfBeingBest ? idx : prev, 0);
+    const control = analysis[0]; // Reference the baseline for delta calculations
 
-    for (let i = 0; i < analysis.length; i++ )
-    {
-      const curAnalysis = analysis[i];
-      const isWinner = i === winnderIndex;
-      const metricColor = isWinner ? "#2e7d32" : "#d32f2f";
-      // First variant (index 0) is always control/baseline 
-      let improvementDisplay = i === 0 ? 'Baseline' : formatPercent(curAnalysis.improvement / 100);
+    for (let i = 0; i < analysis.length; i++) {
+      const cur = analysis[i];
       
+      // Probability to be Best: 80% Win / 20% Loss rule
+      let probColor = "inherit"; // inherit ensures the default font color is used if no winner/loser
+      if (cur.probabilityOfBeingBest > 0.8) probColor = "#2e7d32"; 
+      else if (cur.probabilityOfBeingBest < 0.2) probColor = "#d32f2f";
+
+      // Expected Loss: > 1% is considered a "huge problem" - Tosh
+      let lossColor = "inherit";
+      if (cur.expectedLoss > 0.01) lossColor = "#d32f2f";
+
+      // Goal Completion Rate: Delta > 1% rule
+      let rateColor = "inherit";
+      if (i > 0 && control) {
+        const delta = (cur.conversionRate - control.conversionRate) * 100;
+        if (delta > 1) rateColor = "#2e7d32";
+        else if (delta < -1) rateColor = "#d32f2f";
+      }
+
       rows.push(
-      <s-table-row key={curAnalysis.id}>
-        {/* Variant Label */}
-        <s-table-cell> {curAnalysis.variantName} </s-table-cell>
-        
-        {/* Goal Completion Rate */}
-        <s-table-cell style={{ color: metricColor }}>
-          <span style={{ color: metricColor}}>
-          {formatPercent(curAnalysis.conversionRate)} 
-          </span> 
-        </s-table-cell>
-        
-        <s-table-cell> {improvementDisplay} </s-table-cell>
-        
-        {/* Probability to be Best formatted */}
-        <s-table-cell style={{ color: metricColor }}>
-          <span style={{ color: metricColor}}> 
-          {formatPercent(curAnalysis.probabilityOfBeingBest)} 
-          </span>
-        </s-table-cell>
-        
-        {/* Expected Loss formatted */}
-        <s-table-cell> {formatPercent(curAnalysis.expectedLoss)} </s-table-cell>
-        
-        {/* Goal Completion / Visitor */}
-        <s-table-cell> {`${curAnalysis.totalConversions} / ${curAnalysis.totalUsers}`} </s-table-cell>
-      </s-table-row>
-    );
-    
+        <s-table-row key={cur.id}>
+          <s-table-cell>{cur.variantName}</s-table-cell>
+
+          {/* Goal Completion Rate: Colored only if delta is significant >1% */}
+          <s-table-cell>
+            <span style={{ color: rateColor }}>
+              {formatPercent(cur.conversionRate)}
+            </span>
+          </s-table-cell>
+
+          <s-table-cell>{i === 0 ? 'Baseline' : formatPercent(cur.improvement / 100)}</s-table-cell>
+
+          {/* Probability to be Best: 80/20 significance rule */}
+          <s-table-cell>
+            <span style={{ color: probColor }}>
+              {formatPercent(cur.probabilityOfBeingBest)}
+            </span>
+          </s-table-cell>
+
+          {/* Expected Loss: Red indicator for high risk */}
+          <s-table-cell>
+            <span style={{ color: lossColor }}>
+              {formatPercent(cur.expectedLoss)}
+            </span>
+          </s-table-cell>
+
+          <s-table-cell>{`${cur.totalConversions} / ${cur.totalUsers}`}</s-table-cell>
+        </s-table-row>
+      );
     }
-    return rows
+    return rows;
   } // end renderTableData()
 
   //date range and graphical code.

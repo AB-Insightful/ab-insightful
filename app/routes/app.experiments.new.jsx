@@ -864,7 +864,14 @@ export default function CreateExperiment() {
       )}
 
       {/*Sidebar panel to display current experiment summary*/}
-      <s-section heading={name ? name : "no experiment name set"} slot="aside">
+      <div
+        slot="aside"
+        style={{
+          position: 'sticky',
+          top: '.25rem',
+          alignSelf: 'flex-start'
+      }}>
+      <s-section heading={name ? name : "no experiment name set"} >
         <s-stack gap="small">
           <s-badge icon={icon}>{label}</s-badge>
           <s-badge
@@ -913,6 +920,7 @@ export default function CreateExperiment() {
           </s-text>
         </s-stack>
       </s-section>
+      </div>
 
       {/*Name Portion of code */}
       <s-section>

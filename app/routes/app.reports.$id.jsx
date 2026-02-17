@@ -16,6 +16,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  ReferenceLine
 } from "recharts";
 
 // Server-side loader. params is for the id
@@ -248,19 +249,28 @@ export default function Report() {
                   style: { textAnchor: "middle" },
                 }}
               />
-              <Tooltip />
+              <Tooltip formatter={(value) => `${(value * 100).toFixed(2)}%`} />
               <Legend />
-              <Line
-                type="monotone"
-                dataKey={experiment.variants[0].name}
-                stroke="#8884d8"
-                activeDot={{ r: 8 }}
+              <ReferenceLine
+              y={0.8}
+              stroke="#2c2d2c"
+              strokeDasharray="5.5"
               />
-              <Line
-                type="monotone"
-                dataKey={experiment.variants[1].name}
-                stroke="#82ca9d"
-              />
+              {/* Dynamically renders all variants */}
+              { experiment.variants.map((v, index) => {
+                // Array of colors to distinguis variants
+                const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
+                return(
+                  <Line
+                  key={v.id}
+                  type="monotone"
+                  dataKey={v.name}
+                  stroke={colors[index % colors.length]}
+                  activeDot={{ r: 8 }}
+                  dot={false}
+                />
+              );
+              })}
             </LineChart>
           </ResponsiveContainer>
         ) : (
@@ -275,7 +285,7 @@ export default function Report() {
               <XAxis dataKey="name" />
               <YAxis
                 width={80}
-                tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
+                tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
                 label={{
                   value: "Expected Loss (%)",
                   angle: -90,
@@ -283,19 +293,23 @@ export default function Report() {
                   style: { textAnchor: "middle" },
                 }}
               />
-              <Tooltip />
+              <Tooltip formatter={(value) => `${(value * 100).toFixed(2)}%`} />
               <Legend />
-              <Line
-                type="monotone"
-                dataKey={experiment.variants[0].name}
-                stroke="#8884d8"
-                activeDot={{ r: 8 }}
-              />
-              <Line
-                type="monotone"
-                dataKey={experiment.variants[1].name}
-                stroke="#82ca9d"
-              />
+              {/* Dynamically renders all variants */}
+              { experiment.variants.map((v, index) => {
+                // Array of colors to distinguis variants
+                const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
+                return(
+                  <Line
+                  key={v.id}
+                  type="monotone"
+                  dataKey={v.name}
+                  stroke={colors[index % colors.length]}
+                  activeDot={{ r: 8 }}
+                  dot={false}
+                />
+              );
+              })}
             </LineChart>
           </ResponsiveContainer>
         ) : (

@@ -68,43 +68,58 @@ export async function loader({ params }) {
 export default function Report() {
   // Load report information
   const { experiment, analysis } = useLoaderData();
+
+  // Human readable metrics helper
+  const formatPercent = (val) => {
+    if (val === null || val === undefined) return "-";
+    return ( val * 100 ).toFixed(2)+"%";
+  }
   
   //table code
   function renderTableData()
   {
     //const analysisInstance = analysis[0];
     const rows = [];
+    // Identifies the winner by finding the variant w/ high prob to be best
+    const winnderIndex = analysis.reduce((prev,curr,idx,arr) =>
+      curr.probabilityOfBeingBest > arr[prev].probabilityOfBeingBest ? idx : prev, 0);
+
     for (let i = 0; i < analysis.length; i++ )
     {
       const curAnalysis = analysis[i];
-      let improvementPercentage;
-      if ( i == 0)
-      {
-        improvementPercentage = 'Baseline';
-      }
-      else
-      { 
-        improvementPercentage = curAnalysis.improvement + '%';
-      }
+      const isWinner = i === winnderIndex;
+      const metricColor = isWinner ? "#2e7d32" : "#d32f2f";
+      // First variant (index 0) is always control/baseline 
+      let improvementDisplay = i === 0 ? 'Baseline' : formatPercent(curAnalysis.improvement / 100);
       
       rows.push(
-        <s-table-row key={curAnalysis.id}>
-          <s-table-cell> {curAnalysis.variantName} </s-table-cell>
-          {/*variant name*/}
-          <s-table-cell> {curAnalysis.conversionRate} </s-table-cell>
-          {/*goal Completion rate*/}
-          <s-table-cell> {improvementPercentage} </s-table-cell>
-          {/*improvement % */}
-          <s-table-cell> {curAnalysis.probabilityOfBeingBest} </s-table-cell>
-          {/*probability to be best */}
-          <s-table-cell> {curAnalysis.expectedLoss} </s-table-cell>
-          {/*expected loss */}
-          <s-table-cell> {curAnalysis.totalConversions + '/' + curAnalysis.totalUsers} </s-table-cell>
-          {/*goal completion/visitor */}
-
-
-        </s-table-row>
-      )
+      <s-table-row key={curAnalysis.id}>
+        {/* Variant Label */}
+        <s-table-cell> {curAnalysis.variantName} </s-table-cell>
+        
+        {/* Goal Completion Rate */}
+        <s-table-cell style={{ color: metricColor }}>
+          <span style={{ color: metricColor}}>
+          {formatPercent(curAnalysis.conversionRate)} 
+          </span> 
+        </s-table-cell>
+        
+        <s-table-cell> {improvementDisplay} </s-table-cell>
+        
+        {/* Probability to be Best formatted */}
+        <s-table-cell style={{ color: metricColor }}>
+          <span style={{ color: metricColor}}> 
+          {formatPercent(curAnalysis.probabilityOfBeingBest)} 
+          </span>
+        </s-table-cell>
+        
+        {/* Expected Loss formatted */}
+        <s-table-cell> {formatPercent(curAnalysis.expectedLoss)} </s-table-cell>
+        
+        {/* Goal Completion / Visitor */}
+        <s-table-cell> {`${curAnalysis.totalConversions} / ${curAnalysis.totalUsers}`} </s-table-cell>
+      </s-table-row>
+    );
     
     }
     return rows

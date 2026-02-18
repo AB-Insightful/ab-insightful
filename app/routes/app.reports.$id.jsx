@@ -75,7 +75,7 @@ export default function Report() {
     if (val === null || val === undefined) return "-";
     return ( val * 100 ).toFixed(2)+"%";
   }
-  
+
   // Table code
   function renderTableData() {
     const rows = [];
@@ -204,47 +204,57 @@ export default function Report() {
   const heading = experiment?.name ? `Report - ${experiment.name}` : "Report";
   return (
     <s-page heading={heading}>
-      <s-button
-        slot="primary-action"
-        href={`/app/experiments/${experiment.id}`}
-      >
+      {/* Action button */}
+      <s-button slot="primary-action" href={`/app/experiments/${experiment.id}`}>
         Edit Experiment
       </s-button>
-      <div style={{ marginBottom: "16px", marginTop: "16px" }}>
-        <s-heading>Experiment Reports</s-heading>
-        <DateRangePicker />
-        {dateRange && (
-          <s-text tone="subdued">
-            Viewing data from {formatDateForDisplay(dateRange.start)} to{" "}
-            {formatDateForDisplay(dateRange.end)}
-          </s-text>
-        )}
-        {/*appears to be graph page render data */}
-        
+      <div 
+      slot = "aside"
+      style = {{
+        position: 'sticky', // sticks to the scroll wheel
+        top: '1rem',
+        alignSelf: 'flex-start',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1rem',        // space between details & recommendation 
+        width: '250px',
+        }}>
+          <s-section heading="Recommendation">
+            <s-stack gap="small">
+              <div style={{
+                padding:'12px',
+                borderRadius:'8px',
+                borderLeft:'4px solid' // visual indicator for win/inconclusive
+                }}>
+                  <s-text font-weight="heavy"> Status Message </s-text>
+                  <s-text size="small" tone="subued"> Description </s-text>
+              </div>
+            </s-stack>
+          </s-section>
       </div>
-      <s-section> {/*might be broken */}
-          <s-heading>Variant Success Rate</s-heading>
-
-          {/* Table Section of experiment list page */}
-          <s-box  background="base"
-                  border="base"
-                  borderRadius="base"
-                  overflow="hidden"> {/*box used to provide a curved edge table */}
-            <s-table>
-              <s-table-header-row>
-                <s-table-header listslot='primary'>Variant Name</s-table-header>
-                <s-table-header listSlot="secondary">Goal Completion Rate</s-table-header>
-                <s-table-header listSlot="labeled">Improvement %</s-table-header>
-                <s-table-header listSlot="labeled" format="numeric">Probability to be Best</s-table-header>
-                <s-table-header listSlot="labeled" format="numeric">Expected Loss</s-table-header>
-                <s-table-header listSlot="labeled" >Goal Completion / Visitor</s-table-header>
-              </s-table-header-row>
-                <s-table-body>
-                  {renderTableData()}
-                </s-table-body>
-              </s-table>
-          </s-box> {/*end of table section*/}
-        </s-section>
+      
+      <s-section> {/* Variant Success Rate [might be broken - Paul]*/}
+      <s-heading>Variant Success Rate</s-heading>
+        {/* Table Section of experiment list page */}
+        <s-box  background="base"
+                border="base"
+                borderRadius="base"
+                overflow="hidden"> {/*box used to provide a curved edge table */}
+          <s-table>
+            <s-table-header-row>
+              <s-table-header listslot='primary'>Variant Name</s-table-header>
+              <s-table-header listSlot="secondary">Goal Completion Rate</s-table-header>
+              <s-table-header listSlot="labeled">Improvement %</s-table-header>
+              <s-table-header listSlot="labeled" format="numeric">Probability to be Best</s-table-header>
+              <s-table-header listSlot="labeled" format="numeric">Expected Loss</s-table-header>
+              <s-table-header listSlot="labeled" >Goal Completion / Visitor</s-table-header>
+            </s-table-header-row>
+              <s-table-body>
+                {renderTableData()}
+              </s-table-body>
+            </s-table>
+        </s-box> {/*end of table section*/}
+      </s-section>
       <s-section heading="Probability To Be The Best">
         {isClient ? (
           <ResponsiveContainer width="100%" height={400}>
@@ -330,4 +340,4 @@ export default function Report() {
       </s-section>
     </s-page>
   );
-}
+  }

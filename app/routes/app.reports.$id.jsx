@@ -75,6 +75,44 @@ export default function Report() {
     if (val === null || val === undefined) return "-";
     return ( val * 100 ).toFixed(2)+"%";
   }
+  // Building the recommendation payload
+  const recommendation = useMemo(() => {
+  const isCurrentlyActive = experiment.status === 'active';
+  const isCompleted = experiment.status === 'completed' || experiment.status === 'paused';
+  
+  const PROB_THRESHOLD = 0.8;
+  const DELTA_THRESHOLD = 0.01;
+
+  const control = analysis[0]; // baseline
+  
+  // Iterates through variants, determining the winner(s)
+  const winners = analysis.slice(1).filter(variant => {
+    const delta = variant.conversionRate - control.conversionRate;
+    return variant.probabilityOfBeingBest >= PROB_THRESHOLD && delta > DELTA_THRESHOLD;
+  });
+
+  // Handle the display logic for multiple winners
+  if (winners.length > 0) {
+    const winnerNames = winners.map(w => w.variantName).join(", ");
+    return { 
+      title: winners.length > 1 ? "Multiple Winners Found" : "Winner Found", 
+      message: `Deploy: ${winnerNames}`,
+      tone: "positive",
+      color: "#2e7d32"
+    };
+  }
+  
+  if (isCurrentlyActive) {
+    return { title: "Continue Testing", message: "No clear winner yet.", tone: "neutral", color: "#005ea2" };
+  }
+
+  if (isCompleted) {
+    return { title: "Inconclusive", message: "Experiment has no clear winner.", tone: "critical", color: "#d32f2f" };
+  }
+
+  return { title: "Draft Mode", message: "Experiment is not yet active.", tone: "subdued", color: "#666" };
+}, [analysis, experiment.status]);
+
 
   // Table code
   function renderTableData() {
@@ -212,22 +250,19 @@ export default function Report() {
       slot = "aside"
       style = {{
         position: 'sticky', // sticks to the scroll wheel
-        top: '1rem',
+        top: '.5rem',
         alignSelf: 'flex-start',
         display: 'flex',
         flexDirection: 'column',
         gap: '1rem',        // space between details & recommendation 
         width: '250px',
         }}>
-          <s-section heading="Recommendation">
+          <s-section heading="Recommended Course of Action">
             <s-stack gap="small">
               <div style={{
-                padding:'12px',
-                borderRadius:'8px',
-                borderLeft:'4px solid' // visual indicator for win/inconclusive
                 }}>
-                  <s-text font-weight="heavy"> Status Message </s-text>
-                  <s-text size="small" tone="subued"> Description </s-text>
+                  <s-text font-weight="heavy"> 'Status Message' </s-text>
+                  <s-text size="small" tone="subued"> ' Description '</s-text>
               </div>
             </s-stack>
           </s-section>

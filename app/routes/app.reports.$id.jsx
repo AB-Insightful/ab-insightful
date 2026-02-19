@@ -82,35 +82,64 @@ export default function Report() {
   
   const PROB_THRESHOLD = 0.8;
   const DELTA_THRESHOLD = 0.01;
-
   const control = analysis[0]; // baseline
   
-  // Iterates through variants, determining the winner(s)
-  const winners = analysis.slice(1).filter(variant => {
+  /* Searches for variants in the experiment which 
+  *  currently have a PoB >= 80% */ 
+  const currentWinners = analysis.slice(1).filter(variant => {
     const delta = variant.conversionRate - control.conversionRate;
     return variant.probabilityOfBeingBest >= PROB_THRESHOLD && delta > DELTA_THRESHOLD;
   });
 
-  // Handle the display logic for multiple winners
-  if (winners.length > 0) {
-    const winnerNames = winners.map(w => w.variantName).join(", ");
+  /* Scans entire history of the experiment to find
+  *  if at any point any of the variants reached >= 80% PoB */  
+  const historicalWinners = experiment.analyses.filter(a => 
+    a.variant.name !== 'Control' && 
+    a.probabilityOfBeingBest >= PROB_THRESHOLD
+  );
+
+  // Currently Winning state
+  if (currentWinners.length > 0) {
+    const formatter = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' });
+    const winnerNames = formatter.format(currentWinners.map(w => w.variantName));
+    const isPlural = currentWinners.length > 1;
+
     return { 
-      title: winners.length > 1 ? "Multiple Winners Found" : "Winner Found", 
-      message: `Deploy: ${winnerNames}`,
-      tone: "positive",
-      color: "#2e7d32"
+      title: isPlural ? "Winners!" : "Winner!",
+      message: `${winnerNames} ${isPlural ? "are" : "is"} winning!`, 
+      color: "#2e7d32" 
+    };
+  }
+
+  // Peaked previously but needs more stability state
+  if (historicalWinners.length > 0 && isCurrentlyActive) {
+    const uniquePeakedNames = [...new Set(historicalWinners.map(hw => hw.variant.name))];
+    return { 
+      title: "Continue Testing", 
+      message: `${uniquePeakedNames.join(", ")} hit 80% previously. Keep running for stability.`, 
+      color: "#005ea2" 
     };
   }
   
+  // Active but no winner yet state
   if (isCurrentlyActive) {
-    return { title: "Continue Testing", message: "No clear winner yet.", tone: "neutral", color: "#005ea2" };
+    return { 
+      title: "Continue Testing", 
+      message: "No clear winner yet.", 
+      color: "#005ea2" 
+    };
   }
 
+  // Experiment ended with no winner state
   if (isCompleted) {
-    return { title: "Inconclusive", message: "Experiment has no clear winner.", tone: "critical", color: "#d32f2f" };
+    return { 
+      title: "Inconclusive", 
+      message: "No clear winner was found.", 
+      color: "#d32f2f" 
+    };
   }
-
-  return { title: "Draft Mode", message: "Experiment is not yet active.", tone: "subdued", color: "#666" };
+  // Experiment is not active state
+  return { title: "Draft", message: "Experiment is not active.", color: "#666" };
 }, [analysis, experiment.status]);
 
 
@@ -260,14 +289,37 @@ export default function Report() {
           <s-section heading="Recommended Course of Action">
             <s-stack gap="small">
               <div style={{
+                padding:"12px",
+                borderRadius:'8px',
+                // Lighter background tint based on the status color
+                backgroundColor:`${recommendation.color}10`,
+                borderLeft:`5px solid ${recommendation.color}`
                 }}>
-                  <s-text font-weight="heavy"> 'Status Message' </s-text>
-                  <s-text size="small" tone="subued"> ' Description '</s-text>
+                  {/* Dynamic Title: Winner / Continue Testing / Inconclusive */}
+                  <s-stack gap="extra-small">
+                    <s-text font-weight="heavy" style={{color: recommendation.color}}>  
+                      {recommendation.title}
+                    </s-text>
+                    { /* Dynamic Message: Deployment or status summary */}
+                    <s-text size="small" tone="subdued"> 
+                      {recommendation.message}
+                    </s-text>
+                  </s-stack>
               </div>
             </s-stack>
           </s-section>
+          {/* Existing Experiment Details Section */}
+          <s-section heading="Details">
+            <s-stack gap="small">
+              <s-badge icon="checkmark-circle">
+                {experiment.experimentGoals?.[0]?.goal?.name || "Primary Goal"}
+              </s-badge>
+              <s-text size="small">• Section ID: {experiment.sectionId}</s-text>
+              <s-text size="small">• Status: {experiment.status}</s-text>
+              <s-text size="small">• Started: {new Date(experiment.startDate).toLocaleDateString()}</s-text>
+            </s-stack>
+          </s-section>
       </div>
-      
       <s-section> {/* Variant Success Rate [might be broken - Paul]*/}
       <s-heading>Variant Success Rate</s-heading>
         {/* Table Section of experiment list page */}

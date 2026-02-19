@@ -502,6 +502,13 @@ async function handleExperiment_IncludeEvent(payload) {
   // handle that
   // Create user if they don't exist, otherwise update latest session
   console.log("[handle experiment include]");
+
+  if (!payload.client_id) {
+    console.error(
+      "handleExperiment_IncludeEvent: missing client_id in payload, skipping",
+    );
+    return null;
+  }
   const user = await db.user.upsert({
     where: {
       shopifyCustomerID: payload.client_id,
@@ -510,6 +517,7 @@ async function handleExperiment_IncludeEvent(payload) {
       latestSession: payload.timestamp,
     },
     create: {
+      id: payload.client_id,
       shopifyCustomerID: payload.client_id,
     },
   });
@@ -532,20 +540,17 @@ async function handleExperiment_IncludeEvent(payload) {
   // TODO seems like there needs to be more error handling with this result variable here.
   const result = await db.allocation.upsert({
     where: {
-      // The where clause must match the unique constraint: [userId, experimentId]
       userId_experimentId: {
-        id: user.id,
+        userId: user.id,
         experimentId: payload.experiment_id,
       },
     },
     create: {
-      // When creating, connect to existing records using their IDs
-      id: user.id,
+      userId: user.id,
       experimentId: payload.experiment_id,
       variantId: variant.id,
     },
     update: {
-      // If allocation already exists, update the variant (in case it changed)
       variantId: variant.id,
     },
   });

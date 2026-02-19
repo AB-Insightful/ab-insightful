@@ -105,9 +105,9 @@ export default function Report() {
     const isPlural = currentWinners.length > 1;
 
     return { 
-      title: isPlural ? "Winners!" : "Winner!",
+      status: 'winner',
+      title: isPlural ? "Multiple Variants are Deployable!" : "Deployable!",
       message: `${winnerNames} ${isPlural ? "are" : "is"} winning!`, 
-      color: "#2e7d32" 
     };
   }
 
@@ -115,32 +115,34 @@ export default function Report() {
   if (historicalWinners.length > 0 && isCurrentlyActive) {
     const uniquePeakedNames = [...new Set(historicalWinners.map(hw => hw.variant.name))];
     return { 
+      status: 'keep_testing', 
       title: "Continue Testing", 
       message: `${uniquePeakedNames.join(", ")} hit 80% previously. Keep running for stability.`, 
-      color: "#005ea2" 
     };
   }
   
   // Active but no winner yet state
   if (isCurrentlyActive) {
-    return { 
-      title: "Continue Testing", 
-      message: "No clear winner yet.", 
-      color: "#005ea2" 
-    };
+    return { status: 'keep_testing', title: "Continue Testing", message: "No clear winner yet." }
   }
 
   // Experiment ended with no winner state
   if (isCompleted) {
-    return { 
-      title: "Inconclusive", 
-      message: "No clear winner was found.", 
-      color: "#d32f2f" 
-    };
+    return { status: 'inconclusive', title: "Inconclusive", message: "No clear winner was found." };
   }
-  // Experiment is not active state
-  return { title: "Draft", message: "Experiment is not active.", color: "#666" };
-}, [analysis, experiment.status]);
+   // Experiment is not active state
+   return { status: 'default', title: "Draft", message: "Experiment is not active." };
+   }, [analysis, experiment.status, experiment.analyses]);
+  // Map status to Polaris tones
+
+  const mapTone = (status) => {
+    switch (status) {
+      case 'winner': return 'success';
+      case 'keep_testing': return 'info';
+      case 'inconclusive': return 'warning';
+      default: return 'auto';
+    }
+  };
 
 
   // Table code
@@ -276,49 +278,45 @@ export default function Report() {
         Edit Experiment
       </s-button>
       <div 
-      slot = "aside"
-      style = {{
-        position: 'sticky', // sticks to the scroll wheel
-        top: '.5rem',
-        alignSelf: 'flex-start',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '1rem',        // space between details & recommendation 
-        width: '250px',
-        }}>
-          <s-section heading="Recommended Course of Action">
-            <s-stack gap="small">
-              <div style={{
-                padding:"12px",
-                borderRadius:'8px',
-                // Lighter background tint based on the status color
-                backgroundColor:`${recommendation.color}10`,
-                borderLeft:`5px solid ${recommendation.color}`
-                }}>
-                  {/* Dynamic Title: Winner / Continue Testing / Inconclusive */}
-                  <s-stack gap="extra-small">
-                    <s-text font-weight="heavy" style={{color: recommendation.color}}>  
-                      {recommendation.title}
-                    </s-text>
-                    { /* Dynamic Message: Deployment or status summary */}
-                    <s-text size="small" tone="subdued"> 
-                      {recommendation.message}
-                    </s-text>
-                  </s-stack>
-              </div>
-            </s-stack>
-          </s-section>
-          {/* Existing Experiment Details Section */}
-          <s-section heading="Details">
-            <s-stack gap="small">
-              <s-badge icon="checkmark-circle">
-                {experiment.experimentGoals?.[0]?.goal?.name || "Primary Goal"}
-              </s-badge>
-              <s-text size="small">• Section ID: {experiment.sectionId}</s-text>
-              <s-text size="small">• Status: {experiment.status}</s-text>
-              <s-text size="small">• Started: {new Date(experiment.startDate).toLocaleDateString()}</s-text>
-            </s-stack>
-          </s-section>
+        slot="aside" 
+        style={{
+          position: 'sticky',
+          top: 'var(--s-spacing-large-100, .5rem)', // Use Shopify tokens for the top offset
+          alignSelf: 'flex-start',
+          width: '250px',
+          zIndex: 1, // Ensures it stays above background elements while scrolling
+        }}
+      >
+        {/* The rest of the content remains component-based for that Shopify look */}
+        <s-section
+          heading="Recommended course of action"
+          padding="base"
+        >
+          <s-stack gap="small-50">
+            <s-banner
+              tone={mapTone(recommendation.status)}
+              heading={recommendation.title}
+              dismissible={false}
+            >
+              <s-text color="subdued">
+                {recommendation.message}
+              </s-text>
+            </s-banner>
+
+            <s-section heading="Details" padding="none">
+              <s-stack gap="small-200">
+                <s-badge icon="target">
+                  {experiment.experimentGoals?.[0]?.goal?.name || "Primary Goal"}
+                </s-badge>
+                <s-text type="generic">Section ID: {experiment.sectionId}</s-text>
+                <s-text type="generic">Status: {experiment.status}</s-text>
+                <s-text type="generic">
+                  Started: {new Date(experiment.startDate).toLocaleDateString()}
+                </s-text>
+              </s-stack>
+            </s-section>
+          </s-stack>
+        </s-section>
       </div>
       <s-section> {/* Variant Success Rate [might be broken - Paul]*/}
       <s-heading>Variant Success Rate</s-heading>

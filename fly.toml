@@ -1,0 +1,39 @@
+# fly.toml app configuration file generated for ab-insightful on 2026-02-18T16:50:21-08:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'ab-insightful'
+primary_region = 'sjc'
+
+[build]
+
+[env]
+  PORT = '3000'
+  SCOPES = 'read_customer_events,read_products,read_reports,write_pixels,write_products'
+  SHOPIFY_API_KEY = '656b84090c3d90435a1675270b9182d8'
+  SHOPIFY_APP_URL = 'https://ab-insightful.fly.dev'
+
+[processes]
+  cron = 'supercronic /app/crontab'
+  app = 'node ./dbsetup.js npm run docker-start'
+
+[[mounts]]
+  source = 'data'
+  destination = '/data'
+  auto_extend_size_threshold = 80
+  auto_extend_size_increment = '1GB'
+  auto_extend_size_limit = '10GB'
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpus = 1
+  memory_mb = 1024

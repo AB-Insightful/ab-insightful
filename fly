@@ -1,0 +1,18 @@
+Usage:
+  fly.exe machine list [flags]
+
+Aliases:
+  list, ls
+
+Flags:
+  -a, --app string      Application name
+  -c, --config string   Path to application configuration file
+  -h, --help            help for list
+  -j, --json            JSON output
+  -q, --quiet           Only list machine ids
+
+Global Flags:
+  -t, --access-token string   Fly API Access Token
+      --debug                 Print additional logs and traces
+      --verbose               Verbose output
+

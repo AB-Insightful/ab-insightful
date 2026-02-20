@@ -1,8 +1,8 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "656b84090c3d90435a1675270b9182d8"
+client_id = "SHOPIFY_API_KEY"
 name = "ab-insightful"
-application_url = "https://ab-insightful.fly.dev"
+application_url = "<SHOPIFY_APP_URL>"
 embedded = true
 
 [build]

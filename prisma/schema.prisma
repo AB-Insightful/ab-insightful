@@ -33,10 +33,11 @@ model Session {
 }
 
 model Project {
-  id         Int      @id @default(autoincrement()) @map("project_id") // @map is a backend naming convention alias  
-  shop       String   @unique
-  name       String?
-  created_at DateTime @default(now()) @map("created_at")
+  id          Int      @id @default(autoincrement()) @map("project_id") // @map is a backend naming convention alias  
+  shop        String   @unique
+  name        String?
+  created_at  DateTime @default(now()) @map("created_at")
+  defaultGoal String   @default("completedCheckout") @map("default_goal")
 
   experiments Experiment[] // Virtual Field indicating "look @ the experiment model/table for any row that points back to me"
   audiences   Audience[] // List[] uses Foregin keys as links to models to know where to look
@@ -70,7 +71,7 @@ model Experiment {
   sectionId    String
   createdAt    DateTime         @default(now())
 
-  probabilityToBeBest Int?    @map("probability_to_be_best")
+  probabilityToBeBest Int?      @map("probability_to_be_best")
   duration            Int?
   timeUnit            TimeUnit? @map("time_unit")
 
@@ -169,11 +170,11 @@ model Variant {
 }
 
 model User {
-  id            String @id @map("user_id")
+  id                String   @id @map("user_id")
   shopifyCustomerID String?  @unique @map("shopify_customer_id")
-  firstSeen     DateTime @default(now()) @map("first_seen")
-  latestSession DateTime @updatedAt @map("latest_session") // Prisma's @updatedAt automatically handles this
-  deviceType    String?  @map("device_type")
+  firstSeen         DateTime @default(now()) @map("first_seen")
+  latestSession     DateTime @updatedAt @map("latest_session") // Prisma's @updatedAt automatically handles this
+  deviceType        String?  @map("device_type")
 
   allocations Allocation[]
   conversions Conversion[]
@@ -188,7 +189,7 @@ model Allocation {
   deviceType   String?  @map("device_type") // The device used at the time of allocation
 
   userId String @map("user_id") // Foreign Key
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade) // Connects User's PK
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade) // Connects User's PK
 
   experimentId Int        @map("experiment_id")
   experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
@@ -209,7 +210,7 @@ model Conversion {
   moneyValue    Decimal? @map("money_value")
 
   userId String @map("user_id") // Foreign Key
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade) // Connects to User's PK
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade) // Connects to User's PK
 
   variantId Int     @map("variant_id")
   variant   Variant @relation(fields: [variantId], references: [id], onDelete: Cascade)

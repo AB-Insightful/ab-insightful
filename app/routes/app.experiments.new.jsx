@@ -14,7 +14,7 @@ if (typeof window !== 'undefined') {
 }
 
 import { authenticate } from "../shopify.server";
-import { useFetcher, redirect } from "react-router";
+import { useFetcher, redirect, useLoaderData } from "react-router";
 import { useState, useEffect } from "react";
 import db from "../db.server";
 
@@ -223,6 +223,16 @@ export const action = async ({ request }) => {
   const experiment = await createExperiment(experimentData);
 
   return redirect(`/app/experiments/${experiment.id}`);
+};
+
+//pull the default goal stored in database, completedCheckout if empty
+export const loader = async ({ request }) => {
+  const { session } = await authenticate.admin(request);
+  const project = await db.project.findUnique({
+    where: { shop: session.shop },
+    select: { defaultGoal: true },
+  });
+  return { defaultGoal: project?.defaultGoal ?? "completedCheckout" };
 };
 
 //--------------------------- client side ----------------------------------------
@@ -469,6 +479,7 @@ function localDateTimeToISOString(dateStr, timeStr = "00:00") {
 export default function CreateExperiment() {
   //fetcher stores the data in the fields into a form that can be retrieved
   const fetcher = useFetcher();
+  const { defaultGoal } = useLoaderData();
 
   //state variables (special variables that remember across re-renders (e.g. user input, counters))
   const [name, setName] = useState("");
@@ -484,7 +495,7 @@ export default function CreateExperiment() {
   const [endDateError, setEndDateError] = useState("");
   const [experimentChance, setExperimentChance] = useState(50);
   const [endCondition, setEndCondition] = useState("manual");
-  const [goalSelected, setGoalSelected] = useState("completedCheckout");
+  const [goalSelected, setGoalSelected] = useState(defaultGoal);
   const [customerSegment, setCustomerSegment] = useState("allSegments");
   const [variant, setVariant] = useState(false);
   const [variantDisplay, setVariantDisplay] = useState("none");
@@ -853,7 +864,14 @@ export default function CreateExperiment() {
       )}
 
       {/*Sidebar panel to display current experiment summary*/}
-      <s-section heading={name ? name : "no experiment name set"} slot="aside">
+      <div
+        slot="aside"
+        style={{
+          position: 'sticky',
+          top: '.25rem',
+          alignSelf: 'flex-start'
+      }}>
+      <s-section heading={name ? name : "no experiment name set"} >
         <s-stack gap="small">
           <s-badge icon={icon}>{label}</s-badge>
           <s-badge
@@ -902,6 +920,7 @@ export default function CreateExperiment() {
           </s-text>
         </s-stack>
       </s-section>
+      </div>
 
       {/*Name Portion of code */}
       <s-section>

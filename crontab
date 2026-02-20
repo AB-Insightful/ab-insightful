@@ -1,1 +1,1 @@
-*/5 * * * * echo "hello world!"
+*/5 * * * * /bin/sh /app/scripts/cronjobs/execute-scheduled-analysis.sh

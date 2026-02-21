@@ -29,6 +29,30 @@ export async function getExperimentById(id) {
   return null;
 }
 
+//TODO: 
+// Function to retrieve the most recently created experiment and its associated information. 
+//Primarily used in the home page
+//primarily used to retrieve id.
+export async function getMostRecentExperiment(){
+
+  //query to retrieve most recent experiment tuple
+  return db.experiment.findFirst({
+    where: { status: "active"},
+    orderBy: { createdAt: "desc" },
+  }); //newest experiment first
+
+}
+
+//uses experiment id to find name of goal for experiment since there is no direct attribute for it in this table
+export async function getNameOfExpGoal(expId){
+
+  //grabs first analysis tuple that matches experiment id, works because all goals should be the same for 1 experiment
+  return db.analysis.findFirst({
+    where: { experimentId: expId},
+    include: { goal: true, },
+  }); 
+}
+
 // Function to pause an experiment 
 export async function pauseExperiment(experimentId){
   // Validate and normalize the ID for the SQLite database
@@ -424,6 +448,7 @@ export async function getAnalysis(experimentId, variantId) {
   return db.analysis.findFirst({
     where: { experimentId, variantId },
     orderBy: { calculatedWhen: "desc" },
+    include: { goal: true}
   });
 }
 

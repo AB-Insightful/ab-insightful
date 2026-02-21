@@ -29,14 +29,16 @@ export async function getExperimentById(id) {
   return null;
 }
 
-// Function to pause an experiment 
-export async function pauseExperiment(experimentId){
+// Function to pause an experiment
+export async function pauseExperiment(experimentId) {
   // Validate and normalize the ID for the SQLite database
-  if (!experimentId) throw new Error("pauseExperiment: experimentId is required");
-  
-  const id = typeof experimentId === "string" 
-    ? parseInt(experimentId, 10) 
-    : experimentId;
+  if (!experimentId)
+    throw new Error("pauseExperiment: experimentId is required");
+
+  const id =
+    typeof experimentId === "string"
+      ? parseInt(experimentId, 10)
+      : experimentId;
 
   // Fetch current experiment to verify existence and capture state
   const experiment = await db.experiment.findUnique({
@@ -55,7 +57,7 @@ export async function pauseExperiment(experimentId){
 
   const prevStatus = experiment.status;
 
-  // This nested write to the DB ensure atomicity 
+  // This nested write to the DB ensure atomicity
   const updated = await db.experiment.update({
     where: { id },
     data: {
@@ -73,17 +75,21 @@ export async function pauseExperiment(experimentId){
     },
   });
 
-  console.log(`pauseExperiment: Experiment ${id} moved from ${prevStatus} to paused.`);
+  console.log(
+    `pauseExperiment: Experiment ${id} moved from ${prevStatus} to paused.`,
+  );
   return updated;
 }
 // end pauseExperiment()
 
-export async function archiveExperiment(experimentId){
-   if (!experimentId) throw new Error("archiveExperiment: experimentId is required");
-  
-  const id = typeof experimentId === "string" 
-    ? parseInt(experimentId, 10) 
-    : experimentId;
+export async function archiveExperiment(experimentId) {
+  if (!experimentId)
+    throw new Error("archiveExperiment: experimentId is required");
+
+  const id =
+    typeof experimentId === "string"
+      ? parseInt(experimentId, 10)
+      : experimentId;
 
   // Fetch current experiment to verify existence and capture state
   const experiment = await db.experiment.findUnique({
@@ -102,7 +108,7 @@ export async function archiveExperiment(experimentId){
 
   const prevStatus = experiment.status;
 
-  // This nested write to the DB ensure atomicity 
+  // This nested write to the DB ensure atomicity
   const updated = await db.experiment.update({
     where: { id },
     data: {
@@ -120,21 +126,27 @@ export async function archiveExperiment(experimentId){
     },
   });
 
-  console.log(`archiveExperiment: Experiment ${id} moved from ${prevStatus} to archived.`);
+  console.log(
+    `archiveExperiment: Experiment ${id} moved from ${prevStatus} to archived.`,
+  );
   return updated;
 } // end archiveExperiment()
 
 export async function resumeExperiment(experimentId) {
-  if (!experimentId) throw new Error("resumeExperiment: experimentId is required");
+  if (!experimentId)
+    throw new Error("resumeExperiment: experimentId is required");
 
-  const id = typeof experimentId === "string" ? parseInt(experimentId, 10) : experimentId;
+  const id =
+    typeof experimentId === "string"
+      ? parseInt(experimentId, 10)
+      : experimentId;
 
   const experiment = await db.experiment.findUnique({ where: { id } });
   if (!experiment) throw new Error(`Experiment with ID ${id} not found`);
 
   // Only resume if it's actually paused
   if (experiment.status === "active") {
-    console.log(`resumeExperiment: Experiment ${id} is already active.`)
+    console.log(`resumeExperiment: Experiment ${id} is already active.`);
     return experiment;
   }
 
@@ -366,6 +378,7 @@ export async function GetFrontendExperimentsData() {
     select: {
       id: true,
       sectionId: true,
+      controlSectionId: true,
       trafficSplit: true,
     },
   });
@@ -489,6 +502,13 @@ async function handleExperiment_IncludeEvent(payload) {
   // handle that
   // Create user if they don't exist, otherwise update latest session
   console.log("[handle experiment include]");
+
+  if (!payload.client_id) {
+    console.error(
+      "handleExperiment_IncludeEvent: missing client_id in payload, skipping",
+    );
+    return null;
+  }
   const user = await db.user.upsert({
     where: {
       shopifyCustomerID: payload.client_id,
@@ -497,6 +517,7 @@ async function handleExperiment_IncludeEvent(payload) {
       latestSession: payload.timestamp,
     },
     create: {
+      id: payload.client_id,
       shopifyCustomerID: payload.client_id,
     },
   });
@@ -519,20 +540,17 @@ async function handleExperiment_IncludeEvent(payload) {
   // TODO seems like there needs to be more error handling with this result variable here.
   const result = await db.allocation.upsert({
     where: {
-      // The where clause must match the unique constraint: [userId, experimentId]
       userId_experimentId: {
-        id: user.id,
+        userId: user.id,
         experimentId: payload.experiment_id,
       },
     },
     create: {
-      // When creating, connect to existing records using their IDs
-      id: user.id,
+      userId: user.id,
       experimentId: payload.experiment_id,
       variantId: variant.id,
     },
     update: {
-      // If allocation already exists, update the variant (in case it changed)
       variantId: variant.id,
     },
   });
@@ -556,7 +574,7 @@ async function persistConversion(payload, Goal_Type) {
   //  ascertaining whether or not the user's experiment is still active (exiting early and not persisting if not)
   //  conferring all errors to the caller and client.
 
-  // the flow of queries is: 
+  // the flow of queries is:
   // - get the experiment_id and variantId of that experiment
   // - get the goal with the correspondig goal type
   // - push the conversion
@@ -662,7 +680,10 @@ export async function handleCollectedEvent(payload) {
       result = await persistConversion(payload, "Added Product To Cart");
       break;
     default:
-      console.error("Received an event with an unknown event type", payload.event_type);
+      console.error(
+        "Received an event with an unknown event type",
+        payload.event_type,
+      );
       return {
         ignored: true,
         error: "received an event with an unknown event type",

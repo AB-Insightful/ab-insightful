@@ -1357,7 +1357,7 @@ export default function CreateExperiment() {
           <s-button 
             onClick={handleDiscard}
             variant="secondary">
-            Discardo
+            Discard
           </s-button>
           <s-button 
             variant="primary" 

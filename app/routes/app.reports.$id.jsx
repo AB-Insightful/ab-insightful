@@ -16,6 +16,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  ReferenceLine
 } from "recharts";
 
 // Server-side loader. params is for the id
@@ -68,46 +69,82 @@ export async function loader({ params }) {
 export default function Report() {
   // Load report information
   const { experiment, analysis } = useLoaderData();
+
+  // Human readable metrics helper
+  const formatPercent = (val) => {
+    if (val === null || val === undefined) return "-";
+    return ( val * 100 ).toFixed(2)+"%";
+  }
   
-  //table code
-  function renderTableData()
-  {
-    //const analysisInstance = analysis[0];
+  // Table code
+  function renderTableData() {
     const rows = [];
-    for (let i = 0; i < analysis.length; i++ )
-    {
-      const curAnalysis = analysis[i];
-      let improvementPercentage;
-      if ( i == 0)
-      {
-        improvementPercentage = 'Baseline';
-      }
-      else
-      { 
-        improvementPercentage = curAnalysis.improvement + '%';
-      }
+    const control = analysis[0]; // Reference the baseline for delta calculations
+
+    for (let i = 0; i < analysis.length; i++) {
+      const cur = analysis[i];
       
+      // Probability to be Best: 80% Win / 20% Loss rule
+      let probColor = "inherit"; // inherit ensures the default font color is used if no winner/loser
+      if (cur.probabilityOfBeingBest > 0.8) probColor = "#2e7d32"; 
+      else if (cur.probabilityOfBeingBest < 0.2) probColor = "#d32f2f";
+
+      // Expected Loss: > 1% is considered a "huge problem" - Tosh
+      let lossColor = "inherit";
+      if (cur.expectedLoss > 0.01) lossColor = "#d32f2f";
+
+      // Goal Completion Rate: Delta > 1% rule
+      let rateColor = "inherit";
+      if (i > 0 && control) {
+        const delta = (cur.conversionRate - control.conversionRate) * 100;
+        if (delta > 1) rateColor = "#2e7d32";
+        else if (delta < -1) rateColor = "#d32f2f";
+      }
+
+      // Improvement rule (> 50% Win, < 0% Loss)
+      let impColor = "inherit";
+      if (i>0){ // skips Control since it's BaseLine
+        if (cur.improvement > 50){
+          impColor = "#2e7d32";
+        } else if (cur.improvement < 0){
+          impColor = "#d32f2f";
+        }
+      }
+
       rows.push(
-        <s-table-row key={curAnalysis.id}>
-          <s-table-cell> {curAnalysis.variantName} </s-table-cell>
-          {/*variant name*/}
-          <s-table-cell> {curAnalysis.conversionRate} </s-table-cell>
-          {/*goal Completion rate*/}
-          <s-table-cell> {improvementPercentage} </s-table-cell>
-          {/*improvement % */}
-          <s-table-cell> {curAnalysis.probabilityOfBeingBest} </s-table-cell>
-          {/*probability to be best */}
-          <s-table-cell> {curAnalysis.expectedLoss} </s-table-cell>
-          {/*expected loss */}
-          <s-table-cell> {curAnalysis.totalConversions + '/' + curAnalysis.totalUsers} </s-table-cell>
-          {/*goal completion/visitor */}
+        <s-table-row key={cur.id}>
+          <s-table-cell>{cur.variantName}</s-table-cell>
 
+          {/* Goal Completion Rate: Colored only if delta is significant >1% */}
+          <s-table-cell>
+            <span style={{ color: rateColor }}>
+              {formatPercent(cur.conversionRate)}
+            </span>
+          </s-table-cell>
+          <s-table-cell>
+            <span style = {{color: impColor}}> 
+              {i === 0 ? 'Baseline' : formatPercent(cur.improvement / 100)}
+            </span>
+          </s-table-cell>
+          {/* Probability to be Best: 80/20 significance rule */}
+          <s-table-cell>
+            <span style={{ color: probColor }}>
+              {formatPercent(cur.probabilityOfBeingBest)}
+            </span>
+          </s-table-cell>
 
+          {/* Expected Loss: Red indicator for high risk */}
+          <s-table-cell>
+            <span style={{ color: lossColor }}>
+              {formatPercent(cur.expectedLoss)}
+            </span>
+          </s-table-cell>
+
+          <s-table-cell>{`${cur.totalConversions} / ${cur.totalUsers}`}</s-table-cell>
         </s-table-row>
-      )
-    
+      );
     }
-    return rows
+    return rows;
   } // end renderTableData()
 
   //date range and graphical code.
@@ -169,10 +206,18 @@ export default function Report() {
     <s-page heading={heading}>
       <s-button
         slot="primary-action"
+        variant="primary"
         href={`/app/experiments/${experiment.id}`}
       >
         Edit Experiment
       </s-button>
+      <s-button slot="secondary-actions" href={`/app/reports`}>
+        Reports
+      </s-button>
+      <s-button slot="secondary-actions" href="/app/experiments">
+        Manage Experiments
+      </s-button>
+      
       <div style={{ marginBottom: "16px", marginTop: "16px" }}>
         <s-heading>Experiment Reports</s-heading>
         <DateRangePicker />
@@ -224,19 +269,28 @@ export default function Report() {
                   style: { textAnchor: "middle" },
                 }}
               />
-              <Tooltip />
+              <Tooltip formatter={(value) => `${(value * 100).toFixed(2)}%`} />
               <Legend />
-              <Line
-                type="monotone"
-                dataKey={experiment.variants[0].name}
-                stroke="#8884d8"
-                activeDot={{ r: 8 }}
+              <ReferenceLine
+              y={0.8}
+              stroke="#2c2d2c"
+              strokeDasharray="5.5"
               />
-              <Line
-                type="monotone"
-                dataKey={experiment.variants[1].name}
-                stroke="#82ca9d"
-              />
+              {/* Dynamically renders all variants */}
+              { experiment.variants.map((v, index) => {
+                // Array of colors to distinguis variants
+                const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
+                return(
+                  <Line
+                  key={v.id}
+                  type="monotone"
+                  dataKey={v.name}
+                  stroke={colors[index % colors.length]}
+                  activeDot={{ r: 8 }}
+                  dot={false}
+                />
+              );
+              })}
             </LineChart>
           </ResponsiveContainer>
         ) : (
@@ -251,7 +305,7 @@ export default function Report() {
               <XAxis dataKey="name" />
               <YAxis
                 width={80}
-                tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
+                tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
                 label={{
                   value: "Expected Loss (%)",
                   angle: -90,
@@ -259,19 +313,23 @@ export default function Report() {
                   style: { textAnchor: "middle" },
                 }}
               />
-              <Tooltip />
+              <Tooltip formatter={(value) => `${(value * 100).toFixed(2)}%`} />
               <Legend />
-              <Line
-                type="monotone"
-                dataKey={experiment.variants[0].name}
-                stroke="#8884d8"
-                activeDot={{ r: 8 }}
-              />
-              <Line
-                type="monotone"
-                dataKey={experiment.variants[1].name}
-                stroke="#82ca9d"
-              />
+              {/* Dynamically renders all variants */}
+              { experiment.variants.map((v, index) => {
+                // Array of colors to distinguis variants
+                const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
+                return(
+                  <Line
+                  key={v.id}
+                  type="monotone"
+                  dataKey={v.name}
+                  stroke={colors[index % colors.length]}
+                  activeDot={{ r: 8 }}
+                  dot={false}
+                />
+              );
+              })}
             </LineChart>
           </ResponsiveContainer>
         ) : (

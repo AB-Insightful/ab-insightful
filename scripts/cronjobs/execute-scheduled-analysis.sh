@@ -1,2 +1,2 @@
 #!/bin/sh
-echo "hello world from the shell!"
+curl -sS http://app.process.ab-insightful.internal:3000/api/cron

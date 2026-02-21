@@ -1,48 +1,7 @@
 // Helper functions for experiment related operations
 import db from "../db.server";
+import betaFactory from "@stdlib/random-base-beta";
 import { Prisma } from "@prisma/client";
-
-function sampleStandardNormal() {
-  let u = 0;
-  let v = 0;
-  while (u === 0) u = Math.random();
-  while (v === 0) v = Math.random();
-  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-}
-
-function sampleGamma(shape) {
-  if (shape <= 0) {
-    throw new Error("sampleGamma: shape must be > 0");
-  }
-
-  if (shape < 1) {
-    const u = Math.random();
-    return sampleGamma(shape + 1) * Math.pow(u, 1 / shape);
-  }
-
-  const d = shape - 1 / 3;
-  const c = 1 / Math.sqrt(9 * d);
-
-  while (true) {
-    const x = sampleStandardNormal();
-    const v = Math.pow(1 + c * x, 3);
-    if (v <= 0) continue;
-
-    const u = Math.random();
-    if (u < 1 - 0.0331 * Math.pow(x, 4)) return d * v;
-    if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v;
-  }
-}
-
-function sampleBeta(alpha, beta) {
-  if (alpha <= 0 || beta <= 0) {
-    throw new Error("sampleBeta: alpha and beta must be > 0");
-  }
-
-  const x = sampleGamma(alpha);
-  const y = sampleGamma(beta);
-  return x / (x + y);
-}
 
 // Function to create an experiment. Returns the created experiment object.
 export async function createExperiment(experimentData) {
@@ -257,7 +216,7 @@ export async function updateProbabilityOfBest(experiment) {
 }
 
 //takes a singular experiment and adds an entry with all relevant statistics update (probabilityOfBeingBest, alpha, beta, expected loss )
-//uses Monte Carlo simulation with an internal beta sampler.
+//uses random-base-beta from the stdlib to perform statistical simulation.
 //intended to be used in conjunction with other helper functions (e.g. getExperimentsWithAnalyses() and updateProbabilityOfBest) to perform batch calculation on multiple experiments
 export async function setProbabilityOfBest({
   experimentId,
@@ -320,7 +279,7 @@ export async function setProbabilityOfBest({
   //Monte Carlo Calculation
   const betaSamplers = []; //will be array of functions
   for (const posterior of posteriors) {
-    const sampler = () => sampleBeta(posterior.alpha, posterior.beta); //calculates random values based on beta
+    const sampler = betaFactory.factory(posterior.alpha, posterior.beta); //calculates random values based on beta
     betaSamplers.push(sampler);
   }
 

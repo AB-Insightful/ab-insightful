@@ -78,8 +78,6 @@ export const loader = async ({ request }) => {
         variantName: v.name,
         experimentName: latestExperiment.name,
         isBaseline: v.id === baselineVariantId,
-        goal: a.goal.name,
-
       };
     })
   );
@@ -331,12 +329,7 @@ export default function Index() {
       {/*graphical section */ }
       <div style={{ marginBottom: "16px", marginTop: "16px" }}>
               <DateRangePicker />
-              {dateRange && (
-                <s-text tone="subdued">
-                  Viewing data from {formatDateForDisplay(dateRange.start)} to{" "}
-                  {formatDateForDisplay(dateRange.end)}
-                </s-text>
-              )}              
+                        
         </div>
       <s-section heading="Probability To Be The Best">
               {isClient ? (
@@ -388,8 +381,8 @@ export default function Index() {
               </s-table-header-row>
                 <s-table-body>
                 {tableData.map((row, index) => (
-                  <s-table-row key={row.variantId ?? row.variantName}>
-                    <s-table-cell>{row.variantName}</s-table-cell>
+                  <s-table-row key={row.variantId ?? "No ID here for some reason"}>
+                    <s-table-cell>{row.variantName ?? "No Name"}</s-table-cell>
 
                     <s-table-cell>{experiment.status}</s-table-cell>
 

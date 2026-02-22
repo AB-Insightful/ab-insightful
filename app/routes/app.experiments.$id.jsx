@@ -127,6 +127,7 @@ export const action = async ({ request, params }) => {
   ).trim();
   const durationStr = (formData.get("duration") || "").trim();
   const timeUnitValue = (formData.get("timeUnit") || "").trim();
+  const intent = formData.get("intent");
 
   // Date/Time Fields (accepts both client-side UTC strings or separate date/time fields)
   const startDateUTC = (formData.get("startDateUTC") || "").trim();
@@ -233,17 +234,16 @@ export const action = async ({ request, params }) => {
     if (!timeUnitValue) {
       errors.timeUnit = "Time unit is required";
     }
-
-    // For start button on side panel
-    const intent = formData.get("intent");
-    if (intent === "start") {
-      const { startExperiment } = await import("../services/experiment.server");
-      await startExperiment(experimentId);
-      return redirect(`/app/experiments/${experimentId}`);
-    }
   }
 
   if (Object.keys(errors).length) return { errors };
+
+  // For start button on side panel
+  if (intent === "start") {
+    const { startExperiment } = await import("../services/experiment.server");
+    await startExperiment(experimentId);
+    return redirect(`/app/experiments/${experimentId}`);
+  }
 
   // Find or create a parent Project for this shop
   const shop = session.shop;

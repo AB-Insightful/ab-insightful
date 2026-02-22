@@ -48,7 +48,7 @@ export async function loader({ params }) {
   const improvementPercent = await getImprovement(experimentId);
 
   //improves performance by performing queries synchronized, then wait for all of queries to finish. 
-  const analysis = await Promise.all(
+  const results = await Promise.all(
     variants.map(async (v) => {
       const a = await getAnalysis(experimentId, v.id);
       if (!a) return null;
@@ -62,8 +62,15 @@ export async function loader({ params }) {
     })
   );
 
-  return { experiment: experimentReportData, analysis };
-
+  // dumps any null data before returning 
+  const analysis = results.filter(Boolean);
+  return { experiment:{ 
+    ...experimentReportData,
+    status: experimentInfo.status,
+    startDate: experimentInfo.startDate
+  },
+  analysis
+};
 }
 
 export default function Report() {
@@ -83,6 +90,15 @@ export default function Report() {
   const PROB_THRESHOLD = 0.8;
   const DELTA_THRESHOLD = 0.01;
   const control = analysis[0]; // baseline
+
+  // if no analysis exists yet
+  if (!control){
+    return {
+      status: 'default',
+      title: "Collectiong Data",
+      message: "We need more visitors to generate a report."
+    };
+  }
   
   /* Searches for variants in the experiment which 
   *  currently have a PoB >= 80% */ 
@@ -147,6 +163,7 @@ export default function Report() {
 
   // Table code
   function renderTableData() {
+    if (analysis.length === 0 ) return []; // simple exit if the array is empty
     const rows = [];
     const control = analysis[0]; // Reference the baseline for delta calculations
 
@@ -311,7 +328,7 @@ export default function Report() {
                 <s-text type="generic">Section ID: {experiment.sectionId}</s-text>
                 <s-text type="generic">Status: {experiment.status}</s-text>
                 <s-text type="generic">
-                  Started: {new Date(experiment.startDate).toLocaleDateString()}
+                  Started: {experiment.startDate ? new Date(experiment.startDate).toLocaleDateString() : 'Not yet started'}
                 </s-text>
               </s-stack>
             </s-section>

@@ -30,6 +30,7 @@ model Session {
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
   webPixelId    String?
+  tutorialData  TutorialData?
 }
 
 model Project {
@@ -251,4 +252,17 @@ model Analysis {
   goal   Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
 
   @@map("Analysis")
+}
+
+model TutorialData {
+  id                    Int @id @default(autoincrement())
+
+  session               Session @relation(fields: [sessionId], references: [id] ) //one way association   
+  sessionId             String  @unique
+
+  generalSettings       Boolean
+  createExperiment      Boolean
+  viewedListExperiment  Boolean
+  viewedReportsPage     Boolean
+  onSiteTracking        Boolean //might not be used
 }

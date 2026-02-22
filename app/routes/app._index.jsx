@@ -259,7 +259,7 @@ export default function Index() {
               borderRadius="base"
               border="base"
               background="base"
-              display={expanded.setupGuide ? "auto" : "none"}
+
             >
               {/* Step 1 */}
               <s-box>
@@ -268,14 +268,6 @@ export default function Index() {
                   gap="base"
                   padding="small"
                 >
-                  <s-checkbox
-                    label="Enable on-site tracking"
-                    onInput={(e) =>
-                      setProgress(
-                        e.currentTarget.checked ? progress + 1 : progress - 1,
-                      )
-                    }
-                  ></s-checkbox>
                   <s-button
                     onClick={(e) => {
                       setExpanded({ ...expanded, step1: !expanded.step1 });
@@ -320,7 +312,84 @@ export default function Index() {
             </s-box>
           </s-grid>
         </s-section>
+        
       )}
+
+      <s-section>
+          <s-heading>Getting Started</s-heading>
+          <s-stack gap="small-200">
+            {/* Step 1: Setup Settings*/}
+            <s-stack direction="inline" gap="base" alignItems="center" justifyContent="space-between">
+              <s-checkbox
+                id="step-settings"
+                label="Set up General Settings"
+                disabled
+              > </s-checkbox>
+
+              <s-button
+                href="/app/experiments"
+                icon="adjust"
+                variant="secondary"
+              >
+                Settings
+              </s-button>
+            </s-stack>
+
+            {/* Step 2: Setup First experiment */}
+            <s-stack direction="inline" gap="base" alignItems="center" justifyContent="space-between">
+              <s-checkbox
+                id="step-create-experiments"
+                label="Create First Experiment"
+                disabled
+              > </s-checkbox>
+
+              <s-button
+                href="/app/experiments"
+                icon="code"
+                variant="secondary"
+              >
+                Create Experiment
+              </s-button>
+            </s-stack>
+
+            {/*Step 3: Experiment Lists*/}
+            <s-stack direction="inline" gap="base" alignItems="center" justifyContent="space-between">
+              <s-checkbox
+                id="step-experiments-list"
+                label="View List of Experiments"
+                disabled
+              > </s-checkbox>
+
+              <s-button
+                href="/app/experiments"
+                icon="view"
+                variant="secondary"
+              >
+                Manage Experiments
+              </s-button>
+            </s-stack>
+
+            {/* Step 4: View reports */}
+            <s-stack direction="inline" gap="base" alignItems="center" justifyContent="space-between">
+              <s-checkbox
+                id="step-reports"
+                label="View reports page"
+                disabled
+              />
+
+              <s-button inlineSize="auto"
+                href="/app/reports"
+                icon="order"
+                variant="secondary"
+                style={{ marginInlinestar: 'auto'}}
+              >
+              Reports
+          </s-button>
+        </s-stack>
+      </s-stack>
+
+          
+        </s-section>
       {/* End Setup guide */}
       
       <s-grid gridTemplateColumns="3fr 1fr"  gap="base">

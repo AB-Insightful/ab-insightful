@@ -11,10 +11,6 @@ export async function loader({ request }) {
   const { admin } = await shopify.authenticate.admin(request);
 
   // Temporary: run analysis so data is up to date. This will get replaced by cron job.
-  const { createAnalysisSnapshot } = await import(
-    "../services/analysis.server"
-  );
-  await createAnalysisSnapshot();
 
   //get the list of experiments & return them if there are any
   // Promise.all to fetch both experiments and session data in parallel for efficiency

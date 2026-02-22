@@ -82,6 +82,7 @@ export const loader = async ({ params, request }) => {
   return {
     experiment: {
       id: experiment.id,
+      status: experiment.status,
       name: experiment.name,
       description: experiment.description,
       sectionId: experiment.sectionId,
@@ -231,6 +232,14 @@ export const action = async ({ request, params }) => {
     }
     if (!timeUnitValue) {
       errors.timeUnit = "Time unit is required";
+    }
+
+    // For start button on side panel
+    const intent = formData.get("intent");
+    if (intent === "start") {
+      const { startExperiment } = await import("../services/experiment.server");
+      await startExperiment(experimentId);
+      return redirect(`/app/experiments/${experimentId}`);
     }
   }
 
@@ -1049,6 +1058,23 @@ export default function EditExperiment() {
                 })
               : "—"}
           </s-text>
+          {/* Start button for draft experiments */}
+          {loaderData?.experiment?.status === "draft" && (
+            <s-stack justifyContent="center" paddingBlockStart="base">
+                <s-button
+                  variant="primary"
+                  disabled={fetcher.state !== "idle"}
+                  onClick={() => {
+                    fetcher.submit(
+                      { intent: "start" },
+                      { method: "post" }
+                    );
+                  }}
+                >
+                  Start Experiment
+                </s-button>
+            </s-stack>
+          )}
         </s-stack>
       </s-section>
 

@@ -292,6 +292,8 @@ export default function Experimentsindex() {
       //single tuple of the experiment data
       const curExp = experiments[i];
 
+      const resumeLabel = curExp.startDate ? "Resume" : "Start";
+
       // call formatRuntime utility
       const runtime = formatRuntime(
         curExp.startDate,
@@ -371,6 +373,7 @@ export default function Experimentsindex() {
             </s-button>
             <s-popover id={`popover-${curExp.id}`}>
               <s-stack direction="block">
+
                 <s-button 
                   variant="tertiary" 
                   commandFor={`popover-${curExp.id}`}
@@ -488,9 +491,17 @@ export default function Experimentsindex() {
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
                     disabled={fetcher.state !== "idle"}
-                    onClick={() => 
-                      openDelete(curExp)
-                    }
+                    onClick={() => {
+                      console.log(`%c [DELETE TRIGGERED] ID: ${curExp.id}`, "color: #D82C0D; font-weight: bold;");
+                      fetcher.submit(
+                        {
+                          intent: "delete",
+                          experimentId: curExp.id,
+                        },
+                        { method: "post" }
+                      );
+
+                    }}
                   >
                     Delete
                   </s-button>
@@ -549,34 +560,6 @@ export default function Experimentsindex() {
     return (
       //todo put an button here
       <s-section heading="Experiments">
-        <s-modal open={deleteOpen} onClose={closeDelete} title="Delete experiment?">
-          <s-box padding="base">
-            <s-text>
-              This will permanently delete{" "}
-              <strong>{pendingDelete?.name ?? "this experiment"}</strong>. This can’t be
-              undone.
-            </s-text>
-          </s-box>
-
-          <s-stack slot="footer" justifyContent="end" gap="small">
-            <s-button variant="tertiary" onClick={closeDelete}>
-              Cancel
-            </s-button>
-
-            <s-button tone="critical" disabled={fetcher.state !== "idle" || !pendingDelete?.id}
-              onClick={() => {
-                fetcher.submit(
-                  { intent: "delete", experimentId: pendingDelete.id },
-                  { method: "post" },
-                );
-                closeDelete();
-              }}
-            >
-              Delete
-            </s-button>
-          </s-stack>
-        </s-modal>
-
         <s-button
           slot="primary-action"
           variant="primary"

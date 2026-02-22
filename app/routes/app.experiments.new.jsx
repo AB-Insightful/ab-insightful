@@ -848,6 +848,42 @@ export default function CreateExperiment() {
     setVariantExperimentChance();
   };
 
+  const handleDiscard = () => {
+    setName("");
+    setDescription("");
+    setSectionId("");
+    setVariant(false);
+    setVariantDisplay("none");
+    setVariantSectionId("");
+    setExperimentChance(50);
+    setVariantExperimentChance(50);
+    setGoalSelected(defaultGoal);
+    setCustomerSegment("allSegments");
+    setEndCondition("manual");
+    setStartDate("");
+    setStartTime("12:00");
+    setEndDate("");
+    setEndTime("11:59 PM");
+    setProbabilityToBeBest("");
+    setDuration("");
+    setTimeUnit("days");
+
+    setNameError(null);
+    setDescriptionError(null);
+    setSectionIdError(null);
+    setSectionIdVariantError(null);
+    setEmptyStartDateError(null);
+    setEmptyEndDateError(null);
+    setStartDateError("");
+    setStartTimeError("");
+    setEndDateError("");
+    setEndTimeError("");
+    setProbabilityToBeBestError("");
+    setDurationError("");
+    setTimeUnitError("");
+  };
+
+  
   const descriptionError = errors.description;
 
   // map internal values to a label + icon
@@ -891,8 +927,11 @@ export default function CreateExperiment() {
       >
         Save Draft
       </s-button>
-      <s-button slot="secondary-actions" href="/app/experiments">
+      <s-button slot="secondary-actions" onClick={handleDiscard}>
         Discard
+      </s-button>
+      <s-button slot="secondary-actions" href="/app/experiments">
+        Back to Experiment List
       </s-button>
       {(errors.form || errors.goal) && (
         <s-box padding="base">
@@ -1450,12 +1489,15 @@ export default function CreateExperiment() {
       </s-section>
       <div style={{ marginBottom: "250px" }}>
         <s-stack direction="inline" gap="small" justifyContent="end">
-          <s-button href="/app/experiments">Discard</s-button>
-          <s-button
-            variant="primary"
-            disabled={hasClientErrors || isSubmitting}
-            onClick={handleExperimentCreate}
-          >
+          <s-button 
+            onClick={handleDiscard}
+            variant="secondary">
+            Discard
+          </s-button>
+          <s-button 
+            variant="primary" 
+            disabled={hasClientErrors || isSubmitting} 
+            onClick={handleExperimentCreate}>
             Save Draft
           </s-button>
         </s-stack>

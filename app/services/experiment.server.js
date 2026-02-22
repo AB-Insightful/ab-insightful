@@ -86,11 +86,11 @@ export async function pauseExperiment(experimentId){
     where: { id },
     data: {
       status: "paused",
-      endDate: new Date(),
       history: {
         create: {
           prevStatus: prevStatus,
           newStatus: "paused",
+          // changedAt defaults to now() per Prisma schema
         },
       },
     },
@@ -137,11 +137,11 @@ export async function archiveExperiment(experimentId) {
     where: { id },
     data: {
       status: "archived",
-      endDate: experiment.endDate || new Date(),
       history: {
         create: {
           prevStatus: prevStatus,
           newStatus: "archived",
+          // changedAt defaults to now() per Prisma schema
         },
       },
     },
@@ -180,7 +180,6 @@ export async function resumeExperiment(experimentId) {
     where: { id },
     data: {
       status: "active", // Resuming typically moves it back to active
-      startDate: experiment.startDate || new Date(),
       history: {
         create: {
           prevStatus: prevStatus,

@@ -105,6 +105,59 @@ export default function Experimentsindex() {
 
   //function responsible for render of table rows based off db
 
+  const VALID_STATUSES = new Set([
+    "draft",
+    "active",
+    "paused",
+    "completed",
+    "archived",
+  ]);
+
+  const getDisplayStatus = (status) => {
+    const normalized = typeof status === "string" ? status.toLowerCase().trim() : "";
+    if (!VALID_STATUSES.has(normalized)) return "—";
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  };
+
+  const renderStatus = (status) => {
+    const displayStatus = getDisplayStatus(status);
+    if (displayStatus === "—") return "—";
+
+    if (displayStatus === "Active") {
+      return (
+        <s-badge tone="info" icon="gauge">
+          Active
+        </s-badge>
+      );
+    }
+
+    if (displayStatus === "Completed") {
+      return (
+        <s-badge tone="success" icon="check">
+          Completed
+        </s-badge>
+      );
+    }
+
+    if (displayStatus === "Paused") {
+      return (
+        <s-badge tone="caution" icon="pause-circle">
+          Paused
+        </s-badge>
+      );
+    }
+
+    if (displayStatus === "Archived") {
+      return (
+        <s-badge tone="warning" icon="order">
+          Archived
+        </s-badge>
+      );
+    }
+
+    return <s-badge icon="draft-orders">Draft</s-badge>;
+  };
+
   //TODO: restrict based on experiment goal
   //- re
   function renderTableData(experiments) {
@@ -176,7 +229,7 @@ export default function Experimentsindex() {
             </s-link>
           </s-table-cell>{" "}
           {/* displays N/A when data is null */}
-          <s-table-cell> {curExp.status ?? "N/A"} </s-table-cell>
+          <s-table-cell>{renderStatus(curExp.status)}</s-table-cell>
           <s-table-cell> {runtime} </s-table-cell>
           <s-table-cell>N/A</s-table-cell>
           {/* Improvement Cell */}

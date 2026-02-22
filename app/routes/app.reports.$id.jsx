@@ -290,49 +290,54 @@ export default function Report() {
   const heading = experiment?.name ? `Report - ${experiment.name}` : "Report";
   return (
     <s-page heading={heading}>
-      {/* Action button */}
-      <s-button slot="primary-action" href={`/app/experiments/${experiment.id}`}>
+      <s-button
+        slot="primary-action"
+        variant="primary"
+        href={`/app/experiments/${experiment.id}`}
+      >
         Edit Experiment
       </s-button>
-      <div 
-        slot="aside" 
-        style={{
-          position: 'sticky',
-          top: 'var(--s-spacing-large-100, .5rem)', // Use Shopify tokens for the top offset
-          alignSelf: 'flex-start',
-          width: '250px',
-          zIndex: 1, // Ensures it stays above background elements while scrolling
-        }}
-      >
-        {/* The rest of the content remains component-based for that Shopify look */}
-        <s-section
-          heading="Recommended course of action"
-          padding="base"
-        >
-          <s-stack gap="small-50">
-            <s-banner
-              tone={mapTone(recommendation.status)}
-              heading={recommendation.title}
-              dismissible={false}
-            >
-              <s-text color="subdued">
-                {recommendation.message}
-              </s-text>
-            </s-banner>
+      <s-button slot="secondary-actions" href={`/app/reports`}>
+        Reports
+      </s-button>
+      <s-button slot="secondary-actions" href="/app/experiments">
+        Manage Experiments
+      </s-button>
+      
+      <div style={{ marginBottom: "16px", marginTop: "16px" }}>
+        <s-heading>Experiment Reports</s-heading>
+        <DateRangePicker />
+        {dateRange && (
+          <s-text tone="subdued">
+            Viewing data from {formatDateForDisplay(dateRange.start)} to{" "}
+            {formatDateForDisplay(dateRange.end)}
+          </s-text>
+        )}
+        {/*appears to be graph page render data */}
+        
+      </div>
+      <s-section> {/*might be broken */}
+          <s-heading>Variant Success Rate</s-heading>
 
-            <s-section heading="Details" padding="none">
-              <s-stack gap="small-200">
-                <s-badge icon="target">
-                  {experiment.experimentGoals?.[0]?.goal?.name || "Primary Goal"}
-                </s-badge>
-                <s-text type="generic">Section ID: {experiment.sectionId}</s-text>
-                <s-text type="generic">Status: {experiment.status}</s-text>
-                <s-text type="generic">
-                  Started: {experiment.startDate ? new Date(experiment.startDate).toLocaleDateString() : 'Not yet started'}
-                </s-text>
-              </s-stack>
-            </s-section>
-          </s-stack>
+          {/* Table Section of experiment list page */}
+          <s-box  background="base"
+                  border="base"
+                  borderRadius="base"
+                  overflow="hidden"> {/*box used to provide a curved edge table */}
+            <s-table>
+              <s-table-header-row>
+                <s-table-header listslot='primary'>Variant Name</s-table-header>
+                <s-table-header listSlot="secondary">Goal Completion Rate</s-table-header>
+                <s-table-header listSlot="labeled">Improvement %</s-table-header>
+                <s-table-header listSlot="labeled" format="numeric">Probability to be Best</s-table-header>
+                <s-table-header listSlot="labeled" format="numeric">Expected Loss</s-table-header>
+                <s-table-header listSlot="labeled" >Goal Completion / Visitor</s-table-header>
+              </s-table-header-row>
+                <s-table-body>
+                  {renderTableData()}
+                </s-table-body>
+              </s-table>
+          </s-box> {/*end of table section*/}
         </s-section>
       </div>
       <s-section> {/* Variant Success Rate [might be broken - Paul]*/}

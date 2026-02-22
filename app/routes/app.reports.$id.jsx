@@ -206,10 +206,18 @@ export default function Report() {
     <s-page heading={heading}>
       <s-button
         slot="primary-action"
+        variant="primary"
         href={`/app/experiments/${experiment.id}`}
       >
         Edit Experiment
       </s-button>
+      <s-button slot="secondary-actions" href={`/app/reports`}>
+        Reports
+      </s-button>
+      <s-button slot="secondary-actions" href="/app/experiments">
+        Manage Experiments
+      </s-button>
+      
       <div style={{ marginBottom: "16px", marginTop: "16px" }}>
         <s-heading>Experiment Reports</s-heading>
         <DateRangePicker />

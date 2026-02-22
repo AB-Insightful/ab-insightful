@@ -226,8 +226,6 @@ export default function Experimentsindex() {
       //single tuple of the experiment data
       const curExp = experiments[i];
 
-      const resumeLabel = curExp.startDate ? "Resume" : "Start";
-
       // call formatRuntime utility
       const runtime = formatRuntime(
         curExp.startDate,
@@ -310,14 +308,13 @@ export default function Experimentsindex() {
                 <s-button 
                   variant="tertiary" 
                   commandFor={`popover-${curExp.id}`}
-                  disabled={curExp.status === "active" || fetcher.state !== "idle"}
                   onClick={() => {
                     setRenamingId(curExp.id);
                     setRenameValue(curExp.name ?? "");
                     setRenameError(null);
                   }}
                 >
-                  {resumeLabel}
+                  Rename
                 </s-button>
                 <s-button 
                   variant="tertiary" 
@@ -339,17 +336,18 @@ export default function Experimentsindex() {
                 <s-button 
                   variant="tertiary" 
                   commandFor={`popover-${curExp.id}`}
+                  disabled={curExp.status === "active" || fetcher.state !== "idle"}
                   onClick={() => {
                     fetcher.submit(
                       {
-                        intent: "rename",
+                        intent: "resume",
                         experimentId: curExp.id
                       },
                       { method: "post" }
                     );
                   }}
                 >
-                  Rename
+                  Resume
                 </s-button>
                 <s-button 
                   variant="tertiary" 

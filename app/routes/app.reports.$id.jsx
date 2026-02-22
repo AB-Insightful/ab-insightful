@@ -48,7 +48,7 @@ export async function loader({ params }) {
   const improvementPercent = await getImprovement(experimentId);
 
   //improves performance by performing queries synchronized, then wait for all of queries to finish. 
-  const analysis = await Promise.all(
+  const results = await Promise.all(
     variants.map(async (v) => {
       const a = await getAnalysis(experimentId, v.id);
       if (!a) return null;
@@ -62,8 +62,15 @@ export async function loader({ params }) {
     })
   );
 
-  return { experiment: experimentReportData, analysis };
-
+  // dumps any null data before returning 
+  const analysis = results.filter(Boolean);
+  return { experiment:{ 
+    ...experimentReportData,
+    status: experimentInfo.status,
+    startDate: experimentInfo.startDate
+  },
+  analysis
+};
 }
 
 export default function Report() {
@@ -75,9 +82,88 @@ export default function Report() {
     if (val === null || val === undefined) return "-";
     return ( val * 100 ).toFixed(2)+"%";
   }
+  // Building the recommendation payload
+  const recommendation = useMemo(() => {
+  const isCurrentlyActive = experiment.status === 'active';
+  const isCompleted = experiment.status === 'completed' || experiment.status === 'paused';
   
+  const PROB_THRESHOLD = 0.8;
+  const DELTA_THRESHOLD = 0.01;
+  const control = analysis[0]; // baseline
+
+  // if no analysis exists yet
+  if (!control){
+    return {
+      status: 'default',
+      title: "Collectiong Data",
+      message: "We need more visitors to generate a report."
+    };
+  }
+  
+  /* Searches for variants in the experiment which 
+  *  currently have a PoB >= 80% */ 
+  const currentWinners = analysis.slice(1).filter(variant => {
+    const delta = variant.conversionRate - control.conversionRate;
+    return variant.probabilityOfBeingBest >= PROB_THRESHOLD && delta > DELTA_THRESHOLD;
+  });
+
+  /* Scans entire history of the experiment to find
+  *  if at any point any of the variants reached >= 80% PoB */  
+  const historicalWinners = experiment.analyses.filter(a => 
+    a.variant.name !== 'Control' && 
+    a.probabilityOfBeingBest >= PROB_THRESHOLD
+  );
+
+  // Currently Winning state
+  if (currentWinners.length > 0) {
+    const formatter = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' });
+    const winnerNames = formatter.format(currentWinners.map(w => w.variantName));
+    const isPlural = currentWinners.length > 1;
+
+    return { 
+      status: 'winner',
+      title: isPlural ? "Multiple Variants are Deployable!" : "Deployable!",
+      message: `${winnerNames} ${isPlural ? "are" : "is"} winning!`, 
+    };
+  }
+
+  // Peaked previously but needs more stability state
+  if (historicalWinners.length > 0 && isCurrentlyActive) {
+    const uniquePeakedNames = [...new Set(historicalWinners.map(hw => hw.variant.name))];
+    return { 
+      status: 'keep_testing', 
+      title: "Continue Testing", 
+      message: `${uniquePeakedNames.join(", ")} hit 80% previously. Keep running for stability.`, 
+    };
+  }
+  
+  // Active but no winner yet state
+  if (isCurrentlyActive) {
+    return { status: 'keep_testing', title: "Continue Testing", message: "No clear winner yet." }
+  }
+
+  // Experiment ended with no winner state
+  if (isCompleted) {
+    return { status: 'inconclusive', title: "Inconclusive", message: "No clear winner was found." };
+  }
+   // Experiment is not active state
+   return { status: 'default', title: "Draft", message: "Experiment is not active." };
+   }, [analysis, experiment.status, experiment.analyses]);
+  // Map status to Polaris tones
+
+  const mapTone = (status) => {
+    switch (status) {
+      case 'winner': return 'success';
+      case 'keep_testing': return 'info';
+      case 'inconclusive': return 'warning';
+      default: return 'auto';
+    }
+  };
+
+
   // Table code
   function renderTableData() {
+    if (analysis.length === 0 ) return []; // simple exit if the array is empty
     const rows = [];
     const control = analysis[0]; // Reference the baseline for delta calculations
 
@@ -253,6 +339,29 @@ export default function Report() {
               </s-table>
           </s-box> {/*end of table section*/}
         </s-section>
+      </div>
+      <s-section> {/* Variant Success Rate [might be broken - Paul]*/}
+      <s-heading>Variant Success Rate</s-heading>
+        {/* Table Section of experiment list page */}
+        <s-box  background="base"
+                border="base"
+                borderRadius="base"
+                overflow="hidden"> {/*box used to provide a curved edge table */}
+          <s-table>
+            <s-table-header-row>
+              <s-table-header listslot='primary'>Variant Name</s-table-header>
+              <s-table-header listSlot="secondary">Goal Completion Rate</s-table-header>
+              <s-table-header listSlot="labeled">Improvement %</s-table-header>
+              <s-table-header listSlot="labeled" format="numeric">Probability to be Best</s-table-header>
+              <s-table-header listSlot="labeled" format="numeric">Expected Loss</s-table-header>
+              <s-table-header listSlot="labeled" >Goal Completion / Visitor</s-table-header>
+            </s-table-header-row>
+              <s-table-body>
+                {renderTableData()}
+              </s-table-body>
+            </s-table>
+        </s-box> {/*end of table section*/}
+      </s-section>
       <s-section heading="Probability To Be The Best">
         {isClient ? (
           <ResponsiveContainer width="100%" height={400}>
@@ -338,4 +447,4 @@ export default function Report() {
       </s-section>
     </s-page>
   );
-}
+  }

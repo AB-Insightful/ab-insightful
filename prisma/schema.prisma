@@ -148,10 +148,10 @@ model ExperimentAudience {
 }
 
 model ExperimentHistory {
-  id         Int      @id @default(autoincrement()) @map("history_id")
-  prevStatus String   @map("prev_status") // draft
-  newStatus  String   @map("new_status") // active
-  changedAt  DateTime @default(now()) @map("changed_at")
+  id         Int                @id @default(autoincrement()) @map("history_id")
+  prevStatus ExperimentStatus   @map("prev_status") // draft
+  newStatus  ExperimentStatus   @map("new_status") // active
+  changedAt  DateTime           @default(now()) @map("changed_at")
 
   experimentId Int        @map("experiment_id") // Foreign key
   experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade) // connects to Experiment's PK

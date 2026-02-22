@@ -69,6 +69,7 @@ export async function loader({ params }) {
 export default function Report() {
   // Load report information
   const { experiment, analysis } = useLoaderData();
+  const safeAnalysis = (analysis ?? []).filter(Boolean);
 
   // Human readable metrics helper
   const formatPercent = (val) => {
@@ -79,10 +80,10 @@ export default function Report() {
   // Table code
   function renderTableData() {
     const rows = [];
-    const control = analysis[0]; // Reference the baseline for delta calculations
+    const control = safeAnalysis[0]; // Reference the baseline for delta calculations
 
-    for (let i = 0; i < analysis.length; i++) {
-      const cur = analysis[i];
+    for (let i = 0; i < safeAnalysis.length; i++) {
+      const cur = safeAnalysis[i];
       
       // Probability to be Best: 80% Win / 20% Loss rule
       let probColor = "inherit"; // inherit ensures the default font color is used if no winner/loser

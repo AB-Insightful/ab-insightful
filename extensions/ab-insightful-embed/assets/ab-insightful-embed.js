@@ -20,19 +20,34 @@ function initializeApp(appUrl) {
       return res.json();
     })
     .then((data) => {
-      console.log("[ab-insightful-embed]: list of active experiments: ", data);
       data.forEach((experiment) => {
-        const match = document.getElementById(experiment.sectionId);
-        if (match) {
+        const variantMatch = document.getElementById(experiment.sectionId);
+        if (variantMatch) {
           console.log(
-            `[ab-insightful-embed] Match! ID: ${experiment.sectionId} Element: ${match}`,
+            `[ab-insightful-embed] Match! ID: ${experiment.sectionId} Element: ${variantMatch}`,
           );
-          invokeExperiment(
-            experiment.id,
-            experiment.trafficSplit,
-            match,
-            appUrl,
-          );
+          if (experiment.controlSectionId) {
+            const controlMatch = document.getElementById(
+              experiment.controlSectionId,
+            );
+            // Variant has a control element that needs to be hidden if the user is in variant group
+            if (controlMatch) {
+              invokeExperiment(
+                experiment.id,
+                experiment.trafficSplit,
+                variantMatch,
+                appUrl,
+                controlMatch,
+              );
+            }
+          } else {
+            invokeExperiment(
+              experiment.id,
+              experiment.trafficSplit,
+              variantMatch,
+              appUrl,
+            );
+          }
         }
       });
     })
@@ -42,7 +57,13 @@ function initializeApp(appUrl) {
 }
 
 // Function to decide whether to activate an experiment for the current client given an active experiment
-function invokeExperiment(id, chanceToShow, element, appUrl) {
+function invokeExperiment(
+  id,
+  chanceToShow,
+  element,
+  appUrl,
+  controlElement = null,
+) {
   // Two cookies - one for experiments involved in control, one for involved in variants
   // Both are comma separated lists of id's
   const involvedControlExperiments = getCookie("ab-control-ids");
@@ -51,6 +72,7 @@ function invokeExperiment(id, chanceToShow, element, appUrl) {
   if (involvedControlExperiments) {
     const expids = involvedControlExperiments.split(",");
     if (expids.includes(String(id))) {
+      element.style.display = "none";
       return;
     }
   }
@@ -59,7 +81,9 @@ function invokeExperiment(id, chanceToShow, element, appUrl) {
   if (involvedVariantExperiments) {
     const expids = involvedVariantExperiments.split(",");
     if (expids.includes(String(id))) {
-      element.style.display = "none";
+      if (controlElement) {
+        controlElement.style.display = "none";
+      }
       return;
     }
   }
@@ -67,8 +91,9 @@ function invokeExperiment(id, chanceToShow, element, appUrl) {
   // Base case: not in control or variant list - add to experiment
   const chance = Number(chanceToShow);
   if (Math.random() <= chance) {
+    // You are part of experiment - hide control
+    controlElement.style.display = "none";
     // Add to variant experiment
-    element.style.display = "none";
     document.cookie =
       "ab-variant-ids=" +
       (involvedVariantExperiments ? involvedVariantExperiments + "," : "") +
@@ -79,6 +104,8 @@ function invokeExperiment(id, chanceToShow, element, appUrl) {
     const user_id = getCookie("_shopify_y");
     submitExperimentUser(user_id, id, "Variant A", appUrl);
   } else {
+    // You are part of control group - hide experiment
+    element.style.display = "none";
     // Add to control group
     document.cookie =
       "ab-control-ids=" +
@@ -110,7 +137,7 @@ async function submitExperimentUser(user_id, experiment_id, variant, appUrl) {
   const collectUrl = `${appUrl}/api/collect`;
   const payload = {
     event_type: "experiment_include",
-    user_id: user_id,
+    client_id: user_id,
     experiment_id: experiment_id,
     variant: variant,
     timestamp: new Date().toISOString(),

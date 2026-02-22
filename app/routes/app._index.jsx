@@ -1,3 +1,22 @@
+import { useLoaderData } from "react-router";
+import {
+  useDateRange,
+  formatDateForDisplay,
+} from "../contexts/DateRangeContext";
+import DateRangePicker from "../components/DateRangePicker";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+import { useState, useEffect, useMemo } from "react";
+
+
 //suppress react hydration warnings
 //known issue between polaris web components and React hydration
 if (typeof window !== "undefined") {
@@ -13,7 +32,6 @@ if (typeof window !== "undefined") {
   };
 }
 
-import { useState, useEffect } from "react";
 import { useFetcher } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -30,8 +48,43 @@ export const loader = async ({ request }) => {
   );
   await updateAppUrlMetafield({ request });
 
-  return null;
-};
+  //loading relevant graphical data for quick reporting metrics
+  const {getMostRecentExperiment, getExperimentReportData, getNameOfExpGoal} = await import("../services/experiment.server")
+  let latestExperiment = await getMostRecentExperiment();
+  //latestExperiment.id = 2001 // debug value to test display of different experiment skews
+  const experimentReportData = await getExperimentReportData(latestExperiment.id);
+  const expGoalData = await getNameOfExpGoal(latestExperiment.id)
+  
+  const { getVariants } = await import("../services/variant.server");
+  const variants = await getVariants(latestExperiment.id);
+
+  const {getImprovement} = await import("../services/experiment.server");
+  const improvementPercent = await getImprovement(latestExperiment.id);
+  const {getAnalysis} = await import ("../services/experiment.server");
+  const baselineVariantId = latestExperiment.variants?.[0]?.id;
+  
+  const experimentGoalName = expGoalData.goal?.name ?? "found nothing"
+  
+  experimentReportData.experimentGoal = experimentGoalName;
+
+
+  const tableData = await Promise.all(
+    variants.map(async (v) => {
+      const a = await getAnalysis(latestExperiment.id, v.id);
+      if (!a) return null;
+      return {
+        ...a,
+        improvement: improvementPercent,
+        variantName: v.name,
+        experimentName: latestExperiment.name,
+        isBaseline: v.id === baselineVariantId,
+      };
+    })
+  );
+  experimentReportData["expId"] = latestExperiment.id
+
+  return {experiment: experimentReportData, tableData};
+}
 
 export const action = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
@@ -50,6 +103,13 @@ export const action = async ({ request }) => {
 export default function Index() {
   const fetcher = useFetcher();
   const shopify = useAppBridge();
+
+  //aquire loader data
+  const {experiment, tableData} = useLoaderData()
+
+  const { dateRange } = useDateRange();
+  //need to check sorting to ensure this is always baseline
+  const baselineName = experiment.variants?.[0]?.id;
 
   // State for setup guide
   const [visible, setVisible] = useState({
@@ -78,6 +138,57 @@ export default function Index() {
     }
   }, [fetcher.data, fetcher.state]);
 
+  // Client-only rendering for recharts (prevents SSR hydration mismatch)
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  //function for compiling graphical data
+    // Rearrange data from experiment to be visualized
+    const probabilityDataMap = {};
+    const expectedLossDataMap = {};
+  
+    experiment.analyses.forEach((analysis) => {
+      const dateKey = analysis.calculatedWhen.toLocaleDateString("en-US");
+      if (!probabilityDataMap[dateKey]) {
+        probabilityDataMap[dateKey] = { name: dateKey };
+      }
+      probabilityDataMap[dateKey][analysis.variant.name] =
+        analysis.probabilityOfBeingBest;
+      if (!expectedLossDataMap[dateKey]) {
+        expectedLossDataMap[dateKey] = { name: dateKey };
+      }
+      expectedLossDataMap[dateKey][analysis.variant.name] = analysis.expectedLoss;
+    });
+  
+    // Convert map to array
+    const probabilityData = Object.values(probabilityDataMap);
+    const expectedLossData = Object.values(expectedLossDataMap);
+  
+    const filteredPData = useMemo(() => {
+      return probabilityData
+        .filter((item) => {
+          // Parse the en-US date string (e.g., "1/6/2026")
+          const itemDate = new Date(item.name);
+          const startDate = new Date(dateRange.start + "T00:00:00");
+          const endDate = new Date(dateRange.end + "T23:59:59");
+          return itemDate >= startDate && itemDate <= endDate;
+        })
+        .sort((a, b) => new Date(a.name) - new Date(b.name));
+    }, [probabilityData, dateRange]);
+  
+    const filteredELData = useMemo(() => {
+      return expectedLossData
+        .filter((item) => {
+          const itemDate = new Date(item.name);
+          const startDate = new Date(dateRange.start + "T00:00:00");
+          const endDate = new Date(dateRange.end + "T23:59:59");
+          return itemDate >= startDate && itemDate <= endDate;
+        })
+        .sort((a, b) => new Date(a.name) - new Date(b.name));
+    }, [expectedLossData, dateRange]);
+    
   // Button list to navigate to different pages
   return (
     <s-page heading="Welcome to AB Insightful">
@@ -211,9 +322,113 @@ export default function Index() {
         </s-section>
       )}
       {/* End Setup guide */}
+      
+      <s-grid gridTemplateColumns="3fr 1fr"  gap="base">
+        <s-grid-item>
+      <s-section><s-box><s-heading>Latest Experiment Results</s-heading>
+      {/*graphical section */ }
+      <div style={{ marginBottom: "16px", marginTop: "16px" }}>
+              <DateRangePicker />
+                        
+        </div>
+      <s-section heading="Probability To Be The Best">
+              {isClient ? (
+                <ResponsiveContainer width="100%" height={400}>
+                  <LineChart data={filteredPData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis
+                      width={80}
+                      tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
+                      label={{
+                        value: "Probability to be the best (%)",
+                        angle: -90,
+                        position: "insideLeft",
+                        style: { textAnchor: "middle" },
+                      }}
+                    />
+                    <Tooltip />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey={experiment.variants[0].name}
+                      stroke="#8884d8"
+                      activeDot={{ r: 8 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey={experiment.variants[1].name}
+                      stroke="#82ca9d"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div style={{ width: 700, height: 400 }}>Loading chart...</div>
+              )}
+            {/*This current button link should theoretically work but cannot be tested since not all of these graphs contain graphing data (causes app crash) and appropriate error handling */}
+            {/* Good candidate for unit/integration test */}
+            {/* recent experiment additional info section */}
+            
+            </s-section>
+            </s-box>
+            <s-table>
+              <s-table-header-row>
+                <s-table-header listslot="primary">Name</s-table-header>
+                <s-table-header listSlot="secondary">Status</s-table-header>
+                <s-table-header listSlot="labeled" format="numeric">Goal Completion Rate</s-table-header>
+                <s-table-header listSlot="labeled" format="numeric">Improvement (%)</s-table-header>
+                <s-table-header listSlot="labeled" format="numeric">Probability to be the best</s-table-header>                
+              </s-table-header-row>
+                <s-table-body>
+                {tableData.map((row, index) => (
+                  <s-table-row key={row.variantId ?? "No ID here for some reason"}>
+                    <s-table-cell>{row.variantName ?? "No Name"}</s-table-cell>
 
+                    <s-table-cell>{experiment.status}</s-table-cell>
+
+                    {/* change this to whatever field your analysis row actually has */}
+                    <s-table-cell>{row.totalConversions + "/" + row.totalUsers ?? "N/A"}</s-table-cell>
+
+                    <s-table-cell>
+                      {index === 0 ? "Baseline" : row.improvement.toFixed(2) != null ? `${row.improvement.toFixed(2)}%` : "N/A"}
+                    </s-table-cell>
+
+                    <s-table-cell>
+                      {row.probabilityOfBeingBest != null
+                        ? `${(row.probabilityOfBeingBest * 100).toFixed(1)}%`
+                        : "N/A"}
+                    </s-table-cell>
+                  </s-table-row>
+                ))}
+              </s-table-body>
+              </s-table>
+             <s-button href={"/app/reports/" + experiment.expId}>More Info for {experiment.name}</s-button></s-section>
+        {/*Additional aside details for latest active experiment */}
+        </s-grid-item>
+        <s-grid-item>
+          <s-section heading="Experiment Details" padding="base">
+            <s-stack gap="small-200">
+              <s-heading>
+                {experiment.name}
+              </s-heading>
+              <s-stack direction="inline" gap="small-200" alignItems="center">
+                <s-text type="strong">Goal: </s-text>
+                <s-badge tone="info" color="neutral">
+                  {experiment.experimentGoal}
+                </s-badge>
+                <s-icon type="target" size="small" color="subdued" />
+              </s-stack>
+              <s-stack direction="inline" gap="small-200" alignItems="center">
+                <s-text color="subdued">Started {experiment.createdAt.toLocaleString()}</s-text>
+              </s-stack>
+            </s-stack>
+          </s-section>
+        </s-grid-item>
+      </s-grid>
+      <s-box></s-box>
       {/* Begin quick links */}
-      <div style={{ display: "flex", flexDirection: "column" }}>
+      {/*added marginTop modifier to div style to ensure gap between sections */}
+      <div style={{ display: "flex", flexDirection: "column", marginTop: "16px",}}>
         <s-clickable
           border="base"
           padding="base"

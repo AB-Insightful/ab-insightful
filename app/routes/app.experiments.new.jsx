@@ -17,6 +17,7 @@ import { authenticate } from "../shopify.server";
 import { useFetcher, redirect, useLoaderData } from "react-router";
 import { useState, useEffect, useRef } from "react";
 import db from "../db.server";
+import { ExperimentStatus } from "@prisma/client";
 
 // Server side code
 export const action = async ({ request }) => {
@@ -208,33 +209,33 @@ export const action = async ({ request }) => {
     const duration = durationStr ? Number(durationStr) : null;
     const timeUnit = timeUnitValue || null;
 
-    // Assembles the final data object for Prisma
-    const experimentData = {
-      name: name,
-      description: description,
-      status: "draft",
-      trafficSplit: trafficSplit,
-      endCondition: endCondition,
-      startDate: startDate,
-      endDate: endDate,
-      sectionId: sectionId,
-      controlSectionId: controlSectionId,
-      project: {
-        // Connect to the parent project
-        connect: {
-          id: projectId,
+  // Assembles the final data object for Prisma
+  const experimentData = {
+    name: name,
+    description: description,
+    status: ExperimentStatus.draft,
+    trafficSplit: trafficSplit,
+    endCondition: endCondition,
+    startDate: startDate,
+    endDate: endDate,
+    sectionId: sectionId,
+    controlSectionId: controlSectionId,
+    project: {
+      // Connect to the parent project
+      connect: {
+        id: projectId,
+      },
+    },
+    experimentGoals: {
+      // Create the related goal
+      create: [
+        {
+          goalId: goalId,
+          goalRole: "primary",
         },
-      },
-      experimentGoals: {
-        // Create the related goal
-        create: [
-          {
-            goalId: goalId,
-            goalRole: "primary",
-          },
-        ],
-      },
-    };
+      ],
+    },
+  };
 
     if (isStableSuccessProbability) {
       Object.assign(experimentData, {

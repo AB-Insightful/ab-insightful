@@ -334,7 +334,7 @@ export default function Report() {
             </s-section>
           </s-stack>
         </s-section>
-      </div>
+        </div>
       <s-section> {/* Variant Success Rate [might be broken - Paul]*/}
       <s-heading>Variant Success Rate</s-heading>
         {/* Table Section of experiment list page */}

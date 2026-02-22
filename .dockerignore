@@ -1,16 +1,3 @@
 .cache
 build
 node_modules
-scripts/ops/
-.env
-.env._
-.sensitive
-.sensitive._
-.prettierignore
-.gitignore
-.editorconfig
-.mcp.json
-\*.md
-.cursor
-.gemini
-docs/

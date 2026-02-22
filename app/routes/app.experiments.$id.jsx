@@ -1,11 +1,11 @@
 //suppress react hydration warnings
 //known issue between polaris web components and React hydration
-if (typeof window !== "undefined") {
+if (typeof window !== 'undefined') {
   const originalError = console.error;
   console.error = (...args) => {
     if (
-      typeof args[0] === "string" &&
-      args[0].includes("Extra attributes from the server")
+      typeof args[0] === 'string' && 
+      args[0].includes('Extra attributes from the server')
     ) {
       return;
     }
@@ -71,12 +71,8 @@ export const loader = async ({ params, request }) => {
     "Completed Checkout": "completedCheckout",
   };
 
-  const primaryGoal = experiment.experimentGoals.find(
-    (eg) => eg.goalRole === "primary",
-  );
-  const goalKey = primaryGoal
-    ? goalNameToKey[primaryGoal.goal.name] || "completedCheckout"
-    : "completedCheckout";
+  const primaryGoal = experiment.experimentGoals.find((eg) => eg.goalRole === "primary");
+  const goalKey = primaryGoal ? goalNameToKey[primaryGoal.goal.name] || "completedCheckout" : "completedCheckout";
 
   return {
     experiment: {
@@ -84,7 +80,6 @@ export const loader = async ({ params, request }) => {
       name: experiment.name,
       description: experiment.description,
       sectionId: experiment.sectionId,
-      controlSectionId: experiment.controlSectionId,
       trafficSplit: experiment.trafficSplit * 100, // Convert back to percentage
       startDate: formatDate(experiment.startDate),
       startTime: formatTime(experiment.startDate),
@@ -96,10 +91,7 @@ export const loader = async ({ params, request }) => {
       duration: experiment.duration,
       timeUnit: experiment.timeUnit,
       hasVariants: experiment.variants && experiment.variants.length > 0,
-      variantSectionId:
-        experiment.variants && experiment.variants.length > 0
-          ? experiment.variants[0].sectionId
-          : "",
+      variantSectionId: experiment.variants && experiment.variants.length > 0 ? experiment.variants[0].sectionId : "",
     },
   };
 };
@@ -114,15 +106,12 @@ export const action = async ({ request, params }) => {
   const name = (formData.get("name") || "").trim();
   const description = (formData.get("description") || "").trim();
   const sectionId = (formData.get("sectionId") || "").trim();
-  const controlSectionId = (formData.get("controlSectionId") || "").trim();
   const variantSectionId = (formData.get("variantSectionId") || "").trim();
   const variantEnabled = formData.get("variant") === "true";
   const goalValue = (formData.get("goal") || "").trim();
   const endCondition = (formData.get("endCondition") || "").trim();
   const trafficSplitStr = (formData.get("trafficSplit") || "50").trim(); // Default to "0"
-  const probabilityToBeBestStr = (
-    formData.get("probabilityToBeBest") || ""
-  ).trim();
+  const probabilityToBeBestStr = (formData.get("probabilityToBeBest") || "").trim();
   const durationStr = (formData.get("duration") || "").trim();
   const timeUnitValue = (formData.get("timeUnit") || "").trim();
 
@@ -136,28 +125,25 @@ export const action = async ({ request, params }) => {
 
   // Storage Validation Errors
   const errors = {}; // will be length 0 when there are no errors
-
+  
   if (!name) errors.name = "Name is required";
   if (!description) errors.description = "Description is required";
-  if (!sectionId) errors.sectionId = "Section Id is required";
-  if (variantEnabled && !variantSectionId)
-    errors.variantSectionId = "Variant Section Id is required"; //only validate if variant is true
-  if (!startDateStr && !startDateUTC)
-    errors.startDate = "Start Date is required";
-  if (endCondition === "stableSuccessProbability" && !probabilityToBeBestStr)
-    errors.probabilityToBeBest = "Probability is required";
-  if (endCondition === "stableSuccessProbability" && !durationStr)
-    errors.duration = "Duration is required";
+  if (!sectionId) errors.sectionId = "Section Id is required"; 
+  if (variantEnabled && !variantSectionId) errors.variantSectionId = "Variant Section Id is required"; //only validate if variant is true
+  if (!startDateStr && !startDateUTC) errors.startDate = "Start Date is required";
+  if (endCondition === "stableSuccessProbability" && !probabilityToBeBestStr) errors.probabilityToBeBest = "Probability is required";
+  if (endCondition === "stableSuccessProbability" && !durationStr) errors.duration = "Duration is required";
+
 
   // helper to build a Date from local date + time components
   const combineLocalToDate = (dateStr, timeStr = "00:00") => {
     if (!dateStr) return null;
     const parts = dateStr.split("-").map(Number);
-    if (parts.length !== 3 || parts.some((p) => Number.isNaN(p))) return null;
-    const [y, m, d] = parts;
+    if (parts.length !==3 || parts.some((p) => Number.isNaN(p))) return null;
+    const [y,m,d] = parts;
     const [hh = 0, mm = 0] = (timeStr || "00:00").split(":").map(Number);
     if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
-    const dt = new Date(y, m - 1, d, hh || 0, mm || 0, 0, 0);
+    const dt = new Date(y,m-1,d,hh || 0, mm || 0,0,0);
     return Number.isNaN(dt.getTime()) ? null : dt;
   };
 
@@ -172,7 +158,7 @@ export const action = async ({ request, params }) => {
 
   // validate startDateTime is present and in the future
   const now = new Date();
-  if (!startDateTime) {
+  if (!startDateTime){
     errors.startDate = "Start date is required";
   } else if (startDateTime <= now) {
     errors.startDate = "Start date/time must be in the future";
@@ -184,7 +170,7 @@ export const action = async ({ request, params }) => {
     if (endDateUTC) {
       endDateTime = new Date(endDateUTC);
       if (Number.isNaN(endDateTime.getTime())) endDateTime = null;
-    } else {
+    } else {  
       const effectiveEndTimeStr = endTimeStr || "23:59";
       endDateTime = combineLocalToDate(endDateStr, effectiveEndTimeStr);
     }
@@ -192,7 +178,8 @@ export const action = async ({ request, params }) => {
       errors.endDate = "End date is required";
     } else if (!startDateTime) {
       // skip further validation if startDateTime is invalid/missing
-    } else if (endDateTime <= startDateTime) {
+    }
+    else if (endDateTime <= startDateTime) {
       errors.endDate = "End must be after start date/time";
     }
   }
@@ -205,9 +192,8 @@ export const action = async ({ request, params }) => {
   }
 
   // Only validates probability to be best if endCondition is set to Stable Success Probability
-  const isStableSuccessProbability =
-    endCondition === "stableSuccessProbability";
-  if (isStableSuccessProbability) {
+  const isStableSuccessProbability = endCondition === "stableSuccessProbability";
+  if(isStableSuccessProbability) {
     if (probabilityToBeBestStr === "") {
       errors.probabilityToBeBest = "Probability is required";
     } else {
@@ -272,9 +258,7 @@ export const action = async ({ request, params }) => {
   const endDate = endDateTime || null;
 
   //convert stable success probability variables to schema-ready types
-  const probabilityToBeBest = probabilityToBeBestStr
-    ? Number(probabilityToBeBestStr)
-    : null;
+  const probabilityToBeBest = probabilityToBeBestStr ? Number(probabilityToBeBestStr) : null;
   const duration = durationStr ? Number(durationStr) : null;
   const timeUnit = timeUnitValue || null;
 
@@ -288,7 +272,6 @@ export const action = async ({ request, params }) => {
     startDate: startDate,
     endDate: endDate,
     sectionId: sectionId,
-    controlSectionId: controlSectionId,
     project: {
       // Connect to the parent project
       connect: {
@@ -310,9 +293,10 @@ export const action = async ({ request, params }) => {
     Object.assign(experimentData, {
       probabilityToBeBest,
       duration,
-      timeUnit,
+      timeUnit
     });
   }
+
 };
 
 //--------------------------- client side ----------------------------------------
@@ -504,9 +488,7 @@ function validateStartIsInFuture(startDateStr, startTimeStr = "00:00") {
   const isToday = selectedDate.getTime() === today.getTime();
 
   if (isToday) {
-    const startDateTime = new Date(
-      `${startDateStr}T${startTimeStr || "00:00"}`,
-    );
+    const startDateTime = new Date(`${startDateStr}T${startTimeStr || "00:00"}`);
     const now = new Date(); // The *actual* current time
 
     if (startDateTime <= now) {
@@ -520,7 +502,7 @@ function validateEndIsAfterStart(
   startDateStr,
   startTimeStr = "00:00",
   endDateStr,
-  endTimeStr,
+  endTimeStr
 ) {
   // return both a date-level error and a time-level error so UI can show the right one
   let dateError = "";
@@ -569,7 +551,6 @@ export default function EditExperiment() {
   const [description, setDescription] = useState("");
   const [emptyDescriptionError, setDescriptionError] = useState(null);
   const [sectionId, setSectionId] = useState("");
-  const [controlSectionId, setControlSectionId] = useState("");
   const [emptySectionIdError, setSectionIdError] = useState(null);
   const [emptySectionIdVariantError, setSectionIdVariantError] = useState(null);
   const [emptyStartDateError, setEmptyStartDateError] = useState(null);
@@ -594,26 +575,22 @@ export default function EditExperiment() {
   // keep all date/time errors in sync whenever any date/time value changes
   useEffect(() => {
     const errors = validateAllDateTimes(startDate, startTime, endDate, endTime);
-    if (errors.startDateError !== startDateError)
-      setStartDateError(errors.startDateError);
-    if (errors.startTimeError !== startTimeError)
-      setStartTimeError(errors.startTimeError);
-    if (errors.endDateError !== endDateError)
-      setEndDateError(errors.endDateError);
-    if (errors.endTimeError !== endTimeError)
-      setEndTimeError(errors.endTimeError);
+    if (errors.startDateError !== startDateError) setStartDateError(errors.startDateError);
+    if (errors.startTimeError !== startTimeError) setStartTimeError(errors.startTimeError);
+    if (errors.endDateError !== endDateError) setEndDateError(errors.endDateError);
+    if (errors.endTimeError !== endTimeError) setEndTimeError(errors.endTimeError);
   }, [startDate, startTime, endDate, endTime, endCondition]);
 
   // clear end fields / errors when user switches end condition away from "endDate"
   useEffect(() => {
-    if (endCondition !== "endDate") {
-      // Condition is 'manual' or 'stableSuccessProbability', so clear fields
-      if (endDate !== "") setEndDate("");
-      if (endTime !== "") setEndTime("");
-      if (endDateError !== "") setEndDateError("");
-      if (endTimeError !== "") setEndTimeError("");
-    }
-  }, [endCondition]); // The dependency [endCondition] is correct
+  if (endCondition !== "endDate") {
+    // Condition is 'manual' or 'stableSuccessProbability', so clear fields
+    if (endDate !== "") setEndDate("");
+    if (endTime !== "") setEndTime("");
+    if (endDateError !== "") setEndDateError("");
+    if (endTimeError !== "") setEndTimeError("");
+  }
+}, [endCondition]); // The dependency [endCondition] is correct
 
   // Prepopulate form with existing experiment data
   useEffect(() => {
@@ -622,7 +599,6 @@ export default function EditExperiment() {
       setName(exp.name);
       setDescription(exp.description);
       setSectionId(exp.sectionId);
-      setControlSectionId(exp.controlSectionId);
       setExperimentChance(exp.trafficSplit);
       setStartDate(exp.startDate);
       setStartTime(exp.startTime);
@@ -633,7 +609,7 @@ export default function EditExperiment() {
       setProbabilityToBeBest(exp.probabilityToBeBest || "");
       setDuration(exp.duration || "");
       setTimeUnit(exp.timeUnit || "days");
-
+      
       if (exp.hasVariants) {
         setVariant(true);
         setVariantDisplay("auto");
@@ -667,41 +643,39 @@ export default function EditExperiment() {
     !!errors.probabilityToBeBest ||
     !!durationError ||
     !!errors.duration ||
-    !!timeUnitError ||
+    !!timeUnitError || 
     !!errors.timeUnit ||
-    !!startDateError ||
+    !!startDateError || 
     !!errors.startDate ||
-    !!startTimeError ||
-    !!endDateError ||
+    !!startTimeError || 
+    !!endDateError || 
     !!errors.endDate ||
     !!endTimeError ||
     !!emptyStartDateError ||
     !!emptyEndDateError;
+    ;
+
   //check for fetcher state, want to block save draft button if in the middle of sumbitting
   const isSubmitting = fetcher.state === "submitting";
 
+
   const handleExperimentEdit = async () => {
     // creates data object for all current state variables
-    const startDateUTC = startDate
-      ? localDateTimeToISOString(startDate, startTime)
-      : "";
-    const effectiveEndTime = endDate && !endTime ? "23:59" : endTime;
-    const endDateUTC = endDate
-      ? localDateTimeToISOString(endDate, effectiveEndTime)
-      : "";
-
+    const startDateUTC = startDate ? localDateTimeToISOString(startDate, startTime) : "";
+    const effectiveEndTime = (endDate && !endTime) ? "23:59" : endTime;
+    const endDateUTC = endDate ? localDateTimeToISOString(endDate, effectiveEndTime) : ""; 
+    
     const experimentData = {
       name: name,
       description: description,
       sectionId: sectionId,
-      controlSectionId: controlSectionId,
       variantSectionId: variantSectionId,
       variant: String(variant),
-      goal: goalSelected, // holds the "view-page" value
-      endCondition: endCondition, // holds "Manual", "End Data"
-      startDateUTC: startDateUTC, // The date string from s-date-field
-      endDateUTC: endDateUTC, // The date string from s-date-field
-      endDate: endDate, // The date string from s-date-field
+      goal: goalSelected,             // holds the "view-page" value
+      endCondition: endCondition,      // holds "Manual", "End Data"
+      startDateUTC: startDateUTC,     // The date string from s-date-field
+      endDateUTC: endDateUTC,         // The date string from s-date-field
+      endDate: endDate,               // The date string from s-date-field
       trafficSplit: experimentChance, // 0-100 value
       probabilityToBeBest: probabilityToBeBest, //holds validated value 51-100
       duration: duration, //length of time for experiment run
@@ -714,7 +688,7 @@ export default function EditExperiment() {
       console.error("Error during fetcher.submit", error);
     }
   }; // end HandleEditExperiment()
-
+  
   //arrow function expression that is used to set the error message when there is no name
   const handleNameBlur = () => {
     if (!name.trim()) {
@@ -739,7 +713,7 @@ export default function EditExperiment() {
       setSectionIdError(null); //clears error once user fixes
     }
   };
-
+  
   const handleSectionIdVariantBlur = () => {
     if (variant && !variantSectionId.trim()) {
       setSectionIdVariantError("Section ID is a required field");
@@ -765,7 +739,7 @@ export default function EditExperiment() {
   };
 
   const handleProbabilityToBeBestBlur = () => {
-    const value = String(probabilityToBeBest || "").trim();
+    const value = String(probabilityToBeBest || '').trim();
     if (!value.trim()) {
       setProbabilityToBeBestError("Probability is a required field");
     } else {
@@ -773,8 +747,9 @@ export default function EditExperiment() {
     }
   };
 
+  
   const handleDurationBlur = () => {
-    const value = String(duration || "").trim();
+    const value = String(duration || '').trim();
     if (!value.trim()) {
       setDurationError("Duration is required");
     } else {
@@ -785,7 +760,7 @@ export default function EditExperiment() {
   //Validates user input for probability of best and throws error based off of input
   const handleProbabilityOfBestChange = (field, e) => {
     const num = Number(e);
-    const isInt = Number.isInteger(num);
+    const isInt = Number.isInteger(num); 
 
     if (field === "probabilityToBeBest") {
       const inRange = num >= 51 && num <= 100;
@@ -804,7 +779,7 @@ export default function EditExperiment() {
         setDurationError("");
         setDuration(num);
       }
-
+      
       if (num < 1) {
         setDurationError("Duration must be greater than 1");
       }
@@ -826,7 +801,7 @@ export default function EditExperiment() {
     startTimeVal = startTime,
     endDateVal = endDate,
     endTimeVal = endTime,
-    condition = endCondition,
+    condition = endCondition
   ) => {
     let newStartDateError = "";
     let newStartTimeError = "";
@@ -834,33 +809,36 @@ export default function EditExperiment() {
     let newEndTimeError = "";
 
     // Validate start is in future
-    const { dateError: startDErr, timeError: startTErr } =
-      validateStartIsInFuture(startDateVal, startTimeVal);
+    const { dateError: startDErr, timeError: startTErr } = validateStartIsInFuture(
+      startDateVal,
+      startTimeVal
+    );
     newStartDateError = startDErr;
     newStartTimeError = startTErr;
+
+    
 
     // Validate end date is not in the past
     if (condition === "endDate" && endDateVal) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const selectedEndDate = new Date(`${endDateVal}T00:00:00`);
-
-      if (selectedEndDate < today) {
-        newEndDateError = "End date cannot be in the past";
-      }
-      // Only validate end is after start if end date is valid (not in past)
-      else if (startDateVal) {
-        const { dateError: endDErr, timeError: endTErr } =
-          validateEndIsAfterStart(
-            startDateVal,
-            startTimeVal,
-            endDateVal,
-            endTimeVal,
-          );
-        newEndDateError = endDErr;
-        newEndTimeError = endTErr;
-      }
+    
+    if (selectedEndDate < today) {
+      newEndDateError = "End date cannot be in the past";
     }
+    // Only validate end is after start if end date is valid (not in past)
+    else if (startDateVal) {
+      const { dateError: endDErr, timeError: endTErr } = validateEndIsAfterStart(
+        startDateVal,
+        startTimeVal,
+        endDateVal,
+        endTimeVal
+      );
+      newEndDateError = endDErr;
+      newEndTimeError = endTErr;
+    }
+  }
 
     return {
       startDateError: newStartDateError,
@@ -874,26 +852,14 @@ export default function EditExperiment() {
     // Updates the state so the field reflects picked date
     if (field === "start") {
       setStartDate(newDate);
-      const errors = validateAllDateTimes(
-        newDate,
-        startTime,
-        endDate,
-        endTime,
-        endCondition,
-      );
+      const errors = validateAllDateTimes(newDate, startTime, endDate, endTime, endCondition);
       setStartDateError(errors.startDateError);
       setStartTimeError(errors.startTimeError);
       setEndDateError(errors.endDateError);
       setEndTimeError(errors.endTimeError);
     } else if (field === "end") {
       setEndDate(newDate);
-      const errors = validateAllDateTimes(
-        startDate,
-        startTime,
-        newDate,
-        endTime,
-        endCondition,
-      );
+      const errors = validateAllDateTimes(startDate, startTime, newDate, endTime, endCondition);
       setStartDateError(errors.startDateError);
       setStartTimeError(errors.startTimeError);
       setEndDateError(errors.endDateError);
@@ -904,13 +870,7 @@ export default function EditExperiment() {
   // Handlers for time changes that also trigger validation
   const handleStartTimeChange = (newStartTime) => {
     setStartTime(newStartTime);
-    const errors = validateAllDateTimes(
-      startDate,
-      newStartTime,
-      endDate,
-      endTime,
-      endCondition,
-    );
+    const errors = validateAllDateTimes(startDate, newStartTime, endDate, endTime, endCondition);
     setStartDateError(errors.startDateError);
     setStartTimeError(errors.startTimeError);
     setEndDateError(errors.endDateError);
@@ -920,13 +880,7 @@ export default function EditExperiment() {
   // Handler for end time changes that also trigger validation
   const handleEndTimeChange = (newEndTime) => {
     setEndTime(newEndTime);
-    const errors = validateAllDateTimes(
-      startDate,
-      startTime,
-      endDate,
-      newEndTime,
-      endCondition,
-    );
+    const errors = validateAllDateTimes(startDate, startTime, endDate, newEndTime, endCondition);
     setStartDateError(errors.startDateError);
     setStartTimeError(errors.startTimeError);
     setEndDateError(errors.endDateError);
@@ -946,6 +900,7 @@ export default function EditExperiment() {
     setVariantExperimentChance();
   };
 
+  
   const descriptionError = errors.description;
 
   // map internal values to a label + icon
@@ -1064,11 +1019,8 @@ export default function EditExperiment() {
                 onFocus={() => {
                   setNameError(null);
                   if (fetcher.data?.errors?.name) {
-                    //clear server-side errors by resetting fetcher data
-                    fetcher.data = {
-                      ...fetcher.data,
-                      errors: { ...fetcher.data.errors, name: undefined },
-                    };
+                      //clear server-side errors by resetting fetcher data
+                      fetcher.data = { ...fetcher.data, errors: { ...fetcher.data.errors, name: undefined } };
                   }
                 }}
                 //Event handler callback to set value
@@ -1090,14 +1042,8 @@ export default function EditExperiment() {
                 onFocus={() => {
                   setDescriptionError(null);
                   if (fetcher.data?.errors?.description) {
-                    //clear server-side errors by resetting fetcher data
-                    fetcher.data = {
-                      ...fetcher.data,
-                      errors: {
-                        ...fetcher.data.errors,
-                        description: undefined,
-                      },
-                    };
+                      //clear server-side errors by resetting fetcher data
+                      fetcher.data = { ...fetcher.data, errors: { ...fetcher.data.errors, description: undefined } };
                   }
                 }}
                 // Known as a controlled component, the value is tied to {description} state
@@ -1149,37 +1095,22 @@ export default function EditExperiment() {
                 onFocus={() => {
                   setSectionIdError(null);
                   if (fetcher.data?.errors?.sectionId) {
-                    //clear server-side errors by resetting fetcher data
-                    fetcher.data = {
-                      ...fetcher.data,
-                      errors: { ...fetcher.data.errors, sectionId: undefined },
-                    };
+                      //clear server-side errors by resetting fetcher data
+                      fetcher.data = { ...fetcher.data, errors: { ...fetcher.data.errors, sectionId: undefined } };
                   }
                 }}
                 onChange={(e) => {
                   const v = e.target.value;
                   setSectionId(v);
-                  if (emptySectionIdError && v.trim()) setSectionIdError(null);
+                  if (emptySectionIdError && v.trim())
+                    setSectionIdError(null);
                 }}
                 onBlur={handleSectionIdBlur}
-                error={errors.sectionId || emptySectionIdError}
+                error={errors.sectionId || emptySectionIdError}  
+
                 details="The associated Shopify section ID to be tested. Must be visible on production site"
               />
             </s-stack>
-
-            {/* There is no error checking for this section intentionally. If a user supplies a control ID, that's great */}
-            {/* But, you don't need it and may not want it, so it can be blank. */}
-            <s-text-field
-              placeholder="shopify-section-sections--25210972849284__header"
-              value={controlSectionId}
-              label="Optional: Control Section ID"
-              required
-              onChange={(e) => {
-                const v = e.target.value;
-                setControlSectionId(v);
-              }}
-              details="The control section ID that will be replaced by the variant for users who are in the experiment. Must be visible on production site"
-            />
 
             <s-number-field
               label="Chance to show experiment"
@@ -1213,26 +1144,20 @@ export default function EditExperiment() {
                   label="Section ID to be tested"
                   required
                   onFocus={() => {
-                    setSectionIdVariantError(null);
-                    if (fetcher.data?.errors?.variantSectionId) {
+                  setSectionIdVariantError(null);
+                  if (fetcher.data?.errors?.variantSectionId) {
                       //clear server-side errors by resetting fetcher data
-                      fetcher.data = {
-                        ...fetcher.data,
-                        errors: {
-                          ...fetcher.data.errors,
-                          variantSectionId: undefined,
-                        },
-                      };
-                    }
+                      fetcher.data = { ...fetcher.data, errors: { ...fetcher.data.errors, variantSectionId: undefined } };
+                  }
                   }}
                   onChange={(e) => {
-                    const v = e.target.value;
-                    setVariantSectionId(v);
-                    if (emptySectionIdVariantError && v.trim())
-                      setSectionIdVariantError(null);
+                  const v = e.target.value;
+                  setVariantSectionId(v);
+                  if (emptySectionIdVariantError && v.trim())
+                    setSectionIdVariantError(null);
                   }}
                   onBlur={handleSectionIdVariantBlur}
-                  error={errors.variantSectionId || emptySectionIdVariantError}
+                  error={errors.variantSectionId || emptySectionIdVariantError}  
                   details="The associated Shopify section ID to be tested. Must be visible on production site"
                 />
               </s-stack>
@@ -1277,18 +1202,18 @@ export default function EditExperiment() {
         justifyContent="end"
         paddingBlockEnd="base"
       >
-        <s-button
-          icon="minus"
+        <s-button 
+          icon="minus" 
           accessibilityLabel="Remove item"
-          disabled={!variant}
+          disabled={!variant} 
           onClick={handleVariantUndo}
         >
           Remove Another Variant
         </s-button>
         <s-button
           icon="plus"
-          accessibilityLabel="Add item"
-          disabled={variant}
+          accessibilityLabel="Add item" 
+          disabled={variant} 
           onClick={handleVariant}
         >
           Add Another Variant
@@ -1306,28 +1231,20 @@ export default function EditExperiment() {
                   label="Start Date"
                   placeholder="Select start date"
                   value={startDate}
-                  error={
-                    emptyStartDateError || startDateError || errors.startDate
-                  }
+                  error={emptyStartDateError || startDateError || errors.startDate}
                   required
                   onFocus={() => {
-                    setEmptyStartDateError(null);
-                    if (fetcher.data?.errors?.startDate) {
+                  setEmptyStartDateError(null);
+                  if (fetcher.data?.errors?.startDate) {
                       //clear server-side errors by resetting fetcher data
-                      fetcher.data = {
-                        ...fetcher.data,
-                        errors: {
-                          ...fetcher.data.errors,
-                          startDate: undefined,
-                        },
-                      };
-                    }
+                      fetcher.data = { ...fetcher.data, errors: { ...fetcher.data.errors, startDate: undefined } };
+                  }
                   }}
                   onChange={(e) => {
-                    const v = e.target.value;
-                    handleDateChange("start", v);
-                    if (emptyStartDateError && v.trim())
-                      setEmptyStartDateError(null);
+                  const v = e.target.value;
+                  handleDateChange("start", v);
+                  if (emptyStartDateError && v.trim())
+                    setEmptyStartDateError(null);
                   }}
                   onBlur={handleStartDateBlur}
                 />
@@ -1347,28 +1264,15 @@ export default function EditExperiment() {
             <s-stack gap="small">
               <s-paragraph>End condition</s-paragraph>
               <s-stack direction="inline" gap="base">
-                <s-button
+                <s-button 
                   variant={endCondition === "manual" ? "primary" : "secondary"}
-                  onClick={() => setEndCondition("manual")}
-                >
-                  Manual
-                </s-button>
-                <s-button
+                  onClick={() => setEndCondition("manual")}>Manual</s-button>
+                <s-button 
                   variant={endCondition === "endDate" ? "primary" : "secondary"}
-                  onClick={() => setEndCondition("endDate")}
-                >
-                  End date
-                </s-button>
-                <s-button
-                  variant={
-                    endCondition === "stableSuccessProbability"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onClick={() => setEndCondition("stableSuccessProbability")}
-                >
-                  Stable success probability
-                </s-button>
+                  onClick={() => setEndCondition("endDate")}>End date</s-button>
+                <s-button 
+                  variant={endCondition === "stableSuccessProbability" ? "primary" : "secondary"}
+                  onClick={() => setEndCondition("stableSuccessProbability")}>Stable success probability</s-button>
               </s-stack>
             </s-stack>
             {/*only show end date/time pickers if endCondition is "endDate" */}
@@ -1380,23 +1284,13 @@ export default function EditExperiment() {
                     label="End Date"
                     placeholder="Select end date"
                     value={endDate}
-                    error={
-                      emptyEndDateError ||
-                      endDateError ||
-                      (endCondition === "endDate" && errors.endDate)
-                    }
+                    error={emptyEndDateError || endDateError || (endCondition === "endDate" && (errors.endDate))}
                     required
                     onFocus={() => {
                       setEmptyEndDateError(null);
                       if (fetcher.data?.errors?.endDate) {
-                        //clear server-side errors by resetting fetcher data
-                        fetcher.data = {
-                          ...fetcher.data,
-                          errors: {
-                            ...fetcher.data.errors,
-                            endDate: undefined,
-                          },
-                        };
+                          //clear server-side errors by resetting fetcher data
+                          fetcher.data = { ...fetcher.data, errors: { ...fetcher.data.errors, endDate: undefined } };
                       }
                     }}
                     onChange={(e) => {
@@ -1424,68 +1318,45 @@ export default function EditExperiment() {
             {/*only show stable success probability fields if endCondition is "stableSuccessProbability" */}
             {endCondition === "stableSuccessProbability" && (
               <s-stack direction="inline" gap="base">
-                <s-stack
-                  flex="1"
-                  direction="inline"
-                  gap="base"
-                  alignItems="start"
-                >
+                <s-stack flex="1" direction="inline" gap="base" alignItems="start">
                   <s-stack inlineSize="250px">
-                    <s-number-field
-                      label="Probability to be the best greater than"
-                      suffix="%"
+                    <s-number-field 
+                      label="Probability to be the best greater than" 
+                      suffix="%" 
                       inputMode="numeric"
                       min="51"
                       max="100"
                       step="1"
                       value={probabilityToBeBest}
                       required
-                      error={
-                        probabilityToBeBestError ||
-                        (endCondition === "stableSuccessProbability" &&
-                          errors.probabilityToBeBest)
-                      }
+                      error={probabilityToBeBestError || (endCondition === "stableSuccessProbability" && errors.probabilityToBeBest)}
                       onFocus={() => {
                         setProbabilityToBeBestError(null);
                         if (fetcher.data?.errors?.probabilityToBeBest) {
                           //clear server-side errors by resetting fetcher data
-                          fetcher.data = {
-                            ...fetcher.data,
-                            errors: {
-                              ...fetcher.data.errors,
-                              probabilityToBeBest: undefined,
-                            },
-                          };
+                          fetcher.data = { ...fetcher.data, errors: { ...fetcher.data.errors, probabilityToBeBest: undefined } };
                         }
                       }}
                       onInput={(e) => {
                         const v = e.target.value;
                         handleProbabilityOfBestChange("probabilityToBeBest", v);
                         if (!duration) {
-                          handleProbabilityOfBestChange("duration", "");
+                          handleProbabilityOfBestChange("duration", "")
                         }
-                        if (
-                          probabilityToBeBestError &&
-                          v.trim() &&
-                          !probabilityToBeBestError
-                        )
+                        if (probabilityToBeBestError && v.trim() && !probabilityToBeBestError)
                           setProbabilityToBeBestError(null);
-                      }}
+                        }}
                       onChange={(e) => {
                         const v = e.target.value;
                         handleProbabilityOfBestChange("probabilityToBeBest", v);
-                        if (
-                          probabilityToBeBestError &&
-                          v.trim() &&
-                          !probabilityToBeBestError
-                        )
+                        if (probabilityToBeBestError && v.trim() && !probabilityToBeBestError)
                           setProbabilityToBeBestError(null);
-                      }}
-                      onBlur={handleProbabilityToBeBestBlur}
+                        }}
+                      onBlur={handleProbabilityToBeBestBlur}  
                     />
                   </s-stack>
                   <s-stack inlineSize="100px">
-                    <s-number-field
+                    <s-number-field 
                       label="For at least"
                       inputMode="numeric"
                       min="1"
@@ -1497,53 +1368,47 @@ export default function EditExperiment() {
                         handleProbabilityOfBestChange("duration", v);
                         if (durationError && v.trim() && !durationError)
                           setDurationError(null);
-                      }}
+                        }}
                       onInput={(e) => {
                         const v = e.target.value;
                         handleProbabilityOfBestChange("duration", v);
                         if (durationError && v.trim() && !durationError)
                           setDurationError(null);
-                      }}
+                        }}
                       onBlur={handleDurationBlur}
                     />
                   </s-stack>
                   <s-stack inlineSize="90px" paddingBlockStart="base">
                     <div style={{ marginTop: "-16px" }}>
-                      <s-select
-                        label="Time Unit"
-                        error={timeUnitError}
-                        value={timeUnit}
-                        onChange={(e) => {
-                          setTimeUnit(e.target.value);
-                        }}
-                      >
-                        <s-option value="days">Days</s-option>
-                        <s-option value="weeks">Weeks</s-option>
-                        <s-option value="months">Months</s-option>
-                      </s-select>
+                    <s-select
+                      label="Time Unit"
+                      error={timeUnitError}
+                      value={timeUnit}
+                      onChange={(e) => {setTimeUnit(e.target.value);}}>
+                      <s-option value="days">Days</s-option>
+                      <s-option value="weeks">Weeks</s-option>
+                      <s-option value="months">Months</s-option>
+                    </s-select>
                     </div>
                   </s-stack>
                 </s-stack>
               </s-stack>
             )}
+
           </s-stack>
         </s-form>
       </s-section>
       <div style={{ marginBottom: "250px" }}>
         <s-stack direction="inline" gap="small" justifyContent="end">
           <s-button href="/app/experiments">Discard</s-button>
-          <s-button
-            variant="primary"
-            disabled={hasClientErrors || isSubmitting}
+          <s-button 
+            variant="primary" 
+            disabled={hasClientErrors || isSubmitting} 
             onClick={async () => {
               // creates data object for all current state variables
-              const startDateUTC = startDate
-                ? localDateTimeToISOString(startDate, startTime)
-                : "";
-              const effectiveEndTime = endDate && !endTime ? "23:59" : endTime;
-              const endDateUTC = endDate
-                ? localDateTimeToISOString(endDate, effectiveEndTime)
-                : "";
+              const startDateUTC = startDate ? localDateTimeToISOString(startDate, startTime) : "";
+              const effectiveEndTime = (endDate && !endTime) ? "23:59" : endTime;
+              const endDateUTC = endDate ? localDateTimeToISOString(endDate, effectiveEndTime) : "";
 
               const experimentData = {
                 name: name,
@@ -1567,8 +1432,7 @@ export default function EditExperiment() {
               } catch (error) {
                 console.error("Error during fetcher.submit", error);
               }
-            }}
-          >
+            }}>
             Save Draft
           </s-button>
         </s-stack>

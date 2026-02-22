@@ -15,9 +15,7 @@ database.sqlite
 .env.*
 coverage
 prisma/seed.test.local.js
-.secrets
-.sensitive.*
-.sensitive
+
 
 
 

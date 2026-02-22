@@ -1,14 +1,12 @@
-// Use only for ExpTable <-> Shopify API queries. For internaly generated analysis code, you should work in analysis.server.js
 /* Provides session analytics data for the Reports dashboard
- *  NOTE: Currently, this service generates mock data to bypass GraphQL errors in development. (TableResponse error)
- *  In a production environment, this function would query the database for session data within the specified date range. */
+*  NOTE: Currently, this service generates mock data to bypass GraphQL errors in development. (TableResponse error)
+*  In a production environment, this function would query the database for session data within the specified date range. */
 
 export async function getSessionReportData(admin, start, end) {
+
   // If dates are missing from the loader, default to the last 30 days
-  const startDate =
-    start ||
-    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-  const endDate = end || new Date().toISOString().split("T")[0];
+  const startDate = start || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const endDate = end || new Date().toISOString().split('T')[0];
 
   try {
     // Attempt to query live ShopifyQL query
@@ -27,9 +25,9 @@ export async function getSessionReportData(admin, start, end) {
       }`,
       {
         variables: {
-          query: `SHOW sessions BY day SINCE ${startDate} UNTIL ${endDate}`,
+          query: `SHOW sessions BY day SINCE ${startDate} UNTIL ${endDate}`
         },
-      },
+      }
     );
 
     const resJson = await response.json();
@@ -37,36 +35,32 @@ export async function getSessionReportData(admin, start, end) {
     // Validate and Parse Shopify API Data
     // Check for GraphQL errors or ShopifyQL specific parse errors
     if (resJson.errors || resJson.data?.shopifyqlQuery?.parseErrors?.length) {
-      throw new Error(
-        resJson.data?.shopifyqlQuery?.parseErrors?.[0] || "GraphQL Query Error",
-      );
+       throw new Error(resJson.data?.shopifyqlQuery?.parseErrors?.[0] || "GraphQL Query Error");
     }
 
     const rows = resJson.data?.shopifyqlQuery?.tableData?.rows;
 
     if (rows && rows.length > 0) {
-      console.log(
-        `[analytics.server] Successfully fetched ${rows.length} live rows.`,
-      );
-
-      const sessions = rows.map((row) => ({
+      console.log(`[analytics.server] Successfully fetched ${rows.length} live rows.`);
+      
+      const sessions = rows.map(row => ({
         date: row[0], // ShopifyQL usually returns date as the first column
-        count: parseInt(row[1], 10), // and count as the second
+        count: parseInt(row[1], 10) // and count as the second
       }));
 
       return {
         sessions,
-        total: sessions.reduce((acc, curr) => acc + curr.count, 0),
+        total: sessions.reduce((acc, curr) => acc + curr.count, 0)
       };
     }
 
     // If API succeeds but returns 0 rows, throw to trigger fallback
     throw new Error("No live data available");
+
   } catch (error) {
+
     // If the API fails (Permissions, TableResponse error, etc.), use the mock generator.
-    console.warn(
-      `[analytics.server] API Error or No Data. Falling back to mock: ${error.message}`,
-    );
+    console.warn(`[analytics.server] API Error or No Data. Falling back to mock: ${error.message}`);
     return generateMockSessions(startDate, endDate);
   }
 }
@@ -79,16 +73,16 @@ function generateMockSessions(start, end) {
 
   let safetyLimit = 0;
   while (currentDate <= stopDate && safetyLimit < 100) {
-    const dateStr = currentDate.toISOString().split("T")[0];
-
+    const dateStr = currentDate.toISOString().split('T')[0];
+    
     // Random sessions between 40 and 120
-    const count = Math.floor(Math.random() * 81) + 40;
-
+    const count = Math.floor(Math.random() * 81) + 40; 
+    
     sessions.push({
       date: dateStr,
-      count: count,
+      count: count
     });
-
+    
     currentDate.setDate(currentDate.getDate() + 1);
     safetyLimit++;
   }

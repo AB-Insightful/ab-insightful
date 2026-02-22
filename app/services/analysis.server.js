@@ -34,7 +34,19 @@ export async function createAnalysisSnapshot() {
   });
 
   // Check if any experiments exist
-  if (!experiments.length) return;
+  if (!experiments.length) {
+    return new Response(
+      JSON.stringify({
+        message: "no experiments; no analysis. no-op.",
+      }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+    );
+  }
 
   // Create list of experiment IDs
   const experimentIds = experiments.map((e) => e.id);
@@ -110,8 +122,28 @@ export async function createAnalysisSnapshot() {
   }
 
   // 5. Bulk-create the rows (probabilityOfBeingBest and expectedLoss default to null because they get filled out in the next step)
+  let ret = new Response(
+    JSON.stringify({
+      message: "no analysis rows created.",
+    }),
+    {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+
   if (analysisRows.length) {
-    await db.analysis.createMany({ data: analysisRows });
+    const resp = await db.analysis.createMany({ data: analysisRows });
+    ret = new Response(
+      JSON.stringify({
+        message: "created new analysis rows.",
+        data: resp,
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 
   // 6. Use existing probability of best calculation to fill in probability of best and expected loss
@@ -123,4 +155,5 @@ export async function createAnalysisSnapshot() {
       });
     }
   }
+  return ret;
 }

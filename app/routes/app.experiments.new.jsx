@@ -17,6 +17,7 @@ import { authenticate } from "../shopify.server";
 import { useFetcher, redirect, useLoaderData } from "react-router";
 import { useState, useEffect } from "react";
 import db from "../db.server";
+import { ExperimentStatus } from "@prisma/client";
 
 // Server side code
 export const action = async ({ request }) => {
@@ -196,7 +197,7 @@ export const action = async ({ request }) => {
   const experimentData = {
     name: name,
     description: description,
-    status: "draft",
+    status: ExperimentStatus.draft,
     trafficSplit: trafficSplit,
     endCondition: endCondition,
     startDate: startDate,

@@ -2,45 +2,53 @@
 import { authenticate } from "../shopify.server";
 import { useLoaderData, useFetcher } from "react-router";
 import { useEffect, useRef } from "react";
+import { useState } from "react";
 import db from "../db.server";
 
-//loader for the default goal
+//loader for default goal, contact email and contact phone
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
-  const project = await db.project.findUnique({
+  const project = await db.project.upsert({
     where: { shop: session.shop },
-    select: { defaultGoal: true },
+    update: {},
+    create: { shop: session.shop, name: `${session.shop} Project`, defaultGoal: "completedCheckout" },
+    select: {
+      defaultGoal: true,
+      contactEmails: { select: { id: true, email: true } },
+      contactPhones: { select: { id: true, phoneNumber: true } },
+    },
   });
 
-    //import for tutorial data
+  //import for tutorial data
   const { getTutorialData } = await import ("../services/tutorialData.server");
   const tutorialInfo = await getTutorialData();
 
-  return { defaultGoal: project?.defaultGoal ?? "completedCheckout", 
-           tutorialData: tutorialInfo
+           
+  return {
+    defaultGoal: project.defaultGoal,
+    contactEmails: project.contactEmails,
+    contactPhones: project.contactPhones,
+    tutorialData: tutorialInfo
   };
 };
 
-//write updated experiment goal to database
+//actions
 export const action = async ({ request }) => {
   const { session } = await authenticate.admin(request);
-  //retrieve and parse data
   const formData = await request.formData();
-  const defaultGoal = (formData.get("defaultGoal") || "").trim();
-  const intent = (formData.get("intent"));
+  const intent = formData.get("intent");
 
-  //updates tutorial data on button click when relevant
-  //update or create default goal in database
-
-  if(intent === "defaultGoalSet")
-  {
+  //update the experiment goal
+  if (intent === "updateDefaultGoal") {
+    const defaultGoal = (formData.get("defaultGoal") || "").trim();
     await db.project.upsert({
-    where: { shop: session.shop },
-    update: { defaultGoal },
-    create: { shop: session.shop, name: `${session.shop} Project`, defaultGoal },
+      where: { shop: session.shop },
+      update: { defaultGoal },
+      create: { shop: session.shop, name: `${session.shop} Project`, defaultGoal },
     });
-
+    return { ok: true };
   }
+  
   if(intent === "tutorial_viewed")
   {
     try {
@@ -53,16 +61,108 @@ export const action = async ({ request }) => {
       }
   }
 
-  return { ok: false, error: "unknown intent"};
+  //add an email to the list
+  if (intent === "addEmail") {
+    const email = (formData.get("email") || "").trim().toLowerCase();
+
+    //check if empty
+    if (!email) return { error: "Email cannot be null", field: "email" };
+    //check entry matches format xxx@xxx.xxx
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) return { error: "Please enter a valid email (e.g. user@example.com)", field: "email" };
+
+    //locate the project
+    const project = await db.project.findUnique({
+      where: { shop: session.shop },
+      select: { id: true },
+    });
+
+    //check if duplicate
+    const existing = await db.contactEmail.findFirst({
+      where: { projectId: project.id, email },
+    });
+    if (existing) return { error: "Provided email is already saved", field: "email" };
+
+    await db.contactEmail.create({ data: { email, projectId: project.id } });
+    return { ok: true };
+  }
+
+  //delete an email from the list
+  if (intent === "deleteEmail") {
+    const id = parseInt(formData.get("id"), 10);
+    await db.contactEmail.delete({ where: { id } });
+    return { ok: true };
+  }
+
+  //add a phone number to the list
+  if (intent === "addPhone") {
+    const rawPhone = (formData.get("phone") || "").trim();
+
+    //check if empty
+    if (!rawPhone) return { error: "Phone number cannot be null", field: "phone" };
+    //check entry matches format xxx-xxx-xxxx (assuming extensions not supported for now)
+    const phoneRegex = /^\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{4}$/;
+    if (!phoneRegex.test(rawPhone)) return { error: "Please enter a valid phone number (e.g. 555-555-5555)", field: "phone" };
+
+    //digits only
+    const phoneNumber = rawPhone.replace(/\D/g, "");
+
+    //locate the project
+    const project = await db.project.findUnique({
+      where: { shop: session.shop },
+      select: { id: true },
+    });
+
+    //check if duplicate
+    const existing = await db.contactPhone.findFirst({
+      where: { projectId: project.id, phoneNumber },
+    });
+    if (existing) return { error: "Provided phone number is already saved", field: "phone" };
+
+    await db.contactPhone.create({ data: { phoneNumber, projectId: project.id } });
+    return { ok: true };
+  }
+
+  //delete a phone number from the list
+  if (intent === "deletePhone") {
+    const id = parseInt(formData.get("id"), 10);
+    await db.contactPhone.delete({ where: { id } });
+    return { ok: true };
+  }
+
+  //error state
+  return { error: "Unknown intent.", field: null };
 };
 
-
+//format 10-digit string as XXX-XXX-XXXX to be displayed on chips
+function formatPhone(digits) {
+  if (digits.length === 10) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return digits;
+}
 
 export default function Settings() {
-  const { defaultGoal, tutorialData } = useLoaderData();
+  const { defaultGoal, contactEmails, contactPhones, tutorialData } = useLoaderData();
   const fetcher = useFetcher();
   const tutorialFetcher = useFetcher(); // for tutorial actions
   const modalRef = useRef(null);
+
+  //input
+  const [emailInput, setEmailInput] = useState("");
+  const [phoneInput, setPhoneInput] = useState("");
+  //chip id on hover
+  const [hoveredEmailId, setHoveredEmailId] = useState(null);
+  const [hoveredPhoneId, setHoveredPhoneId] = useState(null);
+  //errors from fetcher response
+  const emailError = fetcher.data?.field === "email" ? fetcher.data.error : null;
+  const phoneError = fetcher.data?.field === "phone" ? fetcher.data.error : null;
+
+  //handler functions
+  const handleAddEmail = () => {fetcher.submit({ intent: "addEmail", email: emailInput }, { method: "post" });};
+  const handleDeleteEmail = (id) => {fetcher.submit({ intent: "deleteEmail", id: String(id) }, { method: "post" });};
+  const handleAddPhone = () => {fetcher.submit({ intent: "addPhone", phone: phoneInput }, { method: "post" });};
+  const handleDeletePhone = (id) => {fetcher.submit({ intent: "deletePhone", id: String(id) }, { method: "post" });};
 
   useEffect(() => {
   //displays tutorialData when scenario met
@@ -70,9 +170,9 @@ export default function Settings() {
         modalRef.current.showOverlay();
     }
   }, [tutorialData]);
+
   return (
     <s-page heading="App Settings">
-
       <s-modal
             id="tutorial-modal-settings"
             ref={modalRef}
@@ -100,17 +200,114 @@ export default function Settings() {
             </s-button>
         </s-stack>
       </s-modal>
+
+      {/*notification settings*/}
+      <s-section heading="Notification Settings">
+
+        {/*email*/}
+        <s-stack direction="block" gap="small">
+          <s-stack direction="inline" gap="small" alignItems="end">
+            <s-box inlineSize="300px">
+              <s-email-field
+                label="Email"
+                placeholder="username@example.com"
+                value={emailInput}
+                onInput={(e) => setEmailInput(e.target.value)}
+                error={emailError ?? undefined}
+              />
+            </s-box>
+            <s-button
+              variant="primary"
+              onClick={handleAddEmail}
+              disabled={fetcher.state !== "idle"}
+            >
+              Save
+            </s-button>
+          </s-stack>
+
+          {/*email chips*/}
+          {contactEmails.length > 0 && (
+            <s-stack direction="inline" gap="extraSmall" wrap>
+              {contactEmails.map((entry) => (
+                <s-clickable-chip
+                  key={entry.id}
+                  onClick={() => handleDeleteEmail(entry.id)}
+                  onMouseEnter={() => setHoveredEmailId(entry.id)}
+                  onMouseLeave={() => setHoveredEmailId(null)}
+                >
+                  <span style={{ position: "relative", display: "inline-block" }}>
+                    <span style={{ visibility: "hidden" }}>
+                      {entry.email.length > "Delete".length ? entry.email : "Delete"}
+                    </span>
+                    <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {hoveredEmailId === entry.id ? "Delete" : entry.email}
+                    </span>
+                  </span>
+                </s-clickable-chip>
+              ))}
+            </s-stack>
+          )}
+        </s-stack>
+
+        {/*phone*/}
+        <s-stack direction="block" gap="small">
+          <s-stack direction="inline" gap="small" alignItems="end">
+            <s-box inlineSize="300px">
+              <s-text-field
+                label="Phone Number"
+                placeholder="555-555-5555"
+                value={phoneInput}
+                onInput={(e) => setPhoneInput(e.target.value)}
+                error={phoneError ?? undefined}
+              />
+            </s-box>
+            <s-button
+              variant="primary"
+              onClick={handleAddPhone}
+              disabled={fetcher.state !== "idle"}
+            >
+              Save
+            </s-button>
+          </s-stack>
+
+          {/*phone chips*/}
+          {contactPhones.length > 0 && (
+            <s-stack direction="inline" gap="extraSmall" wrap>
+              {contactPhones.map((entry) => (
+                <s-clickable-chip
+                  key={entry.id}
+                  onClick={() => handleDeletePhone(entry.id)}
+                  onMouseEnter={() => setHoveredPhoneId(entry.id)}
+                  onMouseLeave={() => setHoveredPhoneId(null)}
+                >
+                  <span style={{ position: "relative", display: "inline-block" }}>
+                    <span style={{ visibility: "hidden" }}>
+                      {formatPhone(entry.phoneNumber).length > "Delete".length ? formatPhone(entry.phoneNumber) : "Delete"}
+                    </span>
+                    <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {hoveredPhoneId === entry.id ? "Delete" : formatPhone(entry.phoneNumber)}
+                    </span>
+                  </span>
+                </s-clickable-chip>
+              ))}
+            </s-stack>
+          )}
+        </s-stack>
+
+      </s-section>
+
+      {/*experiment configuration*/}
       <s-section heading="Experiment Configuration">
         <fetcher.Form method="post">
+          <input type="hidden" name="intent" value="updateDefaultGoal" />
           <s-stack direction="block" gap="base">
             <s-select
               label="Select a new default goal for creating new experiments"
               name="defaultGoal"
               value={defaultGoal}
-              //NOTE: this on change element will need to be modified when a dedicated save button is implemented for the settings page
               onChange={(e) =>
                 fetcher.submit(
-                  {intent: "defaultGoalSet", defaultGoal: e.target.value},
+                  { intent: "updateDefaultGoal", defaultGoal: e.target.value },
                   { method: "post" }
                 )
               }
@@ -123,14 +320,19 @@ export default function Settings() {
           </s-stack>
         </fetcher.Form>
       </s-section>
+
+      {/*support & Documentation*/}
       <s-section heading="Support & Documentation">
         <s-link href="/app/help">How To's and Support</s-link>
       </s-section>
+
+      {/*language*/}
       <s-section heading="Language">
         <s-select name="language">
-            <s-option value="English">English</s-option>
+          <s-option value="English">English</s-option>
         </s-select>
       </s-section>
+
     </s-page>
   );
 }

@@ -2,7 +2,7 @@
 
 client_id = "656b84090c3d90435a1675270b9182d8"
 name = "ab-insightful"
-application_url = "https://example.com"
+application_url = "https://ab-insightful.fly.dev"
 embedded = true
 
 [build]
@@ -24,4 +24,8 @@ api_version = "2026-01"
 scopes = "read_reports,read_products,write_products,write_products, write_pixels, read_customer_events"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [
+  "https://ab-insightful.fly.dev/auth/callback",
+  "https://ab-insightful.fly.dev/auth/shopify/callback",
+  "https://ab-insightful.fly.dev/api/auth/callback"
+]

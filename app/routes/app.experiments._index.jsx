@@ -1,7 +1,7 @@
 //app.experiment._index code
 
 import { useLoaderData, useFetcher } from "react-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 //import Decimal from 'decimal.js';
 import { formatRuntime } from "../utils/formatRuntime.js";
 import { formatImprovement } from "../utils/formatImprovement.js";
@@ -63,11 +63,48 @@ export async function action({ request }) {
         return { ok: false, error: "Failed to resume experiment" }, { status: 500 };
       }
 
-    case "rename":
-      // dynamically imported redirect utility
-      const { redirect } = await import("@remix-run/node")
-      // return the rediret of the unique experiment page 
-      return redirect(`/app/experiments/${experimentId}`);
+    case "rename": {
+      const newName = (formData.get("newName") || "").trim();
+      //check if null
+      if (!newName) {
+        return { ok: false, action: "rename_error", error: "Experiment name cannot be null" };
+      }
+      try {
+        const { default: db } = await import("../db.server");
+
+        //first, find the project experiment belongs to
+        const existing = await db.experiment.findUnique({
+          where: { id: Number(experimentId) },
+          select: { projectId: true },
+        });
+        //if experiment is not found
+        if (!existing) {
+          return { ok: false, action: "rename_error", error: "Experiment not found." };
+        }
+
+        const duplicate = await db.experiment.findFirst({
+          where: {
+            projectId: existing.projectId,
+            name: newName,
+            NOT: { id: Number(experimentId) },
+          },
+        });
+        //if name already is in the database
+        if (duplicate) {
+          return { ok: false, action: "rename_error", error: "An experiment with that name already exists." };
+        }
+        //perform the update
+        await db.experiment.update({
+          where: { id: Number(experimentId) },
+          data: { name: newName },
+        });
+        //error handling
+        return { ok: true, action: "renamed" };
+      } catch (error) {
+        console.error("Rename Error:", error);
+        return { ok: false, action: "rename_error", error: "Failed to rename experiment." };
+      }
+    }
 
     case "archive":
       try {
@@ -112,6 +149,24 @@ export default function Experimentsindex() {
   const tutorialFetcher = useFetcher();
   const didStatsRun = useRef(false); //useRef is a modifier that ensure the didStatsRun value mutation is retained across re-renders of page
 
+  //track current experiment row in rename mode, current value in text box, and error message
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameError, setRenameError] = useState(null);
+
+  //check for errors after rename attempt
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.action === "rename_error") {
+      setRenameError(fetcher.data.error);
+    }
+    if (fetcher.state === "idle" && fetcher.data?.action === "renamed") {
+      // Success — close the field
+      setRenamingId(null);
+      setRenameError(null);
+    }
+  }, [fetcher.state, fetcher.data]);
+
+  //applying calculations of stats here to retain read/write separation between action and loader.
   useEffect(() => {
     //conditional to display tutorial message here
     if ((tutorialData.viewedListExperiment == false) && modalRef.current && typeof modalRef.current.showOverlay === 'function') {
@@ -127,6 +182,20 @@ export default function Experimentsindex() {
   }, [fetcher], tutorialFetcher);
 
   //function responsible for render of table rows based off db
+
+  //validates & submit rename
+  function submitRename(experimentId) {
+    const trimmed = renameValue.trim();
+    if (!trimmed) {
+      setRenameError("Experiment name cannot be null");
+      return;
+    }
+    setRenameError(null);
+    fetcher.submit(
+      { intent: "rename", experimentId, newName: trimmed },
+      { method: "post" }
+    );
+  }
 
   //TODO: restrict based on experiment goal
   //- re
@@ -181,6 +250,8 @@ export default function Experimentsindex() {
       //single tuple of the experiment data
       const curExp = experiments[i];
 
+      const resumeLabel = curExp.startDate ? "Resume" : "Start";
+
       // call formatRuntime utility
       const runtime = formatRuntime(
         curExp.startDate,
@@ -194,9 +265,51 @@ export default function Experimentsindex() {
       rows.push(
         <s-table-row key={curExp.id}>
           <s-table-cell>
-            <s-link href={"/app/reports/" + curExp.id}>
-              {curExp.name ?? "empty-name"}
-            </s-link>
+            {/*display rename mode or link to experiment*/}
+            {renamingId === curExp.id ? (
+              <s-stack direction="block" gap="tight">
+                <s-stack direction="inline" gap="tight" alignItems="center">
+                  <s-text-field
+                    label="Experiment name"
+                    labelHidden
+                    value={renameValue}
+                    error={renameError ?? undefined}
+                    onInput={(e) => {
+                      setRenameValue(e.target.value);
+                      //clear all errors on input
+                      if (renameError) setRenameError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") submitRename(curExp.id);
+                      if (e.key === "Escape") {
+                        setRenamingId(null);
+                        setRenameError(null);
+                      }
+                    }}
+                  />
+                  <s-button
+                    variant="tertiary"
+                    icon="check-circle"
+                    accessibilityLabel="Confirm rename"
+                    disabled={fetcher.state !== "idle"}
+                    onClick={() => submitRename(curExp.id)}
+                  />
+                  <s-button
+                    variant="tertiary"
+                    icon="x-circle"
+                    accessibilityLabel="Cancel rename"
+                    onClick={() => {
+                      setRenamingId(null);
+                      setRenameError(null);
+                    }}
+                  />
+                </s-stack>
+              </s-stack>
+            ) : (
+              <s-link href={"/app/reports/" + curExp.id}>
+                {curExp.name ?? "empty-name"}
+              </s-link>
+            )}
           </s-table-cell>{" "}
           {/* displays N/A when data is null */}
           <s-table-cell> {curExp.status ?? "N/A"} </s-table-cell>
@@ -218,21 +331,24 @@ export default function Experimentsindex() {
             </s-button>
             <s-popover id={`popover-${curExp.id}`}>
               <s-stack direction="block">
-                {/* command="hide" closes the popover when the button is clicked */}
                 <s-button 
                   variant="tertiary" 
                   commandFor={`popover-${curExp.id}`}
+                  disabled={curExp.status === "active" || fetcher.state !== "idle"}
                   onClick={() => {
                     fetcher.submit(
                       {
-                        intent: "rename",
+                        intent: "resume",
                         experimentId: curExp.id
                       },
                       { method: "post" }
                     );
+                    setRenamingId(curExp.id);
+                    setRenameValue(curExp.name ?? "");
+                    setRenameError(null);
                   }}
                 >
-                  Rename
+                  {resumeLabel}
                 </s-button>
                 <s-button 
                   variant="tertiary" 
@@ -254,18 +370,17 @@ export default function Experimentsindex() {
                 <s-button 
                   variant="tertiary" 
                   commandFor={`popover-${curExp.id}`}
-                  disabled={curExp.status === "active" || fetcher.state !== "idle"}
                   onClick={() => {
                     fetcher.submit(
                       {
-                        intent: "resume",
+                        intent: "rename",
                         experimentId: curExp.id
                       },
                       { method: "post" }
                     );
                   }}
                 >
-                  Resume
+                  Rename
                 </s-button>
                 <s-button 
                   variant="tertiary" 

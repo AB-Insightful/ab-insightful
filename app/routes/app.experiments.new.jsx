@@ -229,7 +229,12 @@ export const action = async ({ request }) => {
   }
 
   const { createExperiment } = await import("../services/experiment.server");
-  const experiment = await createExperiment(experimentData);
+  const experiment = await createExperiment(experimentData, {
+    variantEnabled,
+    controlSectionId,
+    primaryVariantSectionId: sectionId,
+    secondaryVariantSectionId: variantSectionId,
+  });
 
   return redirect(`/app/experiments/${experiment.id}`);
 };

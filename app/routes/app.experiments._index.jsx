@@ -1,3 +1,5 @@
+//app.experiment._index code
+
 import { useLoaderData, useFetcher } from "react-router";
 import { useEffect, useRef } from "react";
 //import Decimal from 'decimal.js';
@@ -11,8 +13,11 @@ export async function loader() {
   /**const { getExperimentsWithAnalyses } = await import("../services/experiment.server");
   const { updateProbabilityOfBest } = await import("../services/experiment.server");  */
   const { getExperimentsList, getImprovement } = await import("../services/experiment.server");
-
   const experiments = await getExperimentsList();
+
+  //import for tutorial data
+  const { getTutorialData } = await import ("../services/tutorialData.server");
+  const tutorialData = await getTutorialData();
 
   // compute improvements on the server
   const enriched = await Promise.all(
@@ -22,10 +27,10 @@ export async function loader() {
     })),
   );
 
-  return enriched; // resolved data only
+  return {experiments: enriched, tutorialData }; // resolved data only
 } //end loader
 
-
+//performs client to server communication when action is performed
 export async function action({ request }) {
   const formData = await request.formData();
   const intent = formData.get("intent");
@@ -74,6 +79,17 @@ export async function action({ request }) {
         return {ok: false, error: "Failed to archive experiment"}, { status: 500};
       }
 
+      //performs switch case action upon clicking 'I understand" button for tutorial modal
+      case "tutorial_viewed":
+      try {
+        const { setViewedListExp } = await import("../services/tutorialData.server");
+        await setViewedListExp(1, true); //always sets the item in tutorialdata to true, selects 1st tuple
+        return {ok: true, action: "tutorial_viewed"}; 
+      } catch (error) {
+        console.error("Tutorial Error:", error);
+        return {ok: false, error: "Failed to update viewedListExperiment"}, { status: 500};
+      }
+
       default:
       /* The default case, where experiment stats are queried from the DB & rendered */
       try {
@@ -90,18 +106,25 @@ export async function action({ request }) {
 // ---------------------------------Client side code----------------------------------------------------
 export default function Experimentsindex() {
   // Get list of experiments
-  const experiments = useLoaderData();
+  const modalRef = useRef(null);
+  const {experiments, tutorialData} = useLoaderData();
   const fetcher = useFetcher();
+  const tutorialFetcher = useFetcher();
   const didStatsRun = useRef(false); //useRef is a modifier that ensure the didStatsRun value mutation is retained across re-renders of page
 
-  //applying calculations of stats here to retain read/write separation between action and loader.
   useEffect(() => {
+    //conditional to display tutorial message here
+    if ((tutorialData.viewedListExperiment == false) && modalRef.current && typeof modalRef.current.showOverlay === 'function') {
+      modalRef.current.showOverlay();
+    }
+
+    //applying calculations of stats here to retain read/write separation between action and loader.
     if (didStatsRun.current == true) return;
     if (fetcher.state === "idle") {
       didStatsRun.current = true;
       fetcher.submit(null, { method: "post" });
     }
-  }, [fetcher]);
+  }, [fetcher], tutorialFetcher);
 
   //function responsible for render of table rows based off db
 
@@ -277,6 +300,34 @@ export default function Experimentsindex() {
           variant="primary"
           href="/app/experiments/new"
         >Create Experiment</s-button>
+        {/*modal for tutorial popup */}
+          <s-modal
+            id="tutorial-modal-settings"
+            ref={modalRef}
+            heading="Quick tour"
+            padding="base"
+            size="base"
+          >
+            <s-stack gap="base">
+              <s-paragraph>
+                Here is some tutorial information.
+              </s-paragraph>
+            
+                <s-button
+                variant="primary"
+                inLineSize = "fill"
+                commandFor="tutorial-modal-settings"
+                command="--hide"
+                onClick = {() => {
+                  tutorialFetcher.submit(
+                    { intent: "tutorial_viewed"},
+                    {method: "post"}
+                  )
+                }}
+                > Understood. Do not show this again.
+                </s-button>
+            </s-stack>
+          </s-modal>
         <s-section>
           {" "}
           {/*might be broken */}

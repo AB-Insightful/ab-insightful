@@ -2,7 +2,6 @@
 /* eslint-disable no-console */
 
 import { seedBase } from "./seed.base.js";
-import { ExperimentStatus } from "@prisma/client";
 
 /**
  * Test Seed template
@@ -47,7 +46,7 @@ export async function seedTest(prisma) {
     update: {
       name: "TEST Experiment - Active",
       description: "Fixture experiment for automated tests.",
-      status: ExperimentStatus.active,
+      status: "active",
       trafficSplit: "1.0",
       sectionId: "test-section",
       projectId: project.id,
@@ -56,7 +55,7 @@ export async function seedTest(prisma) {
       id: 9001,
       name: "TEST Experiment - Active",
       description: "Fixture experiment for automated tests.",
-      status: ExperimentStatus.active,
+      status: "active",
       trafficSplit: "1.0",
       sectionId: "test-section",
       projectId: project.id,

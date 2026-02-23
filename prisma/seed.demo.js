@@ -1,7 +1,6 @@
 /* eslint-disable no-console */
 
 import { seedBase } from "./seed.base.js";
-import { ExperimentStatus } from "@prisma/client";
 
 /**
  * DEMO seed = "pretty data"
@@ -274,7 +273,7 @@ export async function seedDemo(prisma) {
       id: 9101,
       name: "DEMO - PDP Upsell Widget",
       description: "Show upsell widget and track checkout conversions.",
-      status: ExperimentStatus.active,
+      status: "active",
       trafficSplit: "1.0",
       sectionId: "pdp-upsell",
       startDate: addDays(today, -35),
@@ -285,7 +284,7 @@ export async function seedDemo(prisma) {
       id: 9102,
       name: "DEMO - Free Shipping Threshold",
       description: "Test threshold messaging impact on revenue and checkout.",
-      status: ExperimentStatus.active,
+      status: "active",
       trafficSplit: "1.0",
       sectionId: "shipping-threshold",
       startDate: addDays(today, -28),
@@ -296,7 +295,7 @@ export async function seedDemo(prisma) {
       id: 9103,
       name: "DEMO - Newsletter Modal",
       description: "Compare modal timing and copy for newsletter signup.",
-      status: ExperimentStatus.active,
+      status: "active",
       trafficSplit: "1.0",
       sectionId: "newsletter-modal",
       startDate: addDays(today, -21),
@@ -307,7 +306,7 @@ export async function seedDemo(prisma) {
       id: 9104,
       name: "DEMO - Cart Drawer Layout",
       description: "Cart drawer layout changes; paused due to design review.",
-      status: ExperimentStatus.paused,
+      status: "paused",
       trafficSplit: "1.0",
       sectionId: "cart-drawer",
       startDate: addDays(today, -40),
@@ -318,7 +317,7 @@ export async function seedDemo(prisma) {
       id: 9105,
       name: "DEMO - Homepage Collection Tiles",
       description: "Completed experiment; treatment won.",
-      status: ExperimentStatus.completed,
+      status: "completed",
       trafficSplit: "1.0",
       sectionId: "home-collections",
       startDate: addDays(today, -70),
@@ -329,7 +328,7 @@ export async function seedDemo(prisma) {
       id: 9106,
       name: "DEMO - Announcement Bar Copy",
       description: "Archived historical experiment.",
-      status: ExperimentStatus.archived,
+      status: "archived",
       trafficSplit: "1.0",
       sectionId: "announcement-bar",
       startDate: addDays(today, -120),
@@ -341,7 +340,7 @@ export async function seedDemo(prisma) {
       id: 9107,
       name: "DEMO - Checkout Trust Badges",
       description: "Draft experiment in planning.",
-      status: ExperimentStatus.draft,
+      status: "draft",
       trafficSplit: "1.0",
       sectionId: "checkout-badges",
       startDate: null,
@@ -352,7 +351,7 @@ export async function seedDemo(prisma) {
       id: 9108,
       name: "DEMO - Sticky ATC",
       description: "Draft experiment in backlog.",
-      status: ExperimentStatus.draft,
+      status: "draft",
       trafficSplit: "1.0",
       sectionId: "sticky-atc",
       startDate: null,

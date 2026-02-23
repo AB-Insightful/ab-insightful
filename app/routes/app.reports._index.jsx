@@ -5,7 +5,6 @@ import { useDateRange } from "../contexts/DateRangeContext";
 import DateRangePicker from "../components/DateRangePicker";
 import SessionsCard from "../components/SessionsCard.jsx";
 import shopify from "../shopify.server";
-import { ExperimentStatus } from "@prisma/client";
 
 //server side code
 export async function loader({ request }) {
@@ -63,25 +62,25 @@ export default function Reports() {
   const renderStatus = (status) => {
     if (!status) return "N/A";
 
-    if (status === ExperimentStatus.active) {
+    if (status.toLowerCase() === "active") {
       return (
         <s-badge tone="info" icon="gauge">
           Active
         </s-badge>
       );
-    } else if (status === ExperimentStatus.completed) {
+    } else if (status.toLowerCase() === "completed") {
       return (
         <s-badge tone="success" icon="check">
           Completed
         </s-badge>
       );
-    } else if (status === ExperimentStatus.archived) {
+    } else if (status.toLowerCase() === "archived") {
       return (
         <s-badge tone="warning" icon="order">
           Archived
         </s-badge>
       );
-    } else if (status === ExperimentStatus.paused) {
+    } else if (status.toLowerCase() === "paused") {
       return (
         <s-badge tone="caution" icon="pause-circle">
           Paused
@@ -95,7 +94,7 @@ export default function Reports() {
   const renderExperimentName = (experiment) => {
     const name = experiment.name ?? "N/A";
 
-    if (!experiment.status || experiment.status === ExperimentStatus.active) {
+    if (!experiment.status || experiment.status.toLowerCase() === "active") {
       return name;
     }
     return <a href="/404">{name}</a>;
@@ -154,7 +153,7 @@ export default function Reports() {
 
     return experiments.filter((exp) => {
       if (!exp.startDate) return false;
-      if (exp.status === ExperimentStatus.archived) return false;
+      if (exp.status.toLowerCase() === "archived") return false;
       const expStartDate = new Date(exp.startDate);
       return expStartDate >= startDate && expStartDate <= endDate;
     });

@@ -415,13 +415,15 @@ export async function GetFrontendExperimentsData() {
 // This is used for the "Experiments List" page
 export async function getExperimentsList() {
   const experiments = await db.experiment.findMany({
-    //using include as a join
-    include: {
-      //for each experiment, find all its related analyses records
+    select: {//selecting only relevant fields for the experiments list page
+      id: true,
+      name: true,
+      status: true,
+      startDate: true,
+      endDate: true,
       analyses: {
-        // For each of those analyses include their variant
-        include: {
-          variant: true, //this gets us the variant name (e.g., "Control", "Variant A")
+        include: {//including analyses to get the most recent conversion rate for the experiment list page
+          variant: true,
         },
       },
     },

@@ -4,12 +4,47 @@ import betaFactory from "@stdlib/random-base-beta";
 import { Prisma } from "@prisma/client";
 
 // Function to create an experiment. Returns the created experiment object.
-export async function createExperiment(experimentData) {
+export async function createExperiment(
+  experimentData,
+  {
+    variantEnabled = false,
+    controlSectionId = "",
+    primaryVariantSectionId = "",
+    secondaryVariantSectionId = "",
+  } = {},
+) {
   console.log("Creating experiment with data:", experimentData);
+
+  const variantCreates = [];
+
+  variantCreates.push({
+    name: "Control",
+    configData: controlSectionId
+      ? { sectionId: controlSectionId }
+      : null,
+  });
+
+  if (primaryVariantSectionId) {
+    variantCreates.push({
+      name: "Variant A",
+      configData: { sectionId: primaryVariantSectionId },
+    });
+  }
+
+  if (variantEnabled && secondaryVariantSectionId) {
+    variantCreates.push({
+      name: "Variant B",
+      configData: { sectionId: secondaryVariantSectionId },
+    });
+  }
+
   // Update Prisma database using npx prisma
   const result = await db.experiment.create({
     data: {
       ...experimentData, // Will include all DB fields of a new experiment
+      variants: {
+        create: variantCreates,
+      },
     },
   });
   console.log("Created experiment:", result);
@@ -415,13 +450,15 @@ export async function GetFrontendExperimentsData() {
 // This is used for the "Experiments List" page
 export async function getExperimentsList() {
   const experiments = await db.experiment.findMany({
-    //using include as a join
-    include: {
-      //for each experiment, find all its related analyses records
+    select: {//selecting only relevant fields for the experiments list page
+      id: true,
+      name: true,
+      status: true,
+      startDate: true,
+      endDate: true,
       analyses: {
-        // For each of those analyses include their variant
-        include: {
-          variant: true, //this gets us the variant name (e.g., "Control", "Variant A")
+        include: {//including analyses to get the most recent conversion rate for the experiment list page
+          variant: true,
         },
       },
     },

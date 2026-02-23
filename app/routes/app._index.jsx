@@ -58,14 +58,30 @@ export const loader = async ({ request }) => {
   const { getVariants } = await import("../services/variant.server");
   const variants = await getVariants(latestExperiment.id);
 
+  //gets stored query data to specify tutorial rendering on the page
+  const {getTutorialData} = await import ("../services/tutorialData.server");
+  const tutorialData = await getTutorialData();
+
+  //checks to see if web pixel already exists, used as conditional to web pixel section later
+  const { webPixelNotNull} = await import ("../services/session.server");
+  const webPixelRes = await webPixelNotNull();
+  tutorialData.allSetupDone= (
+    tutorialData.generalSettings &&
+    tutorialData.createExperiment &&
+    tutorialData.viewedListExperiment &&
+    tutorialData.viewedReportsPage
+  );
+
+  tutorialData.webPixelStatus = webPixelRes; //true means exists, false means null
+
+
   const {getImprovement} = await import("../services/experiment.server");
   const improvementPercent = await getImprovement(latestExperiment.id);
   const {getAnalysis} = await import ("../services/experiment.server");
   const baselineVariantId = latestExperiment.variants?.[0]?.id;
-  
-  const experimentGoalName = expGoalData.goal?.name ?? "found nothing"
-  
+  const experimentGoalName = expGoalData?.goal?.name ?? "found nothing"
   experimentReportData.experimentGoal = experimentGoalName;
+
 
 
   const tableData = await Promise.all(
@@ -83,7 +99,7 @@ export const loader = async ({ request }) => {
   );
   experimentReportData["expId"] = latestExperiment.id
 
-  return {experiment: experimentReportData, tableData};
+  return {experiment: experimentReportData, tableData, tutorialData};
 }
 
 export const action = async ({ request }) => {
@@ -105,13 +121,14 @@ export default function Index() {
   const shopify = useAppBridge();
 
   //aquire loader data
-  const {experiment, tableData} = useLoaderData()
+  const {experiment, tableData, tutorialData} = useLoaderData()
 
   const { dateRange } = useDateRange();
   //need to check sorting to ensure this is always baseline
   const baselineName = experiment.variants?.[0]?.id;
 
   // State for setup guide
+  //ties setupGuide to whether webPixelis contained within session (assumes only 1 session)
   const [visible, setVisible] = useState({
     setupGuide: true,
   });
@@ -208,7 +225,7 @@ export default function Index() {
       </s-button>
 
       {/* Begin Setup guide */}
-      {visible.setupGuide && (
+      {tutorialData.webPixelNotNull && (
         <s-section>
           <s-grid gap="small">
             {/* Header */}
@@ -218,7 +235,7 @@ export default function Index() {
                 gap="small-300"
                 alignItems="center"
               >
-                <s-heading>Setup Guide</s-heading>
+                <s-heading>Mandatory Setup</s-heading>
                 {/* Critical steps need to come first. Once they are completed, 
                 the user may choose to dismiss the setup guide */}
                 {progress >= 1 && (
@@ -232,26 +249,10 @@ export default function Index() {
                     icon="x"
                   ></s-button>
                 )}
-
-                <s-button
-                  accessibilityLabel="Toggle setup guide"
-                  onClick={(e) =>
-                    setExpanded({
-                      ...expanded,
-                      setupGuide: !expanded.setupGuide,
-                    })
-                  }
-                  variant="tertiary"
-                  tone="neutral"
-                  icon={expanded.setupGuide ? "chevron-up" : "chevron-down"}
-                ></s-button>
               </s-grid>
               <s-paragraph>
                 Please complete the following steps to begin using AB
                 Insightful!
-              </s-paragraph>
-              <s-paragraph color="subdued">
-                {progress} out of 1 steps completed
               </s-paragraph>
             </s-grid>
             {/* Steps Container */}
@@ -259,7 +260,7 @@ export default function Index() {
               borderRadius="base"
               border="base"
               background="base"
-              display={expanded.setupGuide ? "auto" : "none"}
+
             >
               {/* Step 1 */}
               <s-box>
@@ -268,27 +269,11 @@ export default function Index() {
                   gap="base"
                   padding="small"
                 >
-                  <s-checkbox
-                    label="Enable on-site tracking"
-                    onInput={(e) =>
-                      setProgress(
-                        e.currentTarget.checked ? progress + 1 : progress - 1,
-                      )
-                    }
-                  ></s-checkbox>
-                  <s-button
-                    onClick={(e) => {
-                      setExpanded({ ...expanded, step1: !expanded.step1 });
-                    }}
-                    accessibilityLabel="Toggle step 1 details"
-                    variant="tertiary"
-                    icon={expanded.step1 ? "chevron-up" : "chevron-down"}
-                  ></s-button>
+                  
                 </s-grid>
                 <s-box
                   padding="small"
                   paddingBlockStart="none"
-                  display={expanded.step1 ? "auto" : "none"}
                 >
                   <s-box
                     padding="base"
@@ -320,7 +305,119 @@ export default function Index() {
             </s-box>
           </s-grid>
         </s-section>
+        
       )}
+
+      {/*Will render this section depending on if the setup tutorials have all been viewed*/}
+      {!tutorialData.allSetupDone && (<s-section>
+        <s-grid gridColumn="span 1">
+          <s-heading>Getting Started</s-heading>
+          <s-paragraph>Here are some helpful links to explain how to use the site!</s-paragraph>
+          <s-stack gap="small-small">
+            {/* Step 1: Setup Settings*/}
+            <s-stack
+              direction="inline"
+              gap="base"
+              alignItems="center"
+              justifyContent="space-between"
+            >
+            <s-stack direction="inline" gap="base" alignItems="center" >
+              <s-icon
+                type={tutorialData.generalSettings ? 'check-circle-filled' : 'circle'}
+                tone={tutorialData.generalSettings ? 'success' : 'neutral'}
+                color={tutorialData.generalSettings ? 'base' : 'subdued'}
+                size='base'
+              />Set Up General Settings
+          </s-stack> {/*end of outer space between */}
+
+              <s-button
+                href="/app/settings"
+                icon="adjust"
+                variant="secondary"
+              >
+                Settings
+              </s-button>
+            </s-stack>
+
+            {/* Step 2: Setup First experiment */}
+          <s-stack
+            direction="inline"
+            gap="base"
+            alignItems="center"
+            justifyContent="space-between"
+          >
+            <s-stack direction="inline" gap="base" alignItems="center">
+              <s-icon
+                type={tutorialData.createExperiment ? 'check-circle-filled' : 'circle'}
+                tone={tutorialData.createExperiment ? 'success' : 'neutral'}
+                color={tutorialData.createExperiment ? 'base' : 'subdued'}
+                size='base'
+              />Set Up First Experiment
+          </s-stack> {/*end of outer stack for icon */}
+
+              <s-button
+                href="/app/experiments/new"
+                icon="code"
+                variant="secondary"
+              >
+                Create Experiment
+              </s-button>
+            </s-stack>
+
+            {/*Step 3: Experiment Lists*/}
+          <s-stack
+            direction="inline"
+            gap="base"
+            alignItems="center"
+            justifyContent="space-between"
+          >
+            <s-stack direction="inline" gap="base" alignItems="center">
+              <s-icon
+                type={tutorialData.viewedListExperiment ? 'check-circle-filled' : 'circle'}
+                tone={tutorialData.viewedListExperiment ? 'success' : 'neutral'}
+                color={tutorialData.viewedListExperiment ? 'base' : 'subdued'}
+                size='base'
+              /> View Experiments List
+          </s-stack>{/*End outer stack for button */}
+
+              <s-button
+                href="/app/experiments"
+                icon="view"
+                variant="secondary"
+              >
+                Manage Experiments
+              </s-button>
+            </s-stack>
+
+            {/* Step 4: View reports */}
+          <s-stack
+            direction="inline"
+            gap="base"
+            alignItems="center"
+            justifyContent="space-between"
+          >
+            <s-stack direction="inline" gap="base" alignItems="center">
+              <s-icon
+                type={tutorialData.viewedReportsPage ? 'check-circle-filled' : 'circle'}
+                tone={tutorialData.viewedReportsPage ? 'success' : 'neutral'}
+                color={tutorialData.viewedReportsPage ? 'base' : 'subdued'}
+                size='base'
+              />View Reports Page
+          </s-stack> {/*End outer s-stack for icon */}
+
+              <s-button inlineSize="auto"
+                href="/app/reports"
+                icon="order"
+                variant="secondary"
+                style={{ marginInlinestar: 'auto'}}
+              >
+              Reports
+          </s-button>
+        </s-stack>
+      </s-stack>
+      </s-grid>      
+    </s-section>)}
+
       {/* End Setup guide */}
       
       <s-grid gridTemplateColumns="3fr 1fr"  gap="base">

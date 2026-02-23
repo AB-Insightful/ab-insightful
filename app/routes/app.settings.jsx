@@ -1,7 +1,8 @@
 //imports
 import { authenticate } from "../shopify.server";
-import { useLoaderData, useFetcher } from "react-router";
-import { useEffect, useState } from "react";
+import { useLoaderData, useFetcher } from "react-router"
+import { useEffect, useRef } from "react";
+import { useState } from "react";
 import db from "../db.server";
 
 //loader for default goal, contact email and contact phone
@@ -17,10 +18,17 @@ export const loader = async ({ request }) => {
       contactPhones: { select: { id: true, phoneNumber: true } },
     },
   });
+
+  //import for tutorial data
+  const { getTutorialData } = await import ("../services/tutorialData.server");
+  const tutorialInfo = await getTutorialData();
+
+           
   return {
     defaultGoal: project.defaultGoal,
     contactEmails: project.contactEmails,
     contactPhones: project.contactPhones,
+    tutorialData: tutorialInfo
   };
 };
 
@@ -39,6 +47,18 @@ export const action = async ({ request }) => {
       create: { shop: session.shop, name: `${session.shop} Project`, defaultGoal },
     });
     return { ok: true, intent: "updateDefaultGoal", defaultGoal };
+  }
+  
+  if(intent === "tutorial_viewed")
+  {
+    try {
+        const { setGeneralSettings } = await import("../services/tutorialData.server");
+        await setGeneralSettings(1, true); //always sets the item in tutorialdata to true, selects 1st tuple
+        return {ok: true, action: "tutorial_viewed"}; 
+      } catch (error) {
+        console.error("Tutorial Error:", error);
+        return {ok: false, error: "Failed to update viewedListExperiment"}, { status: 500};
+      }
   }
 
   //add an email to the list
@@ -123,9 +143,11 @@ function formatPhone(digits) {
 }
 
 export default function Settings() {
-  const { defaultGoal, contactEmails, contactPhones } = useLoaderData();
+  const { defaultGoal, contactEmails, contactPhones, tutorialData } = useLoaderData();
   const fetcher = useFetcher();
   const goalFetcher = useFetcher();
+  const tutorialFetcher = useFetcher(); // for tutorial actions
+  const modalRef = useRef(null);
 
   //input
   const [emailInput, setEmailInput] = useState("");
@@ -181,8 +203,42 @@ export default function Settings() {
     );
   };
 
+  useEffect(() => {
+  //displays tutorialData when scenario met
+    if ((tutorialData.generalSettings == false) && modalRef.current && typeof modalRef.current.showOverlay === 'function') {
+        modalRef.current.showOverlay();
+    }
+  }, [tutorialData]);
+
   return (
     <s-page heading="App Settings">
+      <s-modal
+            id="tutorial-modal-settings"
+            ref={modalRef}
+            heading="Quick tour"
+            padding="base"
+            size="base"
+      >
+        <s-stack gap="base">
+          <s-paragraph>
+            Here is some tutorial information.
+          </s-paragraph>
+        
+            <s-button
+            variant="primary"
+            inLineSize = "fill"
+            commandFor="tutorial-modal-settings"
+            command="--hide"
+            onClick = {() => {
+              tutorialFetcher.submit(
+                { intent: "tutorial_viewed"},
+                {method: "post"}
+              )
+            }}
+            > Understood. Do not show this again.
+            </s-button>
+        </s-stack>
+      </s-modal>
 
       {/*notification settings*/}
       <s-section heading="Notification Settings">

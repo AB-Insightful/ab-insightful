@@ -4,12 +4,47 @@ import betaFactory from "@stdlib/random-base-beta";
 import { Prisma } from "@prisma/client";
 
 // Function to create an experiment. Returns the created experiment object.
-export async function createExperiment(experimentData) {
+export async function createExperiment(
+  experimentData,
+  {
+    variantEnabled = false,
+    controlSectionId = "",
+    primaryVariantSectionId = "",
+    secondaryVariantSectionId = "",
+  } = {},
+) {
   console.log("Creating experiment with data:", experimentData);
+
+  const variantCreates = [];
+
+  variantCreates.push({
+    name: "Control",
+    configData: controlSectionId
+      ? { sectionId: controlSectionId }
+      : null,
+  });
+
+  if (primaryVariantSectionId) {
+    variantCreates.push({
+      name: "Variant A",
+      configData: { sectionId: primaryVariantSectionId },
+    });
+  }
+
+  if (variantEnabled && secondaryVariantSectionId) {
+    variantCreates.push({
+      name: "Variant B",
+      configData: { sectionId: secondaryVariantSectionId },
+    });
+  }
+
   // Update Prisma database using npx prisma
   const result = await db.experiment.create({
     data: {
       ...experimentData, // Will include all DB fields of a new experiment
+      variants: {
+        create: variantCreates,
+      },
     },
   });
   console.log("Created experiment:", result);

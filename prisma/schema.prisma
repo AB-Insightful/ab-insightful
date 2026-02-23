@@ -30,6 +30,7 @@ model Session {
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
   webPixelId    String?
+  tutorialData  TutorialData?
 }
 
 model Project {
@@ -256,6 +257,18 @@ model Analysis {
   @@map("Analysis")
 }
 
+model TutorialData {
+  id                    Int @id @default(autoincrement())
+
+  session               Session @relation(fields: [sessionId], references: [id] ) //one way association   
+  sessionId             String  @unique
+
+  generalSettings       Boolean
+  createExperiment      Boolean
+  viewedListExperiment  Boolean
+  viewedReportsPage     Boolean
+  onSiteTracking        Boolean //might not be used
+}
 //store user's email for scheduled reports
 model ContactEmail {
   id        Int      @id @default(autoincrement()) @map("email_id")

@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useLoaderData } from "react-router";
+import { useState, useEffect, useRef } from "react";
+import { useLoaderData, useFetcher } from "react-router";
 import { formatRuntime } from "../utils/formatRuntime.js";
 import { useDateRange } from "../contexts/DateRangeContext";
 import DateRangePicker from "../components/DateRangePicker";
@@ -26,17 +26,49 @@ export async function loader({ request }) {
     getSessionReportData(admin), // Pass the authenticated admin here
   ]);
 
+  //looks up tutorial data
+  const { getTutorialData } = await import ("../services/tutorialData.server");
+  const tutorialInfo = await getTutorialData();
+
   // loader now returns a structured object containing both experiments and session data
   // if either is missing, it defaults to an empty array or object to prevent client-side errors
   return {
     experiments: experiments || [],
-    sessionData: sessionData || { sessions: [], total: 0 },
+    sessionData: sessionData || { sessions: [], total: 0 }, 
+    tutorialData: tutorialInfo
   };
 }
 
+
+//client side code (probably -Paul)
+
+export async function action ({request})
+{
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+  if(intent === "tutorial_viewed")
+  {
+    try {
+        const { setViewedReportsPage } = await import("../services/tutorialData.server");
+        await setViewedReportsPage(1, true); //always sets the item in tutorialdata to true, selects 1st tuple
+        return {ok: true, action: "tutorial_viewed"}; 
+      } catch (error) {
+        console.error("Tutorial Error:", error);
+        return {ok: false, error: "Failed to update viewedListExperiment"}, { status: 500};
+      }
+  }
+  
+  return { ok: false, error: "unknown intent"};
+
+}
 export default function Reports() {
   //get list of experiments
-  const { experiments, sessionData } = useLoaderData();
+  const { experiments, sessionData, tutorialData } = useLoaderData();
+  const tutorialFetcher = useFetcher(); //performs task for the tutorial popup
+  
+  const modalRef = useRef(null);
+  
+
 
   //get date range from context
   const { dateRange } = useDateRange();
@@ -180,6 +212,12 @@ export default function Reports() {
 
   //filter experiments when dateRange from context changes or experiments load
   useEffect(() => {
+
+    //tutorial display conditional 
+    if ((tutorialData.viewedReportsPage == false) && modalRef.current && typeof modalRef.current.showOverlay === 'function') {
+      modalRef.current.showOverlay();
+    }
+
     if (dateRange && experiments && sessionData) {
       setFilteredExperiments(filterByDateRange(dateRange.start, dateRange.end));
 
@@ -195,12 +233,41 @@ export default function Reports() {
         total: updatedSession.reduce((acc, curr) => acc + curr.count, 0),
       });
     }
-  }, [dateRange, experiments, sessionData]);
+  }, [tutorialData, dateRange, experiments, sessionData]);
 
   return (
     <s-page heading="Reports">
       {/* date range picker component */}
       <DateRangePicker onDateRangeChange={handleDateRangeChange} />
+      
+      {/*modal popup for tutorial */}
+      <s-modal
+            id="tutorial-modal-report"
+            ref={modalRef}
+            heading="Quick tour"
+            padding="base"
+            size="base"
+          >
+          <s-stack gap="base">
+            <s-paragraph>
+              Here is some tutorial information.
+            </s-paragraph>
+          
+              <s-button
+              variant="primary"
+              inLineSize = "fill"
+              commandFor="tutorial-modal-report"
+              command="--hide"
+              onClick = {() => {
+                tutorialFetcher.submit(
+                  { intent: "tutorial_viewed"},
+                  {method: "post"}
+                )
+              }}
+              > Understood. Do not show this again.
+              </s-button>
+          </s-stack>
+        </s-modal>
 
       {/* Analytics Dashboard Grid Section */}
       <div style={{ margin: "24px 0" }}>

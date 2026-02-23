@@ -15,218 +15,234 @@ if (typeof window !== "undefined") {
 
 import { authenticate } from "../shopify.server";
 import { useFetcher, redirect, useLoaderData } from "react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import db from "../db.server";
 
 // Server side code
 export const action = async ({ request }) => {
-  // Authenticate request
-  const { session } = await authenticate.admin(request);
   const formData = await request.formData();
+  const intent = formData.get("intent"); //for tutorialData
 
-  // Get POST request form data & create experiment
-  const name = (formData.get("name") || "").trim();
-  const description = (formData.get("description") || "").trim();
-  const sectionId = (formData.get("sectionId") || "").trim();
-  const controlSectionId = (formData.get("controlSectionId") || "").trim();
-  const variantSectionId = (formData.get("variantSectionId") || "").trim();
-  const variantEnabled = formData.get("variant") === "true";
-  const goalValue = (formData.get("goal") || "").trim();
-  const endCondition = (formData.get("endCondition") || "").trim();
-  const trafficSplitStr = (formData.get("trafficSplit") || "50").trim(); // Default to "0"
-  const probabilityToBeBestStr = (
-    formData.get("probabilityToBeBest") || ""
-  ).trim();
-  const durationStr = (formData.get("duration") || "").trim();
-  const timeUnitValue = (formData.get("timeUnit") || "").trim();
-
-  // Date/Time Fields (accepts both client-side UTC strings or separate date/time fields)
-  const startDateUTC = (formData.get("startDateUTC") || "").trim();
-  const endDateUTC = (formData.get("endDateUTC") || "").trim();
-  const startDateStr = (formData.get("startDate") || "").trim();
-  const startTimeStr = (formData.get("startTime") || "").trim();
-  const endDateStr = (formData.get("endDate") || "").trim();
-  const endTimeStr = (formData.get("endTime") || "").trim();
-
-  // Storage Validation Errors
-  const errors = {}; // will be length 0 when there are no errors
-
-  if (!name) errors.name = "Name is required";
-  if (!description) errors.description = "Description is required";
-  if (!sectionId) errors.sectionId = "Section Id is required";
-  if (variantEnabled && !variantSectionId)
-    errors.variantSectionId = "Variant Section Id is required"; //only validate if variant is true
-  if (!startDateStr && !startDateUTC)
-    errors.startDate = "Start Date is required";
-  if (endCondition === "stableSuccessProbability" && !probabilityToBeBestStr)
-    errors.probabilityToBeBest = "Probability is required";
-  if (endCondition === "stableSuccessProbability" && !durationStr)
-    errors.duration = "Duration is required";
-
-  // helper to build a Date from local date + time components
-  const combineLocalToDate = (dateStr, timeStr = "00:00") => {
-    if (!dateStr) return null;
-    const parts = dateStr.split("-").map(Number);
-    if (parts.length !== 3 || parts.some((p) => Number.isNaN(p))) return null;
-    const [y, m, d] = parts;
-    const [hh = 0, mm = 0] = (timeStr || "00:00").split(":").map(Number);
-    if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
-    const dt = new Date(y, m - 1, d, hh || 0, mm || 0, 0, 0);
-    return Number.isNaN(dt.getTime()) ? null : dt;
-  };
-
-  //build startDateTime
-  let startDateTime = null;
-  if (startDateUTC) {
-    startDateTime = new Date(startDateUTC);
-    if (Number.isNaN(startDateTime.getTime())) startDateTime = null;
-  } else {
-    startDateTime = combineLocalToDate(startDateStr, startTimeStr);
+  //tutorial db update 
+  if(intent === "tutorial_viewed")
+  {
+    try {
+        const { setCreateExpPage } = await import("../services/tutorialData.server");
+        await setCreateExpPage(1, true); //always sets the item in tutorialdata to true, selects 1st tuple
+        return {ok: true, action: "tutorial_viewed"}; 
+      } catch (error) {
+        console.error("Tutorial Error:", error);
+        return {ok: false, error: "Failed to update viewedListExperiment"}, { status: 500};
+      }
   }
+  else
+  {
+    // Authenticate request
+    const { session } = await authenticate.admin(request);
 
-  // validate startDateTime is present and in the future
-  const now = new Date();
-  if (!startDateTime) {
-    errors.startDate = "Start date is required";
-  } else if (startDateTime <= now) {
-    errors.startDate = "Start date/time must be in the future";
-  }
+    // Get POST request form data & create experiment
+    const name = (formData.get("name") || "").trim();
+    const description = (formData.get("description") || "").trim();
+    const sectionId = (formData.get("sectionId") || "").trim();
+    const controlSectionId = (formData.get("controlSectionId") || "").trim();
+    const variantSectionId = (formData.get("variantSectionId") || "").trim();
+    const variantEnabled = formData.get("variant") === "true";
+    const goalValue = (formData.get("goal") || "").trim();
+    const endCondition = (formData.get("endCondition") || "").trim();
+    const trafficSplitStr = (formData.get("trafficSplit") || "50").trim(); // Default to "0"
+    const probabilityToBeBestStr = (
+      formData.get("probabilityToBeBest") || ""
+    ).trim();
+    const durationStr = (formData.get("duration") || "").trim();
+    const timeUnitValue = (formData.get("timeUnit") || "").trim();
 
-  // If endCondition is "endDate", build and validate endDateTime
-  let endDateTime = null;
-  if (endCondition === "endDate") {
-    if (endDateUTC) {
-      endDateTime = new Date(endDateUTC);
-      if (Number.isNaN(endDateTime.getTime())) endDateTime = null;
-    } else {
-      const effectiveEndTimeStr = endTimeStr || "23:59";
-      endDateTime = combineLocalToDate(endDateStr, effectiveEndTimeStr);
-    }
-    if (!endDateTime) {
-      errors.endDate = "End date is required";
-    } else if (!startDateTime) {
-      // skip further validation if startDateTime is invalid/missing
-    } else if (endDateTime <= startDateTime) {
-      errors.endDate = "End must be after start date/time";
-    }
-  }
-  // Only validates endDate if endCondition is 'End date'
-  const isEndDate = endCondition === "endDate";
-  if (isEndDate) {
-    if (!endDateStr) {
-      errors.endDate = "End date is required";
-    }
-  }
+    // Date/Time Fields (accepts both client-side UTC strings or separate date/time fields)
+    const startDateUTC = (formData.get("startDateUTC") || "").trim();
+    const endDateUTC = (formData.get("endDateUTC") || "").trim();
+    const startDateStr = (formData.get("startDate") || "").trim();
+    const startTimeStr = (formData.get("startTime") || "").trim();
+    const endDateStr = (formData.get("endDate") || "").trim();
+    const endTimeStr = (formData.get("endTime") || "").trim();
 
-  // Only validates probability to be best if endCondition is set to Stable Success Probability
-  const isStableSuccessProbability =
-    endCondition === "stableSuccessProbability";
-  if (isStableSuccessProbability) {
-    if (probabilityToBeBestStr === "") {
+    // Storage Validation Errors
+    const errors = {}; // will be length 0 when there are no errors
+
+    if (!name) errors.name = "Name is required";
+    if (!description) errors.description = "Description is required";
+    if (!sectionId) errors.sectionId = "Section Id is required";
+    if (variantEnabled && !variantSectionId)
+      errors.variantSectionId = "Variant Section Id is required"; //only validate if variant is true
+    if (!startDateStr && !startDateUTC)
+      errors.startDate = "Start Date is required";
+    if (endCondition === "stableSuccessProbability" && !probabilityToBeBestStr)
       errors.probabilityToBeBest = "Probability is required";
-    } else {
-      const num = Number(probabilityToBeBestStr);
-      if (!Number.isInteger(num)) {
-        errors.probabilityToBeBest = "Probability must be a whole numer";
-      } else if (num < 51 || num > 100) {
-        errors.probabilityToBeBest = "Probability must be between 51-100";
-      }
-    }
-    if (durationStr === "") {
+    if (endCondition === "stableSuccessProbability" && !durationStr)
       errors.duration = "Duration is required";
+
+    // helper to build a Date from local date + time components
+    const combineLocalToDate = (dateStr, timeStr = "00:00") => {
+      if (!dateStr) return null;
+      const parts = dateStr.split("-").map(Number);
+      if (parts.length !== 3 || parts.some((p) => Number.isNaN(p))) return null;
+      const [y, m, d] = parts;
+      const [hh = 0, mm = 0] = (timeStr || "00:00").split(":").map(Number);
+      if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+      const dt = new Date(y, m - 1, d, hh || 0, mm || 0, 0, 0);
+      return Number.isNaN(dt.getTime()) ? null : dt;
+    };
+
+    //build startDateTime
+    let startDateTime = null;
+    if (startDateUTC) {
+      startDateTime = new Date(startDateUTC);
+      if (Number.isNaN(startDateTime.getTime())) startDateTime = null;
     } else {
-      const dur = Number(durationStr);
-      if (!Number.isInteger(dur)) {
-        errors.duration = "Duration must be a whole number";
-      } else if (dur < 1) {
-        errors.duration = "Duration must be at least 1";
+      startDateTime = combineLocalToDate(startDateStr, startTimeStr);
+    }
+
+    // validate startDateTime is present and in the future
+    const now = new Date();
+    if (!startDateTime) {
+      errors.startDate = "Start date is required";
+    } else if (startDateTime <= now) {
+      errors.startDate = "Start date/time must be in the future";
+    }
+
+    // If endCondition is "endDate", build and validate endDateTime
+    let endDateTime = null;
+    if (endCondition === "endDate") {
+      if (endDateUTC) {
+        endDateTime = new Date(endDateUTC);
+        if (Number.isNaN(endDateTime.getTime())) endDateTime = null;
+      } else {
+        const effectiveEndTimeStr = endTimeStr || "23:59";
+        endDateTime = combineLocalToDate(endDateStr, effectiveEndTimeStr);
+      }
+      if (!endDateTime) {
+        errors.endDate = "End date is required";
+      } else if (!startDateTime) {
+        // skip further validation if startDateTime is invalid/missing
+      } else if (endDateTime <= startDateTime) {
+        errors.endDate = "End must be after start date/time";
       }
     }
-    if (!timeUnitValue) {
-      errors.timeUnit = "Time unit is required";
+    // Only validates endDate if endCondition is 'End date'
+    const isEndDate = endCondition === "endDate";
+    if (isEndDate) {
+      if (!endDateStr) {
+        errors.endDate = "End date is required";
+      }
     }
-  }
 
-  if (Object.keys(errors).length) return { errors };
+    // Only validates probability to be best if endCondition is set to Stable Success Probability
+    const isStableSuccessProbability =
+      endCondition === "stableSuccessProbability";
+    if (isStableSuccessProbability) {
+      if (probabilityToBeBestStr === "") {
+        errors.probabilityToBeBest = "Probability is required";
+      } else {
+        const num = Number(probabilityToBeBestStr);
+        if (!Number.isInteger(num)) {
+          errors.probabilityToBeBest = "Probability must be a whole numer";
+        } else if (num < 51 || num > 100) {
+          errors.probabilityToBeBest = "Probability must be between 51-100";
+        }
+      }
+      if (durationStr === "") {
+        errors.duration = "Duration is required";
+      } else {
+        const dur = Number(durationStr);
+        if (!Number.isInteger(dur)) {
+          errors.duration = "Duration must be a whole number";
+        } else if (dur < 1) {
+          errors.duration = "Duration must be at least 1";
+        }
+      }
+      if (!timeUnitValue) {
+        errors.timeUnit = "Time unit is required";
+      }
+    }
 
-  // Find or create a parent Project for this shop
-  const shop = session.shop;
-  const project = await db.project.upsert({
-    where: { shop: shop },
-    update: {},
-    create: { shop: shop, name: `${shop} Project` },
-  });
-  const projectId = project.id;
+    if (Object.keys(errors).length) return { errors };
 
-  // Map client-side goal value ('view-page') to DB goal name
-  const goalNameMap = {
-    viewPage: "Viewed Page",
-    startCheckout: "Started Checkout",
-    addToCart: "Added Product to Cart",
-    completedCheckout: "Completed Checkout",
-  };
-  const goalName = goalNameMap[goalValue];
-
-  // Find the corresponding Goal record ID
-  const goalRecord = await db.goal.findUnique({
-    where: { name: goalName },
-  });
-
-  if (!goalRecord) {
-    return { errors: { goal: "Could not find matching goal in the database" } };
-  }
-
-  // Convert form data strings to schema-ready types
-  const goalId = goalRecord.id;
-  const trafficSplit = parseFloat(trafficSplitStr) / 100.0;
-
-  // Converts the date string to a Date object for Prisma
-  // If no date was provided, set to null
-  const startDate = startDateTime;
-  const endDate = endDateTime || null;
-
-  //convert stable success probability variables to schema-ready types
-  const probabilityToBeBest = probabilityToBeBestStr
-    ? Number(probabilityToBeBestStr)
-    : null;
-  const duration = durationStr ? Number(durationStr) : null;
-  const timeUnit = timeUnitValue || null;
-
-  // Assembles the final data object for Prisma
-  const experimentData = {
-    name: name,
-    description: description,
-    status: "draft",
-    trafficSplit: trafficSplit,
-    endCondition: endCondition,
-    startDate: startDate,
-    endDate: endDate,
-    sectionId: sectionId,
-    controlSectionId: controlSectionId,
-    project: {
-      // Connect to the parent project
-      connect: {
-        id: projectId,
-      },
-    },
-    experimentGoals: {
-      // Create the related goal
-      create: [
-        {
-          goalId: goalId,
-          goalRole: "primary",
-        },
-      ],
-    },
-  };
-
-  if (isStableSuccessProbability) {
-    Object.assign(experimentData, {
-      probabilityToBeBest,
-      duration,
-      timeUnit,
+    // Find or create a parent Project for this shop
+    const shop = session.shop;
+    const project = await db.project.upsert({
+      where: { shop: shop },
+      update: {},
+      create: { shop: shop, name: `${shop} Project` },
     });
-  }
+    const projectId = project.id;
+
+    // Map client-side goal value ('view-page') to DB goal name
+    const goalNameMap = {
+      viewPage: "Viewed Page",
+      startCheckout: "Started Checkout",
+      addToCart: "Added Product to Cart",
+      completedCheckout: "Completed Checkout",
+    };
+    const goalName = goalNameMap[goalValue];
+
+    // Find the corresponding Goal record ID
+    const goalRecord = await db.goal.findUnique({
+      where: { name: goalName },
+    });
+
+    if (!goalRecord) {
+      return { errors: { goal: "Could not find matching goal in the database" } };
+    }
+
+    // Convert form data strings to schema-ready types
+    const goalId = goalRecord.id;
+    const trafficSplit = parseFloat(trafficSplitStr) / 100.0;
+
+    // Converts the date string to a Date object for Prisma
+    // If no date was provided, set to null
+    const startDate = startDateTime;
+    const endDate = endDateTime || null;
+
+    //convert stable success probability variables to schema-ready types
+    const probabilityToBeBest = probabilityToBeBestStr
+      ? Number(probabilityToBeBestStr)
+      : null;
+    const duration = durationStr ? Number(durationStr) : null;
+    const timeUnit = timeUnitValue || null;
+
+    // Assembles the final data object for Prisma
+    const experimentData = {
+      name: name,
+      description: description,
+      status: "draft",
+      trafficSplit: trafficSplit,
+      endCondition: endCondition,
+      startDate: startDate,
+      endDate: endDate,
+      sectionId: sectionId,
+      controlSectionId: controlSectionId,
+      project: {
+        // Connect to the parent project
+        connect: {
+          id: projectId,
+        },
+      },
+      experimentGoals: {
+        // Create the related goal
+        create: [
+          {
+            goalId: goalId,
+            goalRole: "primary",
+          },
+        ],
+      },
+    };
+
+    if (isStableSuccessProbability) {
+      Object.assign(experimentData, {
+        probabilityToBeBest,
+        duration,
+        timeUnit,
+      });
+    }
 
   const { createExperiment } = await import("../services/experiment.server");
   const experiment = await createExperiment(experimentData, {
@@ -236,8 +252,11 @@ export const action = async ({ request }) => {
     secondaryVariantSectionId: variantSectionId,
   });
 
-  return redirect(`/app/experiments/${experiment.id}`);
-};
+    return redirect(`/app/experiments/${experiment.id}`);
+    }
+  }; //end async action
+
+  
 
 //pull the default goal stored in database, completedCheckout if empty
 export const loader = async ({ request }) => {
@@ -246,7 +265,14 @@ export const loader = async ({ request }) => {
     where: { shop: session.shop },
     select: { defaultGoal: true },
   });
-  return { defaultGoal: project?.defaultGoal ?? "completedCheckout" };
+
+    //looks up tutorial data
+  const { getTutorialData } = await import ("../services/tutorialData.server");
+  const tutorialInfo = await getTutorialData();
+
+  return { defaultGoal: project?.defaultGoal ?? "completedCheckout",
+           tutorialData: tutorialInfo
+   };
 };
 
 //--------------------------- client side ----------------------------------------
@@ -288,6 +314,7 @@ function TimeSelect({
   // local display state so we can show the friendly label while remaining controlled
   const [display, setDisplay] = useState(value ? labelFor(value) : "");
   useEffect(() => {
+    
     // sync whenever parent value changes (including when validation sets an error)
     setDisplay(value ? labelFor(value) : "");
   }, [value]);
@@ -495,8 +522,13 @@ function localDateTimeToISOString(dateStr, timeStr = "00:00") {
 export default function CreateExperiment() {
   //fetcher stores the data in the fields into a form that can be retrieved
   const fetcher = useFetcher();
-  const { defaultGoal } = useLoaderData();
+  const { defaultGoal, tutorialData} = useLoaderData();
+  const tutorialFetcher = useFetcher();
+  const modalRef = useRef(null);
 
+
+ 
+  const [tutorialDismissed, setTutorialDismissed] = useState(false); //this page needs to track tutorial display locally and on db
   //state variables (special variables that remember across re-renders (e.g. user input, counters))
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState(null);
@@ -526,8 +558,16 @@ export default function CreateExperiment() {
   const [startTimeError, setStartTimeError] = useState("");
   const [endTimeError, setEndTimeError] = useState("");
 
-  // keep all date/time errors in sync whenever any date/time value changes
+   //tutorial display conditional 
+  useEffect(() =>
+  {
+    if (!tutorialDismissed && (tutorialData.createExperiment == false) && modalRef.current && typeof modalRef.current.showOverlay === 'function') {
+      modalRef.current.showOverlay();
+    }
+  }, [tutorialData]);
+    
   useEffect(() => {
+    // keep all date/time errors in sync whenever any date/time value changes
     const errors = validateAllDateTimes(startDate, startTime, endDate, endTime);
     if (errors.startDateError !== startDateError)
       setStartDateError(errors.startDateError);
@@ -537,6 +577,9 @@ export default function CreateExperiment() {
       setEndDateError(errors.endDateError);
     if (errors.endTimeError !== endTimeError)
       setEndTimeError(errors.endTimeError);
+
+    //checks for tutorial data
+
   }, [startDate, startTime, endDate, endTime, endCondition]);
 
   // clear end fields / errors when user switches end condition away from "endDate"
@@ -924,6 +967,35 @@ export default function CreateExperiment() {
 
   return (
     <s-page heading="Create Experiment" variant="headingLg">
+      {/*modal popup for tutorial */}
+      <s-modal
+            id="tutorial-modal-create-exp"
+            ref={modalRef}
+            heading="Quick tour"
+            padding="base"
+            size="base"
+          >
+          <s-stack gap="base">
+            <s-paragraph>
+              Here is some tutorial information.
+            </s-paragraph>
+          
+              <s-button
+              variant="primary"
+              inLineSize = "fill"
+              commandFor="tutorial-modal-create-exp"
+              command="--hide"
+              onClick = {() => {
+                setTutorialDismissed(true)
+                tutorialFetcher.submit(
+                  { intent: "tutorial_viewed"},
+                  {method: "post"}
+                )
+              }}
+              > Understood. Do not show this again.
+              </s-button>
+          </s-stack>
+        </s-modal>
       <s-button
         slot="primary-action"
         variant="primary"

@@ -1,6 +1,6 @@
 //imports
 import { authenticate } from "../shopify.server";
-import { useLoaderData, useFetcher } from "react-router";
+import { useLoaderData, useFetcher } from "react-router"
 import { useEffect, useRef } from "react";
 import { useState } from "react";
 import db from "../db.server";
@@ -46,7 +46,7 @@ export const action = async ({ request }) => {
       update: { defaultGoal },
       create: { shop: session.shop, name: `${session.shop} Project`, defaultGoal },
     });
-    return { ok: true };
+    return { ok: true, intent: "updateDefaultGoal", defaultGoal };
   }
   
   if(intent === "tutorial_viewed")
@@ -145,12 +145,18 @@ function formatPhone(digits) {
 export default function Settings() {
   const { defaultGoal, contactEmails, contactPhones, tutorialData } = useLoaderData();
   const fetcher = useFetcher();
+  const goalFetcher = useFetcher();
   const tutorialFetcher = useFetcher(); // for tutorial actions
   const modalRef = useRef(null);
 
   //input
   const [emailInput, setEmailInput] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
+  const [selectedDefaultGoal, setSelectedDefaultGoal] = useState(defaultGoal);
+  const [savedDefaultGoal, setSavedDefaultGoal] = useState(defaultGoal);
+  const [showGoalSaveSuccess, setShowGoalSaveSuccess] = useState(false);
+  const [isGoalSaveHovered, setIsGoalSaveHovered] = useState(false);
+  const [isGoalSavePressed, setIsGoalSavePressed] = useState(false);
   //chip id on hover
   const [hoveredEmailId, setHoveredEmailId] = useState(null);
   const [hoveredPhoneId, setHoveredPhoneId] = useState(null);
@@ -158,11 +164,44 @@ export default function Settings() {
   const emailError = fetcher.data?.field === "email" ? fetcher.data.error : null;
   const phoneError = fetcher.data?.field === "phone" ? fetcher.data.error : null;
 
+  const hasPendingGoalChanges = selectedDefaultGoal !== savedDefaultGoal;
+  const isSavingGoal = goalFetcher.state !== "idle";
+
+  useEffect(() => {
+    setSelectedDefaultGoal(defaultGoal);
+    setSavedDefaultGoal(defaultGoal);
+  }, [defaultGoal]);
+
+  useEffect(() => {
+    if (
+      goalFetcher.state === "idle" &&
+      goalFetcher.data?.ok &&
+      goalFetcher.data?.intent === "updateDefaultGoal"
+    ) {
+      setSavedDefaultGoal(goalFetcher.data.defaultGoal);
+      setSelectedDefaultGoal(goalFetcher.data.defaultGoal);
+      setShowGoalSaveSuccess(true);
+    }
+  }, [goalFetcher.state, goalFetcher.data]);
+
+  useEffect(() => {
+    if (hasPendingGoalChanges) {
+      setShowGoalSaveSuccess(false);
+    }
+  }, [hasPendingGoalChanges]);
+
   //handler functions
   const handleAddEmail = () => {fetcher.submit({ intent: "addEmail", email: emailInput }, { method: "post" });};
   const handleDeleteEmail = (id) => {fetcher.submit({ intent: "deleteEmail", id: String(id) }, { method: "post" });};
   const handleAddPhone = () => {fetcher.submit({ intent: "addPhone", phone: phoneInput }, { method: "post" });};
   const handleDeletePhone = (id) => {fetcher.submit({ intent: "deletePhone", id: String(id) }, { method: "post" });};
+  const handleSaveDefaultGoal = () => {
+    if (!hasPendingGoalChanges || isSavingGoal) return;
+    goalFetcher.submit(
+      { intent: "updateDefaultGoal", defaultGoal: selectedDefaultGoal },
+      { method: "post" },
+    );
+  };
 
   useEffect(() => {
   //displays tutorialData when scenario met
@@ -298,27 +337,43 @@ export default function Settings() {
 
       {/*experiment configuration*/}
       <s-section heading="Experiment Configuration">
-        <fetcher.Form method="post">
-          <input type="hidden" name="intent" value="updateDefaultGoal" />
+        <div>
           <s-stack direction="block" gap="base">
             <s-select
               label="Select a new default goal for creating new experiments"
               name="defaultGoal"
-              value={defaultGoal}
-              onChange={(e) =>
-                fetcher.submit(
-                  { intent: "updateDefaultGoal", defaultGoal: e.target.value },
-                  { method: "post" }
-                )
-              }
+              value={selectedDefaultGoal}
+              onChange={(e) => setSelectedDefaultGoal(e.target.value)}
             >
               <s-option value="completedCheckout">Completed Checkout</s-option>
               <s-option value="viewPage">Viewed Page</s-option>
               <s-option value="startCheckout">Started Checkout</s-option>
               <s-option value="addToCart">Added Product to Cart</s-option>
             </s-select>
+            <s-stack direction="inline" gap="small" alignItems="center">
+              <s-button
+                variant="primary"
+                disabled={!hasPendingGoalChanges || isSavingGoal}
+                onClick={handleSaveDefaultGoal}
+                onMouseEnter={() => setIsGoalSaveHovered(true)}
+                onMouseLeave={() => {
+                  setIsGoalSaveHovered(false);
+                  setIsGoalSavePressed(false);
+                }}
+                onMouseDown={() => setIsGoalSavePressed(true)}
+                onMouseUp={() => setIsGoalSavePressed(false)}
+                style={{
+                  opacity: isGoalSaveHovered ? "0.95" : "1",
+                  transform: isGoalSavePressed ? "translateY(1px)" : "translateY(0)",
+                  transition: "opacity 120ms ease, transform 120ms ease",
+                }}
+              >
+                Save
+              </s-button>
+              {showGoalSaveSuccess ? <s-text tone="success">Save success!</s-text> : null}
+            </s-stack>
           </s-stack>
-        </fetcher.Form>
+        </div>
       </s-section>
 
       {/*support & Documentation*/}

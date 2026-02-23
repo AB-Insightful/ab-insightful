@@ -38,7 +38,7 @@ export const action = async ({ request }) => {
       update: { defaultGoal },
       create: { shop: session.shop, name: `${session.shop} Project`, defaultGoal },
     });
-    return { ok: true, intent: "updateDefaultGoal" };
+    return { ok: true, intent: "updateDefaultGoal", defaultGoal };
   }
 
   //add an email to the list
@@ -156,10 +156,11 @@ export default function Settings() {
       goalFetcher.data?.ok &&
       goalFetcher.data?.intent === "updateDefaultGoal"
     ) {
-      setSavedDefaultGoal(selectedDefaultGoal);
+      setSavedDefaultGoal(goalFetcher.data.defaultGoal);
+      setSelectedDefaultGoal(goalFetcher.data.defaultGoal);
       setShowGoalSaveSuccess(true);
     }
-  }, [goalFetcher.state, goalFetcher.data, selectedDefaultGoal]);
+  }, [goalFetcher.state, goalFetcher.data]);
 
   useEffect(() => {
     if (hasPendingGoalChanges) {
@@ -173,6 +174,7 @@ export default function Settings() {
   const handleAddPhone = () => {fetcher.submit({ intent: "addPhone", phone: phoneInput }, { method: "post" });};
   const handleDeletePhone = (id) => {fetcher.submit({ intent: "deletePhone", id: String(id) }, { method: "post" });};
   const handleSaveDefaultGoal = () => {
+    if (!hasPendingGoalChanges || isSavingGoal) return;
     goalFetcher.submit(
       { intent: "updateDefaultGoal", defaultGoal: selectedDefaultGoal },
       { method: "post" },
@@ -279,8 +281,7 @@ export default function Settings() {
 
       {/*experiment configuration*/}
       <s-section heading="Experiment Configuration">
-        <goalFetcher.Form method="post">
-          <input type="hidden" name="intent" value="updateDefaultGoal" />
+        <div>
           <s-stack direction="block" gap="base">
             <s-select
               label="Select a new default goal for creating new experiments"
@@ -316,7 +317,7 @@ export default function Settings() {
               {showGoalSaveSuccess ? <s-text tone="success">Save success!</s-text> : null}
             </s-stack>
           </s-stack>
-        </goalFetcher.Form>
+        </div>
       </s-section>
 
       {/*support & Documentation*/}

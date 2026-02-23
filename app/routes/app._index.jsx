@@ -79,7 +79,7 @@ export const loader = async ({ request }) => {
   const improvementPercent = await getImprovement(latestExperiment.id);
   const {getAnalysis} = await import ("../services/experiment.server");
   const baselineVariantId = latestExperiment.variants?.[0]?.id;
-  const experimentGoalName = expGoalData.goal?.name ?? "found nothing"
+  const experimentGoalName = expGoalData?.goal?.name ?? "found nothing"
   experimentReportData.experimentGoal = experimentGoalName;
 
 

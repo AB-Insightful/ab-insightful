@@ -1,10 +1,9 @@
-//app.experiment._index code
-
-import { useLoaderData, useFetcher } from "react-router";
+import { useLoaderData, useFetcher, useRevalidator } from "react-router";
 import { useEffect, useRef, useState } from "react";
 //import Decimal from 'decimal.js';
 import { formatRuntime } from "../utils/formatRuntime.js";
 import { formatImprovement } from "../utils/formatImprovement.js";
+import { ExperimentStatus } from "@prisma/client";
 
 // Server side code
 
@@ -37,7 +36,12 @@ export async function action({ request }) {
   const experimentId = formData.get("experimentId");
 
   const { 
-    pauseExperiment, 
+    pauseExperiment,
+    resumeExperiment,
+    endExperiment,
+    startExperiment,
+    deleteExperiment,
+    archiveExperiment, 
     getExperimentsWithAnalyses, 
     updateProbabilityOfBest 
   } = await import("../services/experiment.server");
@@ -47,7 +51,7 @@ export async function action({ request }) {
       // Handles ET-22: Direct database update for one experiment
       try {
         await pauseExperiment(experimentId);
-        return { ok: true, action: "paused" };
+        return { ok: true, action: ExperimentStatus.paused };
       } catch (error) {
         console.error("Pause Error:", error);
         return { ok: false, error: "Failed to pause experiment" }, { status: 500 };
@@ -55,9 +59,8 @@ export async function action({ request }) {
 
     case "resume":
       try {
-        const { resumeExperiment } = await import("../services/experiment.server");
         await resumeExperiment(experimentId);
-        return { ok: true, action: "resumed" };
+        return { ok: true, action: ExperimentStatus.active };
       } catch (error) {
         console.error("Resume Error:", error);
         return { ok: false, error: "Failed to resume experiment" }, { status: 500 };
@@ -108,9 +111,8 @@ export async function action({ request }) {
 
     case "archive":
       try {
-        const { archiveExperiment } = await import("../services/experiment.server");
         await archiveExperiment(experimentId);
-        return {ok: true, action: "archived"}; 
+        return {ok: true, action: ExperimentStatus.archived}; 
       } catch (error) {
         console.error("Archive Error:", error);
         return {ok: false, error: "Failed to archive experiment"}, { status: 500};
@@ -126,17 +128,44 @@ export async function action({ request }) {
         console.error("Tutorial Error:", error);
         return {ok: false, error: "Failed to update viewedListExperiment"}, { status: 500};
       }
-
-      default:
-      /* The default case, where experiment stats are queried from the DB & rendered */
+    
+    case "delete":
       try {
-        const list = await getExperimentsWithAnalyses();
-        await updateProbabilityOfBest(list);
-        return { ok: true, action: "analysis_updated" };
+        await deleteExperiment(experimentId);
+        return { ok: true, action: "deleteExperiment" };
       } catch (error) {
-        console.error("Analysis Error:", error);
-        return { ok: false, error: "Stats calculation failed" }, { status: 500 };
+        console.error("Delete Error:", error);
+        return { ok: false, error: "Failed to delete experiment"}, {status: 500}
       }
+
+    case "start":
+      try {
+        await startExperiment(experimentId);
+        return { ok: true, action: ExperimentStatus.active };
+      } catch (error) {
+        console.error("Start Error:", error);
+        return { ok: false, error: "Failed to start experiment"}, {status: 500}
+      }
+
+    case "end":
+      try {
+        await endExperiment(experimentId);
+        return { ok: true, action: ExperimentStatus.completed };
+      } catch (error) {
+        console.error("End Error:", error);
+        return { ok: false, error: "Failed to end experiment"}, {status: 500}
+      }
+
+    default:
+    /* The default case, where experiment stats are queried from the DB & rendered */
+    try {
+      const list = await getExperimentsWithAnalyses();
+      await updateProbabilityOfBest(list);
+      return { ok: true, action: "analysis_updated" };
+    } catch (error) {
+      console.error("Analysis Error:", error);
+      return { ok: false, error: "Stats calculation failed" }, { status: 500 };
+    }
   }
 }
 
@@ -148,6 +177,7 @@ export default function Experimentsindex() {
   const fetcher = useFetcher();
   const tutorialFetcher = useFetcher();
   const didStatsRun = useRef(false); //useRef is a modifier that ensure the didStatsRun value mutation is retained across re-renders of page
+  const revalidator = useRevalidator(); 
 
   //track current experiment row in rename mode, current value in text box, and error message
   const [renamingId, setRenamingId] = useState(null);
@@ -168,18 +198,42 @@ export default function Experimentsindex() {
 
   //applying calculations of stats here to retain read/write separation between action and loader.
   useEffect(() => {
-    //conditional to display tutorial message here
-    if ((tutorialData.viewedListExperiment == false) && modalRef.current && typeof modalRef.current.showOverlay === 'function') {
+    // show tutorial modal
+    if (
+      tutorialData?.viewedListExperiment === false &&
+      modalRef.current &&
+      typeof modalRef.current.showOverlay === "function"
+    ) {
       modalRef.current.showOverlay();
     }
 
-    //applying calculations of stats here to retain read/write separation between action and loader.
-    if (didStatsRun.current == true) return;
+    // run stats calc once
+    if (didStatsRun.current) return;
     if (fetcher.state === "idle") {
       didStatsRun.current = true;
       fetcher.submit(null, { method: "post" });
     }
-  }, [fetcher], tutorialFetcher);
+  }, [fetcher.state, tutorialData]);
+
+  //refresh after popover selection
+  useEffect(() => {
+    if (fetcher.state !== "idle") return;
+    if (!fetcher.data?.ok) return;
+
+    const refreshActions = [
+      ExperimentStatus.paused,
+      ExperimentStatus.active,
+      ExperimentStatus.completed,
+      ExperimentStatus.archived,
+      "deleteExperiment"
+    ];
+
+    if (refreshActions.includes(fetcher.data.action)) {
+      revalidator.revalidate();
+    }
+    
+  }, [fetcher.state, fetcher.data, revalidator]);
+
 
   //function responsible for render of table rows based off db
 
@@ -383,73 +437,140 @@ export default function Experimentsindex() {
             </s-button>
             <s-popover id={`popover-${curExp.id}`}>
               <s-stack direction="block">
+
                 <s-button 
                   variant="tertiary" 
                   commandFor={`popover-${curExp.id}`}
-                  disabled={curExp.status === "active" || fetcher.state !== "idle"}
+                  disabled={fetcher.state !== "idle"}
                   onClick={() => {
-                    fetcher.submit(
-                      {
-                        intent: "resume",
-                        experimentId: curExp.id
-                      },
-                      { method: "post" }
-                    );
                     setRenamingId(curExp.id);
                     setRenameValue(curExp.name ?? "");
                     setRenameError(null);
                   }}
                 >
-                  {resumeLabel}
-                </s-button>
-                <s-button 
-                  variant="tertiary" 
-                  commandFor={`popover-${curExp.id}`}
-                  disabled={curExp.status === "paused" || curExp.status === "archived" || fetcher.state !== "idle"}
-                  onClick={() => {
-                    console.log(`%c [PAUSE TRIGGERED] ID: ${curExp.id}`, "color: #008060; font-weight: bold;");
-                    fetcher.submit(
-                      {
-                        intent:"pause",
-                        experimentId: curExp.id
-                      },
-                      { method: "post"}
-                    );
-                  }}
-                >
-                  Pause
-                </s-button>
-                <s-button 
-                  variant="tertiary" 
-                  commandFor={`popover-${curExp.id}`}
-                  onClick={() => {
-                    fetcher.submit(
-                      {
-                        intent: "rename",
-                        experimentId: curExp.id
-                      },
-                      { method: "post" }
-                    );
-                  }}
-                >
                   Rename
                 </s-button>
-                <s-button 
-                  variant="tertiary" 
-                  commandFor={`popover-${curExp.id}`}
-                  disabled={curExp.status === "archived" || fetcher.state !== "idle"}
-                  onClick={() => {
-                    fetcher.submit(
-                      {
-                        intent: "archive",
-                        experimentId: curExp.id
-                      },
-                      { method: "post"}
-                    );
-                  }}
-                >
-                  Archive
-                </s-button>
+
+                {curExp.status === ExperimentStatus.draft && (
+                  <s-button 
+                    variant="tertiary" 
+                    commandFor={`popover-${curExp.id}`}
+                    disabled={ fetcher.state !== "idle"}
+                    onClick={() => {
+                      console.log(`%c [START TRIGGERED] ID: ${curExp.id}`, "color: #008060; font-weight: bold;");
+                      fetcher.submit(
+                        {
+                          intent:"start",
+                          experimentId: curExp.id
+                        },
+                        { method: "post"}
+                      );
+                    }}
+                  >
+                    Start
+                  </s-button>
+                )}
+
+                {curExp.status === ExperimentStatus.active && (
+                  <s-button 
+                    variant="tertiary" 
+                    commandFor={`popover-${curExp.id}`}
+                    disabled={fetcher.state !== "idle"}
+                    onClick={() => {
+                      console.log(`%c [PAUSE TRIGGERED] ID: ${curExp.id}`, "color: #FFC453; font-weight: bold;");
+                      fetcher.submit(
+                        {
+                          intent:"pause",
+                          experimentId: curExp.id
+                        },
+                        { method: "post"}
+                      );
+                    }}
+                  >
+                    Pause
+                  </s-button>
+                )}
+
+                {(curExp.status === ExperimentStatus.active || curExp.status === ExperimentStatus.paused) && (
+                  <s-button 
+                    variant="tertiary" 
+                    commandFor={`popover-${curExp.id}`}
+                    disabled={fetcher.state !== "idle"}
+                    onClick={() => {
+                      console.log(`%c [END TRIGGERED] ID: ${curExp.id}`, "color: #6B4EFF; font-weight: bold;");
+                      fetcher.submit(
+                        {
+                          intent:"end",
+                          experimentId: curExp.id
+                        },
+                        { method: "post"}
+                      );
+                    }}
+                  >
+                    End
+                  </s-button>
+                )}
+
+                {curExp.status === ExperimentStatus.paused && (
+                  <s-button 
+                    variant="tertiary" 
+                    commandFor={`popover-${curExp.id}`}
+                    disabled={fetcher.state !== "idle"}
+                    onClick={() => {
+                      console.log(`%c [RESUME TRIGGERED] ID: ${curExp.id}`, "color: #2C6ECB; font-weight: bold;");
+                      fetcher.submit(
+                        {
+                          intent: "resume",
+                          experimentId: curExp.id
+                        },
+                        { method: "post" }
+                      );
+                    }}
+                  >
+                    Resume
+                  </s-button>
+                )}
+
+                {curExp.status === ExperimentStatus.completed && (
+                  <s-button 
+                    variant="tertiary" 
+                    commandFor={`popover-${curExp.id}`}
+                    disabled={fetcher.state !== "idle"}
+                    onClick={() => {
+                      console.log(`%c [ARCHIVE TRIGGERED] ID: ${curExp.id}`, "color: #8C9196; font-weight: bold;");
+                      fetcher.submit(
+                        {
+                          intent: "archive",
+                          experimentId: curExp.id
+                        },
+                        { method: "post"}
+                      );
+                    }}
+                  >
+                    Archive
+                  </s-button>
+                )}
+
+                {curExp.status === ExperimentStatus.draft && (
+                  <s-button 
+                    variant="tertiary" 
+                    commandFor={`popover-${curExp.id}`}
+                    disabled={fetcher.state !== "idle"}
+                    onClick={() => {
+                      console.log(`%c [DELETE TRIGGERED] ID: ${curExp.id}`, "color: #D82C0D; font-weight: bold;");
+                      fetcher.submit(
+                        {
+                          intent: "delete",
+                          experimentId: curExp.id,
+                        },
+                        { method: "post" }
+                      );
+
+                    }}
+                  >
+                    Delete
+                  </s-button>
+                )}
               </s-stack>
             </s-popover>
           </s-table-cell>

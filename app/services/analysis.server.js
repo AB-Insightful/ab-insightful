@@ -2,6 +2,7 @@
 import db from "../db.server";
 
 import { setProbabilityOfBest } from "./experiment.server";
+import { ExperimentStatus } from "@prisma/client";
 
 //get analysis by id
 export async function getAnalysisById(id) {
@@ -24,7 +25,7 @@ export async function getAnalysisById(id) {
 export async function createAnalysisSnapshot() {
   // 1. Get active experiments with their variants and goals
   const experiments = await db.experiment.findMany({
-    where: { status: "active" },
+    where: { status: ExperimentStatus.active },
     select: {
       id: true,
       startDate: true,

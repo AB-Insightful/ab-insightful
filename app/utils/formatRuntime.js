@@ -1,13 +1,15 @@
+import { ExperimentStatus } from "@prisma/client";
+
 export function formatRuntime(startDateISO, endDateISO, status) {
     
     // Handles non-started experiments
-    if (status.toLowerCase() === "draft" || status.toLowerCase() === "scheduled" || !startDateISO) return "-";
+    if (status.toLowerCase() === ExperimentStatus.draft || status.toLowerCase() === "scheduled" || !startDateISO) return "-";
 
     const startDate = new Date(startDateISO);
     let endDate;
 
-    if (status.toLowerCase() === "active") endDate = new Date(); // currently running experiment
-    else if (status.toLowerCase() === "completed" && endDateISO) endDate = new Date(endDateISO); // completed experiment
+    if (status.toLowerCase() === ExperimentStatus.active) endDate = new Date(); // currently running experiment
+    else if (status.toLowerCase() === ExperimentStatus.completed && endDateISO) endDate = new Date(endDateISO); // completed experiment
     else return "-"; // for any other status, return "-"
     
     // Check for invalid dates

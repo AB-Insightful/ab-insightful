@@ -17,6 +17,7 @@ import { authenticate } from "../shopify.server";
 import { useFetcher, redirect, useLoaderData } from "react-router";
 import { useState, useEffect } from "react";
 import db from "../db.server";
+import { ExperimentStatus } from "@prisma/client";
 
 // Server side code
 export const loader = async ({ params, request }) => {
@@ -81,6 +82,7 @@ export const loader = async ({ params, request }) => {
   return {
     experiment: {
       id: experiment.id,
+      status: experiment.status,
       name: experiment.name,
       description: experiment.description,
       sectionId: experiment.sectionId,
@@ -125,6 +127,7 @@ export const action = async ({ request, params }) => {
   ).trim();
   const durationStr = (formData.get("duration") || "").trim();
   const timeUnitValue = (formData.get("timeUnit") || "").trim();
+  const intent = formData.get("intent");
 
   // Date/Time Fields (accepts both client-side UTC strings or separate date/time fields)
   const startDateUTC = (formData.get("startDateUTC") || "").trim();
@@ -235,6 +238,13 @@ export const action = async ({ request, params }) => {
 
   if (Object.keys(errors).length) return { errors };
 
+  // For start button on side panel
+  if (intent === "start") {
+    const { startExperiment } = await import("../services/experiment.server");
+    await startExperiment(experimentId);
+    return redirect(`/app/experiments/${experimentId}`);
+  }
+
   // Find or create a parent Project for this shop
   const shop = session.shop;
   const project = await db.project.upsert({
@@ -282,7 +292,7 @@ export const action = async ({ request, params }) => {
   const experimentData = {
     name: name,
     description: description,
-    status: "draft",
+    status: ExperimentStatus.draft,
     trafficSplit: trafficSplit,
     endCondition: endCondition,
     startDate: startDate,
@@ -1048,6 +1058,23 @@ export default function EditExperiment() {
                 })
               : "—"}
           </s-text>
+          {/* Start button for draft experiments */}
+          {loaderData?.experiment?.status === "draft" && (
+            <s-stack justifyContent="center" paddingBlockStart="base">
+                <s-button
+                  variant="primary"
+                  disabled={fetcher.state !== "idle"}
+                  onClick={() => {
+                    fetcher.submit(
+                      { intent: "start" },
+                      { method: "post" }
+                    );
+                  }}
+                >
+                  Start Experiment
+                </s-button>
+            </s-stack>
+          )}
         </s-stack>
       </s-section>
 

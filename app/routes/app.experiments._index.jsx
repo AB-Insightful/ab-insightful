@@ -198,19 +198,22 @@ export default function Experimentsindex() {
 
   //applying calculations of stats here to retain read/write separation between action and loader.
   useEffect(() => {
-    //conditional to display tutorial message here
-    if ((tutorialData.viewedListExperiment == false) && modalRef.current && typeof modalRef.current.showOverlay === 'function') {
+    // show tutorial modal
+    if (
+      tutorialData?.viewedListExperiment === false &&
+      modalRef.current &&
+      typeof modalRef.current.showOverlay === "function"
+    ) {
       modalRef.current.showOverlay();
     }
 
-    //applying calculations of stats here to retain read/write separation between action and loader.
-    if (didStatsRun.current == true) return;
+    // run stats calc once
+    if (didStatsRun.current) return;
     if (fetcher.state === "idle") {
       didStatsRun.current = true;
       fetcher.submit(null, { method: "post" });
     }
-  }, [fetcher], tutorialFetcher);
-  }, [fetcher]);
+  }, [fetcher.state, tutorialData]);
 
   //refresh after popover selection
   useEffect(() => {
@@ -230,20 +233,6 @@ export default function Experimentsindex() {
     }
     
   }, [fetcher.state, fetcher.data, revalidator]);
-
-  //delete confirmation
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState(null); 
-
-  const openDelete = (exp) => {
-    setPendingDelete({ id: exp.id, name: exp.name });
-    setDeleteOpen(true);
-  };
-
-  const closeDelete = () => {
-    setDeleteOpen(false);
-    setPendingDelete(null);
-  };
 
 
   //function responsible for render of table rows based off db
@@ -452,21 +441,14 @@ export default function Experimentsindex() {
                 <s-button 
                   variant="tertiary" 
                   commandFor={`popover-${curExp.id}`}
-                  disabled={curExp.status === "active" || fetcher.state !== "idle"}
+                  disabled={fetcher.state !== "idle"}
                   onClick={() => {
-                    fetcher.submit(
-                      {
-                        intent: "resume",
-                        experimentId: curExp.id
-                      },
-                      { method: "post" }
-                    );
                     setRenamingId(curExp.id);
                     setRenameValue(curExp.name ?? "");
                     setRenameError(null);
                   }}
                 >
-                  {resumeLabel}
+                  Rename
                 </s-button>
 
                 {curExp.status === ExperimentStatus.draft && (

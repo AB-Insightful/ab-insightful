@@ -259,5 +259,47 @@ export async function seedBase(prisma) {
     }
   }
 
+  // ----- Session (seed) -----
+  const session = await prisma.session.upsert({
+    where: { id: "dev-seed-session" },
+    update: {
+      shop: project.shop,
+    },
+    create: {
+      id: "dev-seed-session",
+      shop: project.shop,
+      state: "seed",
+      accessToken: "seed-token",
+      isOnline: true,
+    },
+  });
+
+  // ----- TutorialData -----
+  await prisma.tutorialData.upsert({
+    where: { sessionId: session.id },
+    update: {
+      generalSettings: true,
+      createExperiment: true,
+      viewedListExperiment: false,
+      viewedReportsPage: false,
+      onSiteTracking: false,
+    },
+    create: {
+      sessionId: session.id,
+      generalSettings: true,
+      createExperiment: true,
+      viewedListExperiment: false,
+      viewedReportsPage: false,
+      onSiteTracking: false,
+    },
+  });
+
+    // ----- ContactEmail -----
+  await prisma.contactEmail.upsert({
+    where: { email_projectId: { email: "dev@example.com", projectId: project.id } },
+    update: {},
+    create: { email: "dev@example.com", projectId: project.id },
+  });
+
   console.log("Base seed completed successfully.");
 }

@@ -1,4 +1,5 @@
 import { env } from "node:process";
+import { l, W } from "node_modules/react-router/dist/development/index-react-server-client-BIz4AUNd.mjs";
 export async function loader({ request }) {
   if (env.NODE_ENV === "development") {
     console.log("[poll-experiments] received request: ", request);
@@ -58,6 +59,8 @@ export async function loader({ request }) {
     const { getCandidatesForScheduledStart } = await import(
       "../services/experiment.server"
     );
+    const{endExperiment} = await import("../services/experiment.server");
+    const {startExperiment} = await import("../services/experiment.server");
     const ended_experiments = await getCandidatesForScheduledEnd();
     const started_experiments = await getCandidatesForScheduledStart();
     if (!ended_experiments && !started_experiments) { // refactor opp: can remove this if statement and just return the else response, but do i want the distinct messaging? 
@@ -79,7 +82,17 @@ export async function loader({ request }) {
       }catch(e){
         console.error(e);
       }
-    } else {
+    } else { // left here. these if statements need to be cleaned up
+      if(started_experiments){
+        for(const experiment in started_experiments){
+         await startExperiment(experiment.id);
+        }
+      }
+      if(ended_experiments){
+        for(const experiment in ended_experiments){
+          await endExperiment(experiment.id);
+        }
+      }
       try{
       return new Response(
         JSON.stringify(

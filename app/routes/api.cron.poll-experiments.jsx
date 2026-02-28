@@ -1,9 +1,11 @@
 import { env } from "node:process";
 export async function loader({ request }) {
   if (env.NODE_ENV === "development") {
-    console.log("received request: ", request);
+    console.log("[poll-experiments] received request: ", request);
   }
-  if (request.headers.get("Request-Method") === "OPTIONS") {
+  if (request.method === "OPTIONS") {
+
+    console.log("hit options");
     return new Response(null, {
       status: 204,
       headers: {
@@ -11,18 +13,20 @@ export async function loader({ request }) {
         // only allow requests that originate from the internal network, from the cron process
         "Access-Control-Allow-Origin": "cron.process.ab-insightful.internal",
         "Access-Control-Allow-Methods": "OPTIONS, GET, HEAD", // do not allow POST or other write operations
-        "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        "Access-Control-Allow-Headers": "Cron-Secret, Content-Type", // using a key for basic header auth. Requests should have Cron-Secret else reject
       },
     });
-  } else if (request.headers.get("Request-Method") === "GET") {
-    const authHeader = request.headers.get("Authorization") ?? "";
-    const origin = request.headers.get("Origin") ?? "";
-    if (authHeader !== env.CRON_SECRET) {
-      // TODO create mechanism for creating the secret.
+  } else if (request.method === "GET") { // handle the job
+    const authHeader = request.headers.get("Cron-Secret") ?? "";
+    const origin = (env.NODE_ENV == "development" ? env.ORIGIN : request.headers.get("Origin") ?? "");
+    if (authHeader !== env.CRON_SECRET) { // basic header auth
       return new Response(
-        {
-          message: "Unauthorized. Please supply your CRON Secret",
-        },
+        JSON.stringify(
+          {
+            ok:false,
+            message: "Unauthorized. Please supply your CRON Secret"
+          }
+        ), 
         {
           status: 401,
           headers: {
@@ -31,12 +35,14 @@ export async function loader({ request }) {
         },
       );
     }
-    if (origin !== "cron.process.ab-unsightful.internal") {
-      // TODO put into environment and pass in
+    if (origin !== (env.NODE_ENV == "development" ?  env.ORIGIN: "cron.process.ab-insightful.internal")) { // ensure requests come from fly's internal network.
       return new Response(
-        {
-          message: "can't touch this.",
-        },
+        JSON.stringify(
+          {
+            ok:false,
+           message: "Only internal Requests are allowed. It's bad that you are seeing this."
+          }
+        ), 
         {
           status: 403,
           headers: {
@@ -54,23 +60,35 @@ export async function loader({ request }) {
     );
     const ended_experiments = await getCandidatesForScheduledEnd();
     const started_experiments = await getCandidatesForScheduledStart();
-    if (!ended_experiments && !started_experiments) {
+    if (!ended_experiments && !started_experiments) { // refactor opp: can remove this if statement and just return the else response, but do i want the distinct messaging? 
+      try{
       return new Response(
-        {
-          message: "No experiments needed to be started or ended",
-        },
+        JSON.stringify(
+          {
+            ok:true,
+           message: "No experiments needed to be started or ended"
+          }
+        ), 
         {
           status: 200,
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type": "application/json"
           },
         },
       );
+      }catch(e){
+        console.error(e);
+      }
     } else {
+      try{
       return new Response(
-        {
-          message: `Started Experiments: ${started_experiments ?? "None"}\n Ended Experiments: ${ended_experiments ?? "None"}`,
-        },
+        JSON.stringify(
+          {
+            ok: true,
+            start_experiments: started_experiments, 
+            end_experiments: ended_experiments
+          }
+        ), 
         {
           status: 200,
           headers: {
@@ -78,6 +96,13 @@ export async function loader({ request }) {
           },
         },
       );
+      }catch(e){
+        console.error(e);
+      }
     }
+  }else{
+    return new Response(null, {
+      status: 405
+    })
   }
 }

@@ -42,29 +42,14 @@ export const loader = async ({ request }) => {
   const { updateWebPixel } = await import("../services/extension.server");
   await updateWebPixel({ request });
 
-  // Push app URL to metafield -- Shouldn't be required for production
-  const { updateAppUrlMetafield } = await import(
-    "../services/extension.server"
-  );
-  await updateAppUrlMetafield({ request });
-
-  //loading relevant graphical data for quick reporting metrics
-  const {getMostRecentExperiment, getExperimentReportData, getNameOfExpGoal} = await import("../services/experiment.server")
-  let latestExperiment = await getMostRecentExperiment();
-  //latestExperiment.id = 2001 // debug value to test display of different experiment skews
-  const experimentReportData = await getExperimentReportData(latestExperiment.id);
-  const expGoalData = await getNameOfExpGoal(latestExperiment.id)
-  
-  const { getVariants } = await import("../services/variant.server");
-  const variants = await getVariants(latestExperiment.id);
-
   //gets stored query data to specify tutorial rendering on the page
   const {getTutorialData} = await import ("../services/tutorialData.server");
-  const tutorialData = await getTutorialData();
-
   //checks to see if web pixel already exists, used as conditional to web pixel section later
   const { webPixelNotNull} = await import ("../services/session.server");
+  
+  const tutorialData = await getTutorialData();
   const webPixelRes = await webPixelNotNull();
+  
   tutorialData.allSetupDone= (
     tutorialData.generalSettings &&
     tutorialData.createExperiment &&
@@ -74,7 +59,37 @@ export const loader = async ({ request }) => {
 
   tutorialData.webPixelStatus = webPixelRes; //true means exists, false means null
 
+  // Push app URL to metafield -- Shouldn't be required for production
+  const { updateAppUrlMetafield } = await import(
+    "../services/extension.server"
+  );
+  await updateAppUrlMetafield({ request });
 
+  //loading relevant graphical data for quick reporting metrics
+  const {getMostRecentExperiment, getExperimentReportData, getNameOfExpGoal} = await import("../services/experiment.server")
+  
+  const latestExperiment = await getMostRecentExperiment();
+  
+  // Guard clause
+  if (!latestExperiment) {
+    return { 
+      experiment: { 
+        name: "No experiments found", 
+        variants: [], 
+        status: "N/A",
+        createdAt: new Date(),
+        analyses: []
+      }, 
+      tableData: [], 
+      tutorialData: tutorialData
+    };
+  }
+  
+  const experimentReportData = await getExperimentReportData(latestExperiment.id);
+  const expGoalData = await getNameOfExpGoal(latestExperiment.id)
+  
+  const { getVariants } = await import("../services/variant.server");
+  const variants = await getVariants(latestExperiment.id);
   const {getImprovement} = await import("../services/experiment.server");
   const improvementPercent = await getImprovement(latestExperiment.id);
   const {getAnalysis} = await import ("../services/experiment.server");
@@ -166,7 +181,8 @@ export default function Index() {
     const probabilityDataMap = {};
     const expectedLossDataMap = {};
   
-    experiment.analyses.forEach((analysis) => {
+    experiment.analyses?.forEach((analysis) => {
+      if (!analysis.calculatedWhen) return; // ensures data actually exists before calling it
       const dateKey = analysis.calculatedWhen.toLocaleDateString("en-US");
       if (!probabilityDataMap[dateKey]) {
         probabilityDataMap[dateKey] = { name: dateKey };
@@ -448,13 +464,13 @@ export default function Index() {
                     <Legend />
                     <Line
                       type="monotone"
-                      dataKey={experiment.variants[0].name}
+                      dataKey={experiment.variants[0]?.name ?? "Baseline"}
                       stroke="#8884d8"
                       activeDot={{ r: 8 }}
                     />
                     <Line
                       type="monotone"
-                      dataKey={experiment.variants[1].name}
+                      dataKey={experiment.variants[1]?.name ?? "Variant B"}
                       stroke="#82ca9d"
                     />
                   </LineChart>
@@ -516,7 +532,7 @@ export default function Index() {
                 <s-icon type="target" size="small" color="subdued" />
               </s-stack>
               <s-stack direction="inline" gap="small-200" alignItems="center">
-                <s-text color="subdued">Started {experiment.createdAt.toLocaleString()}</s-text>
+                <s-text color="subdued">Started {experiment.createdAt ? new Date(experiment.createdAt).toLocaleString() : "Date unknown"}</s-text>
               </s-stack>
             </s-stack>
           </s-section>

@@ -1,13 +1,13 @@
 // Guards against null/undefined so we can perform rounding on valid numbers
 export const formatImprovement = (val) =>{
-    if (val === null || val === undefined) return "N/A";
+    if (val == null) return "N/A";
     const sign = val > 0 ? "+": "";
     return `${sign}${val.toFixed(2)}%`;
 };
 
 // Transforms valid numbers into percentages
 export const formatProbability = (val) => {
-    if (val === null || val === undefined) return "N/A";
+    if (val == null) return "N/A";
     return `${(val * 100).toFixed(1)}%`;
 }
 

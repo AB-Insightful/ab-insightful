@@ -4,6 +4,7 @@ import {
   formatDateForDisplay,
 } from "../contexts/DateRangeContext";
 import DateRangePicker from "../components/DateRangePicker";
+import { formatImprovement, formatProbability, formatRatio } from "../utils/formatters";
 import {
   LineChart,
   Line,
@@ -99,7 +100,7 @@ export const loader = async ({ request }) => {
 
 
 
-  const tableData = await Promise.all(
+  const tableData = (await Promise.all(
     variants.map(async (v) => {
       const a = await getAnalysis(latestExperiment.id, v.id);
       if (!a) return null;
@@ -111,7 +112,7 @@ export const loader = async ({ request }) => {
         isBaseline: v.id === baselineVariantId,
       };
     })
-  );
+  )).filter(Boolean); // now we are dropping rows that are entirely null
   experimentReportData["expId"] = latestExperiment.id
 
   return {experiment: experimentReportData, tableData, tutorialData};
@@ -494,22 +495,20 @@ export default function Index() {
               </s-table-header-row>
                 <s-table-body>
                 {tableData.map((row, index) => (
-                  <s-table-row key={row.variantId ?? "No ID here for some reason"}>
+                  <s-table-row key={row.variantId ?? index}>
                     <s-table-cell>{row.variantName ?? "No Name"}</s-table-cell>
 
                     <s-table-cell>{experiment.status}</s-table-cell>
 
                     {/* change this to whatever field your analysis row actually has */}
-                    <s-table-cell>{row.totalConversions + "/" + row.totalUsers ?? "N/A"}</s-table-cell>
+                    <s-table-cell>{formatRatio(row.totalConversions, row.totalUsers)}</s-table-cell>
 
                     <s-table-cell>
-                      {index === 0 ? "Baseline" : row.improvement.toFixed(2) != null ? `${row.improvement.toFixed(2)}%` : "N/A"}
+                      {index === 0 ? "Baseline" : formatImprovement(row.improvement)}
                     </s-table-cell>
 
                     <s-table-cell>
-                      {row.probabilityOfBeingBest != null
-                        ? `${(row.probabilityOfBeingBest * 100).toFixed(1)}%`
-                        : "N/A"}
+                      {formatProbability(row.probabilityOfBeingBest)}
                     </s-table-cell>
                   </s-table-row>
                 ))}

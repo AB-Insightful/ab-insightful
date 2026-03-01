@@ -1,11 +1,9 @@
 import { env } from "node:process";
-import { l, W } from "node_modules/react-router/dist/development/index-react-server-client-BIz4AUNd.mjs";
 export async function loader({ request }) {
   if (env.NODE_ENV === "development") {
     console.log("[poll-experiments] received request: ", request);
   }
   if (request.method === "OPTIONS") {
-
     console.log("hit options");
     return new Response(null, {
       status: 204,
@@ -17,17 +15,20 @@ export async function loader({ request }) {
         "Access-Control-Allow-Headers": "Cron-Secret, Content-Type", // using a key for basic header auth. Requests should have Cron-Secret else reject
       },
     });
-  } else if (request.method === "GET") { // handle the job
+  } else if (request.method === "GET") {
+    // handle the job
     const authHeader = request.headers.get("Cron-Secret") ?? "";
-    const origin = (env.NODE_ENV == "development" ? env.ORIGIN : request.headers.get("Origin") ?? "");
-    if (authHeader !== env.CRON_SECRET) { // basic header auth
+    const origin =
+      env.NODE_ENV == "development"
+        ? env.ORIGIN
+        : (request.headers.get("Origin") ?? "");
+    if (authHeader !== env.CRON_SECRET) {
+      // basic header auth
       return new Response(
-        JSON.stringify(
-          {
-            ok:false,
-            message: "Unauthorized. Please supply your CRON Secret"
-          }
-        ), 
+        JSON.stringify({
+          ok: false,
+          message: "Unauthorized. Please supply your CRON Secret",
+        }),
         {
           status: 401,
           headers: {
@@ -36,14 +37,19 @@ export async function loader({ request }) {
         },
       );
     }
-    if (origin !== (env.NODE_ENV == "development" ?  env.ORIGIN: "cron.process.ab-insightful.internal")) { // ensure requests come from fly's internal network.
+    if (
+      origin !==
+      (env.NODE_ENV == "development"
+        ? env.ORIGIN
+        : "cron.process.ab-insightful.internal")
+    ) {
+      // ensure requests come from fly's internal network.
       return new Response(
-        JSON.stringify(
-          {
-            ok:false,
-           message: "Only internal Requests are allowed. It's bad that you are seeing this."
-          }
-        ), 
+        JSON.stringify({
+          ok: false,
+          message:
+            "Only internal Requests are allowed. It's bad that you are seeing this.",
+        }),
         {
           status: 403,
           headers: {
@@ -59,63 +65,61 @@ export async function loader({ request }) {
     const { getCandidatesForScheduledStart } = await import(
       "../services/experiment.server"
     );
-    const{endExperiment} = await import("../services/experiment.server");
-    const {startExperiment} = await import("../services/experiment.server");
+    const { endExperiment } = await import("../services/experiment.server");
+    const { startExperiment } = await import("../services/experiment.server");
     const ended_experiments = await getCandidatesForScheduledEnd();
     const started_experiments = await getCandidatesForScheduledStart();
-    if (!ended_experiments && !started_experiments) { // refactor opp: can remove this if statement and just return the else response, but do i want the distinct messaging? 
-      try{
-      return new Response(
-        JSON.stringify(
+    if (!ended_experiments && !started_experiments) {
+      // refactor opp: can remove this if statement and just return the else response, but do i want the distinct messaging?
+      try {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            message: "No experiments needed to be started or ended",
+          }),
           {
-            ok:true,
-           message: "No experiments needed to be started or ended"
-          }
-        ), 
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json"
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
           },
-        },
-      );
-      }catch(e){
+        );
+      } catch (e) {
         console.error(e);
       }
-    } else { // left here. these if statements need to be cleaned up
-      if(started_experiments){
-        for(const experiment in started_experiments){
-         await startExperiment(experiment.id);
+    } else {
+      // left here. these if statements need to be cleaned up
+      if (started_experiments) {
+        for (const experiment in started_experiments) {
+          await startExperiment(experiment.id);
         }
       }
-      if(ended_experiments){
-        for(const experiment in ended_experiments){
+      if (ended_experiments) {
+        for (const experiment in ended_experiments) {
           await endExperiment(experiment.id);
         }
       }
-      try{
-      return new Response(
-        JSON.stringify(
-          {
+      try {
+        return new Response(
+          JSON.stringify({
             ok: true,
-            start_experiments: started_experiments, 
-            end_experiments: ended_experiments
-          }
-        ), 
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application.json",
+            start_experiments: started_experiments,
+            end_experiments: ended_experiments,
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application.json",
+            },
           },
-        },
-      );
-      }catch(e){
+        );
+      } catch (e) {
         console.error(e);
       }
     }
-  }else{
+  } else {
     return new Response(null, {
-      status: 405
-    })
+      status: 405,
+    });
   }
 }

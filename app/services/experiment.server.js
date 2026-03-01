@@ -20,9 +20,7 @@ export async function createExperiment(
 
   variantCreates.push({
     name: "Control",
-    configData: controlSectionId
-      ? { sectionId: controlSectionId }
-      : null,
+    configData: controlSectionId ? { sectionId: controlSectionId } : null,
   });
 
   if (primaryVariantSectionId) {
@@ -73,6 +71,64 @@ export async function GetFrontendExperimentsData() {
   return experiments;
 }
 
+// [Ryan] function to get experiments that are active and have an end date that is either Now or has Passed
+export async function getCandidatesForScheduledEnd() {
+  try {
+    const experiments = await db.experiment.findMany({
+      where: {
+        status: active,
+        endDate: {
+          lte: new Date(),
+        },
+      },
+    });
+    return experiments;
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      console.error(
+        "[experiment.server.js::getCandidatesForScheduledEnd] ",
+        e.message,
+      );
+      return { error: e.message };
+    } else if (e instanceof Prisma.PrismaClientValidationError) {
+      console.error(
+        "[experiment.server.js::getCandidatesForScheduledEnd] passed an invalid argument for the select.",
+        e.message,
+      );
+      return { error: e.message };
+    }
+  }
+}
+// [Ryan] function to get experiments that meet the following criteria:
+//  - is a draft
+//  - has a scheduled start date that is either Now or has Passed
+export async function getCandidatesForScheduledStart() {
+  try {
+    const experiments = await db.experiment.findMany({
+      where: {
+        status: draft,
+        startDate: {
+          lte: new Date(),
+        },
+      },
+    });
+    return experiments;
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      console.error(
+        "[experiment.server.js::getCandidatesForScheduledStart] ",
+        e.message,
+      );
+      return { error: e.message };
+    } else if (e instanceof Prisma.PrismaClientValidationError) {
+      console.error(
+        "[experiment.server.js::getCandidatesForScheduledStart] passed an invalid argument for the select.",
+        e.message,
+      );
+      return { error: e.message };
+    }
+  }
+}
 // Function to get experiments list.
 // This is used for the "Experiments List" page
 export async function getExperimentsList() {
@@ -124,7 +180,7 @@ export async function getAnalysis(experimentId, variantId) {
   return db.analysis.findFirst({
     where: { experimentId, variantId },
     orderBy: { calculatedWhen: "desc" },
-    include: { goal: true}
+    include: { goal: true },
   });
 }
 
@@ -170,7 +226,6 @@ export async function getImprovement(experimentId) {
   return improvement;
 }
 
-
 // Function to get an experiment by id. Returns the experiment object if found, otherwise returns null.
 export async function getExperimentById(id) {
   if (id) {
@@ -184,38 +239,33 @@ export async function getExperimentById(id) {
   return null;
 }
 
-//TODO: 
-// Function to retrieve the most recently created experiment and its associated information. 
+//TODO:
+// Function to retrieve the most recently created experiment and its associated information.
 //Primarily used in the home page
 //primarily used to retrieve id.
-export async function getMostRecentExperiment(){
-
+export async function getMostRecentExperiment() {
   //query to retrieve most recent experiment tuple
   return db.experiment.findFirst({
-    where: { status: ExperimentStatus.active},
+    where: { status: ExperimentStatus.active },
     orderBy: { createdAt: "desc" },
   }); //newest experiment first
-
 }
 
 //uses experiment id to find name of goal for experiment since there is no direct attribute for it in this table
-export async function getNameOfExpGoal(expId){
-
+export async function getNameOfExpGoal(expId) {
   //grabs first analysis tuple that matches experiment id, works because all goals should be the same for 1 experiment
   return db.analysis.findFirst({
-    where: { experimentId: expId},
-    include: { goal: true, },
-  }); 
+    where: { experimentId: expId },
+    include: { goal: true },
+  });
 }
-
 
 /* ====================================================================================================
    Experiment Status Management
    ==================================================================================================== */
 
-   
-// Function to pause an experiment 
-export async function pauseExperiment(experimentId){
+// Function to pause an experiment
+export async function pauseExperiment(experimentId) {
   // Validate and normalize the ID for the SQLite database
   if (!experimentId)
     throw new Error("pauseExperiment: experimentId is required");
@@ -236,17 +286,21 @@ export async function pauseExperiment(experimentId){
 
   // check if the experiment is eligible to be paused
   switch (experiment.status) {
-        case ExperimentStatus.active:
+    case ExperimentStatus.active:
       // we can pause an active experiment, let it fall through
       break;
     case ExperimentStatus.archived:
     case ExperimentStatus.completed:
     case ExperimentStatus.draft:
     case ExperimentStatus.paused:
-      console.log(`pauseExperiment: Experiment ${id} with status: ${experiment.status} cannot be paused.`);
+      console.log(
+        `pauseExperiment: Experiment ${id} with status: ${experiment.status} cannot be paused.`,
+      );
       return experiment;
     default:
-      throw new Error(`pauseExperiment: Experiment ${id} has unknown status: ${experiment.status}`);
+      throw new Error(
+        `pauseExperiment: Experiment ${id} has unknown status: ${experiment.status}`,
+      );
   }
 
   const prevStatus = experiment.status;
@@ -298,14 +352,18 @@ export async function archiveExperiment(experimentId) {
   switch (experiment.status) {
     case ExperimentStatus.completed:
       break;
-      case ExperimentStatus.draft:
+    case ExperimentStatus.draft:
     case ExperimentStatus.archived:
     case ExperimentStatus.active:
     case ExperimentStatus.paused:
-      console.log(`archiveExperiment: Experiment ${id} with status: ${experiment.status} cannot be archived.`);
+      console.log(
+        `archiveExperiment: Experiment ${id} with status: ${experiment.status} cannot be archived.`,
+      );
       return experiment;
     default:
-      throw new Error(`archiveExperiment: Experiment ${id} has unknown status: ${experiment.status}`);
+      throw new Error(
+        `archiveExperiment: Experiment ${id} has unknown status: ${experiment.status}`,
+      );
   }
 
   const prevStatus = experiment.status;
@@ -344,21 +402,26 @@ export async function resumeExperiment(experimentId) {
       : experimentId;
 
   const experiment = await db.experiment.findUnique({ where: { id } });
-  if (!experiment) throw new Error(`resumeExperiment: Experiment ${id} not found`);
+  if (!experiment)
+    throw new Error(`resumeExperiment: Experiment ${id} not found`);
 
   // check if the experiment is eligible to be resumed
   switch (experiment.status) {
-        case ExperimentStatus.paused:
+    case ExperimentStatus.paused:
       //we can resume a paused experiment, let it fall through
       break;
     case ExperimentStatus.archived:
     case ExperimentStatus.completed:
     case ExperimentStatus.draft:
     case ExperimentStatus.active:
-      console.log(`resumeExperiment: Experiment ${id} with status: ${experiment.status} cannot be resumed.`);
+      console.log(
+        `resumeExperiment: Experiment ${id} with status: ${experiment.status} cannot be resumed.`,
+      );
       return experiment;
     default:
-      throw new Error(`resumeExperiment: Experiment ${id} has unknown status: ${experiment.status}`);
+      throw new Error(
+        `resumeExperiment: Experiment ${id} has unknown status: ${experiment.status}`,
+      );
   }
 
   const now = new Date();
@@ -390,15 +453,16 @@ export async function resumeExperiment(experimentId) {
 // function to manually end an experiment
 export async function endExperiment(experimentId) {
   // Validate input into function, throws error if not valid
-  if (!experimentId)
-    throw new Error(`endExperiment: experimentId is required`);
+  if (!experimentId) throw new Error(`endExperiment: experimentId is required`);
   // normalize id for db
-  const id = typeof experimentId === "string" ? parseInt(experimentId, 10) : experimentId;
+  const id =
+    typeof experimentId === "string"
+      ? parseInt(experimentId, 10)
+      : experimentId;
   // look up experiment
   const experiment = await getExperimentById(id);
   // throw an error if we cant find experiment
-  if (!experiment)
-    throw new Error(`endExperiment: Experiment ${id} not found`);
+  if (!experiment) throw new Error(`endExperiment: Experiment ${id} not found`);
   // check if the experiment is eligible to be ended
   switch (experiment.status) {
     case ExperimentStatus.active:
@@ -407,10 +471,14 @@ export async function endExperiment(experimentId) {
     case ExperimentStatus.archived:
     case ExperimentStatus.completed:
     case ExperimentStatus.draft:
-      console.log(`endExperiment: Experiment ${id} with status: ${experiment.status} cannot be ended.`);
+      console.log(
+        `endExperiment: Experiment ${id} with status: ${experiment.status} cannot be ended.`,
+      );
       return experiment;
     default:
-      throw new Error(`endExperiment: Experiment ${id} has unknown status: ${experiment.status}`);
+      throw new Error(
+        `endExperiment: Experiment ${id} has unknown status: ${experiment.status}`,
+      );
   }
 
   const now = new Date();
@@ -441,13 +509,18 @@ export async function endExperiment(experimentId) {
 
 export async function startExperiment(experimentId) {
   // Validate input into function, throws error if not valid
-  if (!experimentId) throw new Error(`startExperiment: experimentId is required`);
+  if (!experimentId)
+    throw new Error(`startExperiment: experimentId is required`);
   // normalize id for db
-  const id = typeof experimentId === "string" ? parseInt(experimentId, 10) : experimentId;
+  const id =
+    typeof experimentId === "string"
+      ? parseInt(experimentId, 10)
+      : experimentId;
   // look up experiment
   const experiment = await getExperimentById(id);
   // throw an error if we cant find experiment
-  if (!experiment) throw new Error(`startExperiment: Experiment ${id} not found`);
+  if (!experiment)
+    throw new Error(`startExperiment: Experiment ${id} not found`);
 
   // check if the experiment is eligible to start
   switch (experiment.status) {
@@ -457,10 +530,14 @@ export async function startExperiment(experimentId) {
     case ExperimentStatus.archived:
     case ExperimentStatus.completed:
     case ExperimentStatus.active:
-      console.log(`startExperiment: Experiment ${id} with status: ${experiment.status} cannot be started.`);
+      console.log(
+        `startExperiment: Experiment ${id} with status: ${experiment.status} cannot be started.`,
+      );
       return experiment;
     default:
-      throw new Error(`startExperiment: Experiment ${id} has unknown status: ${experiment.status}`);
+      throw new Error(
+        `startExperiment: Experiment ${id} has unknown status: ${experiment.status}`,
+      );
   }
 
   // save date and block starting experiment if end date is in past
@@ -493,20 +570,26 @@ export async function startExperiment(experimentId) {
     },
   });
   // log the experiment and then return our updated experiment
-  console.log(`startExperiment: Experiment ${id} moved from ${prevStatus} to active`);
+  console.log(
+    `startExperiment: Experiment ${id} moved from ${prevStatus} to active`,
+  );
   return updated;
-
-}// end startExperiment()
+} // end startExperiment()
 
 export async function deleteExperiment(experimentId) {
   // Validate input into function, throws error if not valid
-  if (!experimentId) throw new Error(`deleteExperiment: experimentId is required`);
+  if (!experimentId)
+    throw new Error(`deleteExperiment: experimentId is required`);
   // normalize id for db
-  const id = typeof experimentId === "string" ? parseInt(experimentId, 10) : experimentId;
+  const id =
+    typeof experimentId === "string"
+      ? parseInt(experimentId, 10)
+      : experimentId;
   // look up experiment
   const experiment = await getExperimentById(id);
   // throw an error if we cant find experiment
-  if (!experiment) throw new Error(`deleteExperiment: Experiment ${id} not found`);
+  if (!experiment)
+    throw new Error(`deleteExperiment: Experiment ${id} not found`);
 
   // check if the experiment is eligible to start
   switch (experiment.status) {
@@ -518,16 +601,19 @@ export async function deleteExperiment(experimentId) {
     case ExperimentStatus.completed:
     case ExperimentStatus.active:
     case ExperimentStatus.paused:
-      console.log(`deleteExperiment: Experiment ${id} with status: ${experiment.status} cannot be deleted.`);
+      console.log(
+        `deleteExperiment: Experiment ${id} with status: ${experiment.status} cannot be deleted.`,
+      );
       return experiment;
     default:
-      throw new Error(`deleteExperiment: Experiment ${id} has unknown status: ${experiment.status}`);
+      throw new Error(
+        `deleteExperiment: Experiment ${id} has unknown status: ${experiment.status}`,
+      );
   }
 
   //delete from db
-  return await db.experiment.delete({ where: {id}});
+  return await db.experiment.delete({ where: { id } });
 }
-
 
 /* ====================================================================================================
    Experiment Analysis
@@ -736,39 +822,25 @@ export async function setProbabilityOfBest({
   }
 } //end of setProbabilityOfBest
 
-
 /* ====================================================================================================
    Experiment Event Handling
    ==================================================================================================== */
 // Get active experiment ID, Section ID and Probability - used on frontend for showing.
-export async function GetFrontendExperimentsData() {
-  const experiments = await db.experiment.findMany({
-    where: {
-      status: "active",
-    },
-    select: {
-      id: true,
-      sectionId: true,
-      controlSectionId: true,
-      trafficSplit: true,
-    },
-  });
-
-  return experiments;
-}
 
 // Function to get experiments list.
 // This is used for the "Experiments List" page
 export async function getExperimentsList() {
   const experiments = await db.experiment.findMany({
-    select: {//selecting only relevant fields for the experiments list page
+    select: {
+      //selecting only relevant fields for the experiments list page
       id: true,
       name: true,
       status: true,
       startDate: true,
       endDate: true,
       analyses: {
-        include: {//including analyses to get the most recent conversion rate for the experiment list page
+        include: {
+          //including analyses to get the most recent conversion rate for the experiment list page
           variant: true,
         },
       },
@@ -776,84 +848,6 @@ export async function getExperimentsList() {
   });
 
   return experiments; // Returns an array of experiments,
-}
-
-//get the experiment list, additionally analyses for conversion rate
-export async function getExperimentsList1() {
-  const experiments = await db.experiment.findMany({
-    select: {
-      id: true,
-      name: true,
-      status: true,
-      startDate: true,
-      endDate: true,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
-
-  if (experiments) return experiments;
-  else return null;
-}
-
-// get a variant (by name or id) Example: "Control" or "Variant A"
-export async function getVariant(experimentId, name) {
-  return db.variant.findFirst({
-    where: { experimentId, name },
-    select: { id: true, name: true },
-  });
-}
-
-//get the latest analysis row for that variant (conversionRate lives here)
-export async function getAnalysis(experimentId, variantId) {
-  return db.analysis.findFirst({
-    where: { experimentId, variantId },
-    orderBy: { calculatedWhen: "desc" },
-    include: { goal: true}
-  });
-}
-
-//convenience: return conversionRate as a float (or null)
-export async function getVariantConversionRate(experimentId, variantId) {
-  const row = await getAnalysis(experimentId, variantId);
-  if (!row) return null;
-  const num = row.conversionRate;
-  return num;
-}
-
-// Improvement calculation for an experiment
-export async function getImprovement(experimentId) {
-  // get control
-  const control = await getVariant(experimentId, "Control");
-  if (!control) return null;
-
-  // get all other variants
-  const variants = await db.variant.findMany({
-    where: { experimentId, NOT: { id: control.id } },
-    select: { id: true, name: true },
-  });
-  if (!variants.length) return null;
-
-  // get control conversion rate
-  const controlAnalysis = await getAnalysis(experimentId, control.id);
-  const controlRate = controlAnalysis ? controlAnalysis.conversionRate : null;
-  if (!(typeof controlRate === "number") || controlRate <= 0) return null;
-
-  // find best treatment rate
-  let best = null;
-  for (const v of variants) {
-    const a = await getAnalysis(experimentId, v.id);
-    const rate = a ? a.conversionRate : null;
-    if (typeof rate === "number" && (best === null || rate > best)) best = rate;
-  }
-
-  if (best === null || best >= 1 || best <= 0) return null;
-  if (controlRate === null || controlRate >= 1 || controlRate <= 0) return null;
-
-  // improvement formula
-  const improvement = ((best - controlRate) / controlRate) * 100;
-  return improvement;
 }
 
 // Function to check if experiment is still active
@@ -1075,4 +1069,3 @@ export async function handleCollectedEvent(payload) {
     return { result };
   }
 }
-

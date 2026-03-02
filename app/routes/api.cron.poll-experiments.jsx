@@ -69,7 +69,8 @@ export async function loader({ request }) {
     const { startExperiment } = await import("../services/experiment.server");
     const ended_experiments = await getCandidatesForScheduledEnd();
     const started_experiments = await getCandidatesForScheduledStart();
-    if (!ended_experiments && !started_experiments) {
+    console.log(started_experiments, ended_experiments);
+    if (ended_experiments.length === 0 && started_experiments === 0) {
       // refactor opp: can remove this if statement and just return the else response, but do i want the distinct messaging?
       try {
         return new Response(
@@ -88,23 +89,35 @@ export async function loader({ request }) {
         console.error(e);
       }
     } else {
-      // left here. these if statements need to be cleaned up
-      if (started_experiments) {
-        for (const experiment in started_experiments) {
-          await startExperiment(experiment.id);
+      let start_results = [];
+      let end_results = [];
+      let failures = [];
+      if (started_experiments.length > 0 ) {
+        for (const experiment of started_experiments) {
+          console.log(experiment);
+          try{
+            start_results.push(await startExperiment(experiment.id));
+          }catch(e){
+            failures.push(e.message);
+          }
         }
       }
-      if (ended_experiments) {
-        for (const experiment in ended_experiments) {
-          await endExperiment(experiment.id);
+      if (ended_experiments.length > 0) {
+        for (const experiment of ended_experiments) {
+          try{
+            end_results.push(await endExperiment(experiment.id));
+          }catch(e){
+            failures.push(e.message);
+          }
         }
       }
       try {
         return new Response(
           JSON.stringify({
             ok: true,
-            start_experiments: started_experiments,
-            end_experiments: ended_experiments,
+            started_experiments: started_experiments.length === 0 ? "None" : `${started_experiments}`,
+            ended_experiments: ended_experiments.length === 0 ? "None" : `${ended_experiments}`,
+            failures: failures 
           }),
           {
             status: 200,

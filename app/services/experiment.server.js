@@ -76,7 +76,7 @@ export async function getCandidatesForScheduledEnd() {
   try {
     const experiments = await db.experiment.findMany({
       where: {
-        status: active,
+        status: ExperimentStatus.active,
         endDate: {
           lte: new Date(),
         },
@@ -106,7 +106,7 @@ export async function getCandidatesForScheduledStart() {
   try {
     const experiments = await db.experiment.findMany({
       where: {
-        status: draft,
+        status: ExperimentStatus.draft,
         startDate: {
           lte: new Date(),
         },
@@ -687,7 +687,6 @@ export async function setProbabilityOfBest({
   experimentId,
   goalId,
   draws = 1000,
-  controlVariantId = null,
 }) {
   const experiment = await db.experiment.findUnique({
     where: { id: experimentId },
@@ -829,26 +828,7 @@ export async function setProbabilityOfBest({
 
 // Function to get experiments list.
 // This is used for the "Experiments List" page
-export async function getExperimentsList() {
-  const experiments = await db.experiment.findMany({
-    select: {
-      //selecting only relevant fields for the experiments list page
-      id: true,
-      name: true,
-      status: true,
-      startDate: true,
-      endDate: true,
-      analyses: {
-        include: {
-          //including analyses to get the most recent conversion rate for the experiment list page
-          variant: true,
-        },
-      },
-    },
-  });
 
-  return experiments; // Returns an array of experiments,
-}
 
 // Function to check if experiment is still active
 export function isExperimentActive(experiment, timeCheck = new Date()) {

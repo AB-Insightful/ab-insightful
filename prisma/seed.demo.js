@@ -76,6 +76,7 @@ async function ensureVariants(prisma, experimentId, variantDefs) {
         description: v.description,
         configData: v.configData,
         experimentId,
+        trafficAllocation: v.trafficAllocation,
       },
       create: {
         id: v.id,
@@ -83,6 +84,7 @@ async function ensureVariants(prisma, experimentId, variantDefs) {
         description: v.description,
         configData: v.configData,
         experimentId,
+        trafficAllocation: v.trafficAllocation,
       },
     });
     created.push(row);
@@ -369,37 +371,37 @@ export async function seedDemo(prisma) {
   // Variant IDs also far away from base (base uses ~3001-3012)
   const variantMap = {
     9101: [
-      { id: 9201, name: "Control", description: "Current PDP", configData: { layout: "control" } },
-      { id: 9202, name: "Variant A", description: "Upsell widget", configData: { widget: "upsell" } },
+      { id: 9201, name: "Control", description: "Current PDP", configData: { layout: "control" }, trafficAllocation: 0 },
+      { id: 9202, name: "Variant A", description: "Upsell widget", configData: { widget: "upsell" }, trafficAllocation: 1.0 },
     ],
     9102: [
-      { id: 9211, name: "Control", description: "Current threshold copy", configData: { thresholdCopy: "standard" } },
-      { id: 9212, name: "Variant A", description: "New copy", configData: { thresholdCopy: "optimized" } },
-      { id: 9213, name: "Variant B", description: "Aggressive copy", configData: { thresholdCopy: "aggressive" } },
+      { id: 9211, name: "Control", description: "Current threshold copy", configData: { thresholdCopy: "standard" }, trafficAllocation: 0 },
+      { id: 9212, name: "Variant A", description: "New copy", configData: { thresholdCopy: "optimized" }, trafficAllocation: 0.5 },
+      { id: 9213, name: "Variant B", description: "Aggressive copy", configData: { thresholdCopy: "aggressive" }, trafficAllocation: 0.5 },
     ],
     9103: [
-      { id: 9221, name: "Control", description: "Delay 10s", configData: { delay: 10 } },
-      { id: 9222, name: "Variant A", description: "Delay 30s", configData: { delay: 30 } },
+      { id: 9221, name: "Control", description: "Delay 10s", configData: { delay: 10 }, trafficAllocation: 0 },
+      { id: 9222, name: "Variant A", description: "Delay 30s", configData: { delay: 30 }, trafficAllocation: 1.0 },
     ],
     9104: [
-      { id: 9231, name: "Control", description: "Classic drawer", configData: { drawer: "classic" } },
-      { id: 9232, name: "Variant A", description: "Modern drawer", configData: { drawer: "modern" } },
+      { id: 9231, name: "Control", description: "Classic drawer", configData: { drawer: "classic" }, trafficAllocation: 0 },
+      { id: 9232, name: "Variant A", description: "Modern drawer", configData: { drawer: "modern" }, trafficAllocation: 1.0 },
     ],
     9105: [
-      { id: 9241, name: "Control", description: "Old tiles", configData: { tiles: "old" } },
-      { id: 9242, name: "Variant A", description: "New tiles", configData: { tiles: "new" } },
+      { id: 9241, name: "Control", description: "Old tiles", configData: { tiles: "old" }, trafficAllocation: 0 },
+      { id: 9242, name: "Variant A", description: "New tiles", configData: { tiles: "new" }, trafficAllocation: 1.0 },
     ],
     9106: [
-      { id: 9251, name: "Control", description: "Old bar", configData: { bar: "old" } },
-      { id: 9252, name: "Variant A", description: "New bar", configData: { bar: "new" } },
+      { id: 9251, name: "Control", description: "Old bar", configData: { bar: "old" }, trafficAllocation: 0 },
+      { id: 9252, name: "Variant A", description: "New bar", configData: { bar: "new" }, trafficAllocation: 1.0 },
     ],
     9107: [
-      { id: 9261, name: "Control", description: "N/A", configData: { } },
-      { id: 9262, name: "Variant A", description: "N/A", configData: { } },
+      { id: 9261, name: "Control", description: "N/A", configData: { }, trafficAllocation: 0 },
+      { id: 9262, name: "Variant A", description: "N/A", configData: { }, trafficAllocation: 1.0 },
     ],
     9108: [
-      { id: 9271, name: "Control", description: "N/A", configData: { } },
-      { id: 9272, name: "Variant A", description: "N/A", configData: { } },
+      { id: 9271, name: "Control", description: "N/A", configData: { }, trafficAllocation: 0 },
+      { id: 9272, name: "Variant A", description: "N/A", configData: { }, trafficAllocation: 1.0 },
     ],
   };
 

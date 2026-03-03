@@ -71,6 +71,7 @@ export async function seedTest(prisma) {
       description: "Control variant fixture",
       configData: { version: "control" },
       experimentId: testExperiment.id,
+      trafficAllocation: 0,
     },
     create: {
       id: 9101,
@@ -78,6 +79,7 @@ export async function seedTest(prisma) {
       description: "Control variant fixture",
       configData: { version: "control" },
       experimentId: testExperiment.id,
+      trafficAllocation: 0,
     },
   });
 
@@ -88,6 +90,7 @@ export async function seedTest(prisma) {
       description: "Treatment variant fixture",
       configData: { version: "A" },
       experimentId: testExperiment.id,
+      trafficAllocation: 1.0,
     },
     create: {
       id: 9102,
@@ -95,6 +98,7 @@ export async function seedTest(prisma) {
       description: "Treatment variant fixture",
       configData: { version: "A" },
       experimentId: testExperiment.id,
+      trafficAllocation: 1.0,
     },
   });
 

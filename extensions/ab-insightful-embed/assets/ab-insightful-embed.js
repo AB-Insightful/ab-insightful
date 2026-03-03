@@ -92,7 +92,9 @@ function invokeExperiment(
   const chance = Number(chanceToShow);
   if (Math.random() <= chance) {
     // You are part of experiment - hide control
-    controlElement.style.display = "none";
+    if (controlElement) {
+        controlElement.style.display = "none";
+      }
     // Add to variant experiment
     document.cookie =
       "ab-variant-ids=" +

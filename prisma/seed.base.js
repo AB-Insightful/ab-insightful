@@ -210,6 +210,9 @@ export async function seedBase(prisma) {
     const exp = experiments[i];
     const base = variantConfigs[i];
 
+    const controlAllocation = 1.0 - exp.trafficSplit;
+    const variantAllocation = exp.trafficSplit;
+
     await prisma.variant.upsert({
       where: { id: base.idStart },
       update: {
@@ -217,6 +220,7 @@ export async function seedBase(prisma) {
         description: 'Control variant',
         configData: base.control,
         experimentId: exp.id,
+        trafficAllocation: controlAllocation,
       },
       create: {
         id: base.idStart,
@@ -224,6 +228,7 @@ export async function seedBase(prisma) {
         description: 'Control variant',
         configData: base.control,
         experimentId: exp.id,
+        trafficAllocation: controlAllocation,
       },
     });
 
@@ -234,6 +239,7 @@ export async function seedBase(prisma) {
         description: 'Treatment variant',
         configData: base.variant,
         experimentId: exp.id,
+        trafficAllocation: variantAllocation,
       },
       create: {
         id: base.idStart + 1,
@@ -241,6 +247,7 @@ export async function seedBase(prisma) {
         description: 'Treatment variant',
         configData: base.variant,
         experimentId: exp.id,
+        trafficAllocation: variantAllocation,
       },
     });
   }

@@ -4,6 +4,7 @@ import {
   formatDateForDisplay,
 } from "../contexts/DateRangeContext";
 import DateRangePicker from "../components/DateRangePicker";
+import { formatImprovement, formatProbability, formatRatio } from "../utils/formatters";
 import {
   LineChart,
   Line,
@@ -42,29 +43,14 @@ export const loader = async ({ request }) => {
   const { updateWebPixel } = await import("../services/extension.server");
   await updateWebPixel({ request });
 
-  // Push app URL to metafield -- Shouldn't be required for production
-  const { updateAppUrlMetafield } = await import(
-    "../services/extension.server"
-  );
-  await updateAppUrlMetafield({ request });
-
-  //loading relevant graphical data for quick reporting metrics
-  const {getMostRecentExperiment, getExperimentReportData, getNameOfExpGoal} = await import("../services/experiment.server")
-  let latestExperiment = await getMostRecentExperiment();
-  //latestExperiment.id = 2001 // debug value to test display of different experiment skews
-  const experimentReportData = await getExperimentReportData(latestExperiment.id);
-  const expGoalData = await getNameOfExpGoal(latestExperiment.id)
-  
-  const { getVariants } = await import("../services/variant.server");
-  const variants = await getVariants(latestExperiment.id);
-
   //gets stored query data to specify tutorial rendering on the page
   const {getTutorialData} = await import ("../services/tutorialData.server");
-  const tutorialData = await getTutorialData();
-
   //checks to see if web pixel already exists, used as conditional to web pixel section later
   const { webPixelNotNull} = await import ("../services/session.server");
+  
+  const tutorialData = await getTutorialData();
   const webPixelRes = await webPixelNotNull();
+  
   tutorialData.allSetupDone= (
     tutorialData.generalSettings &&
     tutorialData.createExperiment &&
@@ -74,7 +60,37 @@ export const loader = async ({ request }) => {
 
   tutorialData.webPixelStatus = webPixelRes; //true means exists, false means null
 
+  // Push app URL to metafield -- Shouldn't be required for production
+  const { updateAppUrlMetafield } = await import(
+    "../services/extension.server"
+  );
+  await updateAppUrlMetafield({ request });
 
+  //loading relevant graphical data for quick reporting metrics
+  const {getMostRecentExperiment, getExperimentReportData, getNameOfExpGoal} = await import("../services/experiment.server")
+  
+  const latestExperiment = await getMostRecentExperiment();
+  
+  // Guard clause
+  if (!latestExperiment) {
+    return { 
+      experiment: { 
+        name: "No experiments found", 
+        variants: [], 
+        status: "N/A",
+        createdAt: new Date(),
+        analyses: []
+      }, 
+      tableData: [], 
+      tutorialData: tutorialData
+    };
+  }
+  
+  const experimentReportData = await getExperimentReportData(latestExperiment.id);
+  const expGoalData = await getNameOfExpGoal(latestExperiment.id)
+  
+  const { getVariants } = await import("../services/variant.server");
+  const variants = await getVariants(latestExperiment.id);
   const {getImprovement} = await import("../services/experiment.server");
   const improvementPercent = await getImprovement(latestExperiment.id);
   const {getAnalysis} = await import ("../services/experiment.server");
@@ -84,7 +100,7 @@ export const loader = async ({ request }) => {
 
 
 
-  const tableData = await Promise.all(
+  const tableData = (await Promise.all(
     variants.map(async (v) => {
       const a = await getAnalysis(latestExperiment.id, v.id);
       if (!a) return null;
@@ -96,7 +112,7 @@ export const loader = async ({ request }) => {
         isBaseline: v.id === baselineVariantId,
       };
     })
-  );
+  )).filter(Boolean); // now we are dropping rows that are entirely null
   experimentReportData["expId"] = latestExperiment.id
 
   return {experiment: experimentReportData, tableData, tutorialData};
@@ -166,7 +182,8 @@ export default function Index() {
     const probabilityDataMap = {};
     const expectedLossDataMap = {};
   
-    experiment.analyses.forEach((analysis) => {
+    experiment.analyses?.forEach((analysis) => {
+      if (!analysis.calculatedWhen) return; // ensures data actually exists before calling it
       const dateKey = analysis.calculatedWhen.toLocaleDateString("en-US");
       if (!probabilityDataMap[dateKey]) {
         probabilityDataMap[dateKey] = { name: dateKey };
@@ -448,13 +465,13 @@ export default function Index() {
                     <Legend />
                     <Line
                       type="monotone"
-                      dataKey={experiment.variants[0].name}
+                      dataKey={experiment.variants[0]?.name ?? "Baseline"}
                       stroke="#8884d8"
                       activeDot={{ r: 8 }}
                     />
                     <Line
                       type="monotone"
-                      dataKey={experiment.variants[1].name}
+                      dataKey={experiment.variants[1]?.name ?? "Variant B"}
                       stroke="#82ca9d"
                     />
                   </LineChart>
@@ -478,22 +495,20 @@ export default function Index() {
               </s-table-header-row>
                 <s-table-body>
                 {tableData.map((row, index) => (
-                  <s-table-row key={row.variantId ?? "No ID here for some reason"}>
+                  <s-table-row key={row.variantId ?? index}>
                     <s-table-cell>{row.variantName ?? "No Name"}</s-table-cell>
 
                     <s-table-cell>{experiment.status}</s-table-cell>
 
                     {/* change this to whatever field your analysis row actually has */}
-                    <s-table-cell>{row.totalConversions + "/" + row.totalUsers ?? "N/A"}</s-table-cell>
+                    <s-table-cell>{formatRatio(row.totalConversions, row.totalUsers)}</s-table-cell>
 
                     <s-table-cell>
-                      {index === 0 ? "Baseline" : row.improvement.toFixed(2) != null ? `${row.improvement.toFixed(2)}%` : "N/A"}
+                      {index === 0 ? "Baseline" : formatImprovement(row.improvement)}
                     </s-table-cell>
 
                     <s-table-cell>
-                      {row.probabilityOfBeingBest != null
-                        ? `${(row.probabilityOfBeingBest * 100).toFixed(1)}%`
-                        : "N/A"}
+                      {formatProbability(row.probabilityOfBeingBest)}
                     </s-table-cell>
                   </s-table-row>
                 ))}
@@ -516,7 +531,7 @@ export default function Index() {
                 <s-icon type="target" size="small" color="subdued" />
               </s-stack>
               <s-stack direction="inline" gap="small-200" alignItems="center">
-                <s-text color="subdued">Started {experiment.createdAt.toLocaleString()}</s-text>
+                <s-text color="subdued">Started {experiment.createdAt ? new Date(experiment.createdAt).toLocaleString() : "Date unknown"}</s-text>
               </s-stack>
             </s-stack>
           </s-section>

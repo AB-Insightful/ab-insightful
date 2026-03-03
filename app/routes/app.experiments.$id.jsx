@@ -14,13 +14,15 @@ if (typeof window !== "undefined") {
 }
 
 import { authenticate } from "../shopify.server";
-import { useFetcher, redirect, useLoaderData } from "react-router";
+import { useFetcher, redirect, useLoaderData, useRevalidator } from "react-router";
 import { useState, useEffect } from "react";
 import db from "../db.server";
 import { ExperimentStatus } from "@prisma/client";
 import { TimeSelect } from "../utils/timeSelect";
 import { validateStartIsInFuture } from "../utils/validateStartIsInFuture";
 import { validateEndIsAfterStart } from "../utils/validateEndIsAfterStart";
+import { localDateTimeToISOString } from "../utils/localDateTimeToISOString";
+import { canRenameExperiment, isLockedStatus, canEditStructure, canEditSchedule, allowedStatusIntents, } from "./policies/experimentPolicy";
 
 
 // Server side code
@@ -111,11 +113,137 @@ export const loader = async ({ params, request }) => {
 };
 
 export const action = async ({ request, params }) => {
-  // Authenticate request
+
+  /* ====================================================================================================
+   Authenticate + Basic gets
+   ==================================================================================================== */
   const { session } = await authenticate.admin(request);
   const formData = await request.formData();
   const experimentId = parseInt(params.id, 10);
+  const intent = formData.get("intent");
 
+  /* ====================================================================================================
+   Fetch existing + Status Policy
+   ==================================================================================================== */
+  const existing = await db.experiment.findUnique({
+    where: { id: experimentId },
+    include: { experimentGoals: true },
+  });
+
+  if (!existing) {
+    console.error(`[EDIT] Experiment not found id=${experimentId}`);
+    return { errors: { form: "Experiment not found" } };
+  }
+
+  const status = existing.status;
+  const isDraft = status === ExperimentStatus.draft;
+  const allowedIntents = allowedStatusIntents(status);
+
+  //block if intent exists but not allowed for status
+  if (intent && !allowedIntents.has(intent)) {
+    return { ok: false, error: "Status change not allowed for this experiment." };
+  }
+
+  const { 
+    pauseExperiment,
+    resumeExperiment,
+    endExperiment,
+    startExperiment,
+    deleteExperiment,
+    archiveExperiment, 
+  } = await import("../services/experiment.server");
+
+  switch (intent) {
+    case "pause":
+      // Handles ET-22: Direct database update for one experiment
+      try {
+        await pauseExperiment(experimentId);
+        return { ok: true, action: ExperimentStatus.paused };
+      } catch (error) {
+        console.error("Pause Error:", error);
+        return { ok: false, error: "Failed to pause experiment" }, { status: 500 };
+      }
+
+    case "resume":
+      try {
+        await resumeExperiment(experimentId);
+        return { ok: true, action: ExperimentStatus.active };
+      } catch (error) {
+        console.error("Resume Error:", error);
+        return { ok: false, error: "Failed to resume experiment" }, { status: 500 };
+      }
+
+    case "archive":
+      try {
+        await archiveExperiment(experimentId);
+        return {ok: true, action: ExperimentStatus.archived}; 
+      } catch (error) {
+        console.error("Archive Error:", error);
+        return {ok: false, error: "Failed to archive experiment"}, { status: 500};
+      }
+    
+    case "delete":
+      try {
+        await deleteExperiment(experimentId);
+        return { ok: true, action: "deleteExperiment" };
+      } catch (error) {
+        console.error("Delete Error:", error);
+        return { ok: false, error: "Failed to delete experiment"}, {status: 500}
+      }
+
+    case "start":
+      try {
+        await startExperiment(experimentId);
+        return { ok: true, action: ExperimentStatus.active };
+      } catch (error) {
+        console.error("Start Error:", error);
+        return { ok: false, error: "Failed to start experiment"}, {status: 500}
+      }
+
+    case "end":
+      try {
+        await endExperiment(experimentId);
+        return { ok: true, action: ExperimentStatus.completed };
+      } catch (error) {
+        console.error("End Error:", error);
+        return { ok: false, error: "Failed to end experiment"}, {status: 500}
+      }
+
+    default:
+      break;
+  }
+  
+  const isLocked = isLockedStatus(status);
+
+  const editStructure = canEditStructure(status);
+  const editSchedule = canEditSchedule(status);
+  const canRename = canRenameExperiment(status);
+
+  // Locked experiments allow only rename, block everything else
+  if (isLocked) {
+    // if they are trying to "edit", they must at least be renaming
+    const name = (formData.get("name") || "").trim();
+
+    if (!name) {
+      return { errors: { form: "This experiment can no longer be edited." } };
+    }
+
+    try {
+      const updated = await db.experiment.update({
+        where: { id: experimentId },
+        data: { name }, // rename only
+      });
+      return { ok: true, experimentId: updated.id };
+    } catch (err) {
+      console.error(`[EDIT][DB FAIL][RENAME ONLY] experimentId=${experimentId}`, err);
+      return { errors: { form: "Database failed to rename experiment." } };
+    }
+  }
+  
+
+  /* ====================================================================================================
+   Read Form Fields
+   ==================================================================================================== */
   // Get POST request form data & create experiment
   const name = (formData.get("name") || "").trim();
   const description = (formData.get("description") || "").trim();
@@ -126,12 +254,9 @@ export const action = async ({ request, params }) => {
   const goalValue = (formData.get("goal") || "").trim();
   const endCondition = (formData.get("endCondition") || "").trim();
   const trafficSplitStr = (formData.get("trafficSplit") || "50").trim(); // Default to "0"
-  const probabilityToBeBestStr = (
-    formData.get("probabilityToBeBest") || ""
-  ).trim();
+  const probabilityToBeBestStr = (formData.get("probabilityToBeBest") || "").trim();
   const durationStr = (formData.get("duration") || "").trim();
   const timeUnitValue = (formData.get("timeUnit") || "").trim();
-  const intent = formData.get("intent");
 
   // Date/Time Fields (accepts both client-side UTC strings or separate date/time fields)
   const startDateUTC = (formData.get("startDateUTC") || "").trim();
@@ -141,14 +266,14 @@ export const action = async ({ request, params }) => {
   const endDateStr = (formData.get("endDate") || "").trim();
   const endTimeStr = (formData.get("endTime") || "").trim();
 
+  /* ====================================================================================================
+   Validation
+   ==================================================================================================== */
   // Storage Validation Errors
   const errors = {}; // will be length 0 when there are no errors
 
   if (!name) errors.name = "Name is required";
   if (!description) errors.description = "Description is required";
-  if (!sectionId) errors.sectionId = "Section Id is required";
-  if (variantEnabled && !variantSectionId)
-    errors.variantSectionId = "Variant Section Id is required"; //only validate if variant is true
   if (!startDateStr && !startDateUTC)
     errors.startDate = "Start Date is required";
   if (endCondition === "stableSuccessProbability" && !probabilityToBeBestStr)
@@ -179,9 +304,9 @@ export const action = async ({ request, params }) => {
 
   // validate startDateTime is present and in the future
   const now = new Date();
-  if (!startDateTime) {
+  if (isDraft && !startDateTime) {
     errors.startDate = "Start date is required";
-  } else if (startDateTime <= now) {
+  } else if (isDraft && startDateTime <= now) {
     errors.startDate = "Start date/time must be in the future";
   }
 
@@ -242,90 +367,103 @@ export const action = async ({ request, params }) => {
 
   if (Object.keys(errors).length) return { errors };
 
-  // For start button on side panel
-  if (intent === "start") {
-    const { startExperiment } = await import("../services/experiment.server");
-    await startExperiment(experimentId);
-    return redirect(`/app/experiments/${experimentId}`);
-  }
-
-  // Find or create a parent Project for this shop
-  const shop = session.shop;
-  const project = await db.project.upsert({
-    where: { shop: shop },
-    update: {},
-    create: { shop: shop, name: `${shop} Project` },
-  });
-  const projectId = project.id;
-
-  // Map client-side goal value ('view-page') to DB goal name
-  const goalNameMap = {
-    viewPage: "Viewed Page",
-    startCheckout: "Started Checkout",
-    addToCart: "Added Product to Cart",
-    completedCheckout: "Completed Checkout",
-  };
-  const goalName = goalNameMap[goalValue];
-
-  // Find the corresponding Goal record ID
-  const goalRecord = await db.goal.findUnique({
-    where: { name: goalName },
-  });
-
-  if (!goalRecord) {
-    return { errors: { goal: "Could not find matching goal in the database" } };
-  }
-
-  // Convert form data strings to schema-ready types
-  const goalId = goalRecord.id;
-  const trafficSplit = parseFloat(trafficSplitStr) / 100.0;
-
+  /* ====================================================================================================
+   Normalize Types
+   ==================================================================================================== */
   // Converts the date string to a Date object for Prisma
   // If no date was provided, set to null
   const startDate = startDateTime;
   const endDate = endDateTime || null;
 
   //convert stable success probability variables to schema-ready types
-  const probabilityToBeBest = probabilityToBeBestStr
-    ? Number(probabilityToBeBestStr)
-    : null;
+  const probabilityToBeBest = probabilityToBeBestStr ? Number(probabilityToBeBestStr) : null;
   const duration = durationStr ? Number(durationStr) : null;
   const timeUnit = timeUnitValue || null;
 
-  // Assembles the final data object for Prisma
-  const experimentData = {
-    name: name,
-    description: description,
-    status: ExperimentStatus.draft,
-    trafficSplit: trafficSplit,
-    endCondition: endCondition,
-    startDate: startDate,
-    endDate: endDate,
-    sectionId: sectionId,
-    controlSectionId: controlSectionId,
-    project: {
-      // Connect to the parent project
-      connect: {
-        id: projectId,
-      },
-    },
-    experimentGoals: {
-      // Create the related goal
-      create: [
-        {
-          goalId: goalId,
-          goalRole: "primary",
-        },
-      ],
-    },
-  };
+  /* ====================================================================================================
+   Build Update Payload
+   ==================================================================================================== */
 
-  if (isStableSuccessProbability) {
-    Object.assign(experimentData, {
-      probabilityToBeBest,
-      duration,
-      timeUnit,
+  const updateData = {};
+
+  // schedule-level edits (allowed in draft + active/paused)
+  if (editSchedule) {
+    updateData.name = name;
+    updateData.description = description;
+    updateData.endCondition = endCondition;
+
+    if (isDraft) updateData.startDate = startDate;
+
+    updateData.endDate = endCondition === "endDate" ? endDate : null;
+
+    if (endCondition === "stableSuccessProbability") {
+      updateData.probabilityToBeBest = probabilityToBeBest;
+      updateData.duration = duration;
+      updateData.timeUnit = timeUnit;
+    } else {
+      updateData.probabilityToBeBest = null;
+      updateData.duration = null;
+      updateData.timeUnit = null;
+    }
+  }
+
+  // structure edits (draft only)
+  if (editStructure) {
+    updateData.sectionId = sectionId;
+    updateData.controlSectionId = controlSectionId;
+    updateData.trafficSplit = parseFloat(trafficSplitStr) / 100.0;
+  }
+
+  /* ====================================================================================================
+   Goal Ops for Draft
+   ==================================================================================================== */
+  let goalOps = null;
+
+  if (editStructure) {
+    const goalNameMap = {
+      viewPage: "Viewed Page",
+      startCheckout: "Started Checkout",
+      addToCart: "Added Product to Cart",
+      completedCheckout: "Completed Checkout",
+    };
+
+    const goalName = goalNameMap[goalValue];
+
+    const goalRecord = await db.goal.findUnique({
+      where: { name: goalName },
     });
+
+    if (!goalRecord) {
+      return { errors: { goal: "Could not find matching goal in database" } };
+    }
+
+    goalOps = {
+      deleteMany: { goalRole: "primary" },
+      create: [{ goalId: goalRecord.id, goalRole: "primary" }],
+    };
+  }
+
+  /* ====================================================================================================
+   DB update + return
+   ==================================================================================================== */
+
+  try {
+    const updated = await db.experiment.update({
+      where: { id: experimentId },
+      data: {
+        ...updateData,
+        ...(goalOps ? { experimentGoals: goalOps } : {}),
+      },
+    });
+
+    return { ok: true, experimentId: updated.id };
+  } catch (err) {
+    console.error(
+      `[EDIT][DB FAIL] experimentId=${experimentId} shop=${session.shop}`,
+      err
+    );
+
+    return { errors: { form: "Database failed to update experiment." } };
   }
 };
 
@@ -336,6 +474,26 @@ export default function EditExperiment() {
   //fetcher stores the data in the fields into a form that can be retrieved
   const fetcher = useFetcher();
   const loaderData = useLoaderData();
+  const revalidator = useRevalidator();
+
+  // allowable edits
+  const status = loaderData?.experiment?.status;
+  const isDraft = status === ExperimentStatus.draft;
+
+  const isLocked = isLockedStatus(status);
+  const isArchived = status === ExperimentStatus.archived;
+
+  const editStructure = canEditStructure(status);
+  const editSchedule = canEditSchedule(status);
+  const canRename = canRenameExperiment(status); // always true
+  const statusIntents = allowedStatusIntents(status);
+
+  //if locked only thing we allow is renaming
+  const renameOnlyMode = isLocked && canRename;
+
+  // make sure dates don't throw errors that block renaming
+  const canEditStartDateTime = !isLocked && isDraft;
+  const canEditEndCondition = !isLocked && editSchedule;
 
   //state variables (special variables that remember across re-renders (e.g. user input, counters))
   const [name, setName] = useState("");
@@ -364,6 +522,37 @@ export default function EditExperiment() {
   const [endTime, setEndTime] = useState("");
   const [startTimeError, setStartTimeError] = useState("");
   const [endTimeError, setEndTimeError] = useState("");
+
+  //badges for status
+  const renderStatusBadge = (status) => {
+    if (status === ExperimentStatus.active)
+      return <s-badge tone="info" icon="gauge">Active</s-badge>;
+    if (status === ExperimentStatus.paused)
+      return <s-badge tone="caution" icon="pause-circle">Paused</s-badge>;
+    if (status === ExperimentStatus.completed)
+      return <s-badge tone="success" icon="check">Completed</s-badge>;
+    if (status === ExperimentStatus.archived)
+      return <s-badge tone="warning" icon="order">Archived</s-badge>;
+    return <s-badge icon="draft-orders">Draft</s-badge>;
+  };
+  
+
+  //status popover refresher
+  useEffect(() => {
+    if (fetcher.state !== "idle") return;
+    if (!fetcher.data?.ok) return;
+
+    const refreshActions = [
+      ExperimentStatus.active,
+      ExperimentStatus.paused,
+      ExperimentStatus.completed,
+      ExperimentStatus.archived,
+    ];
+
+    if (refreshActions.includes(fetcher.data.action)) {
+      revalidator.revalidate();
+    }
+  }, [fetcher.state, fetcher.data, revalidator]);
 
   // keep all date/time errors in sync whenever any date/time value changes
   useEffect(() => {
@@ -428,59 +617,60 @@ export default function EditExperiment() {
   const errors = fetcher.data?.errors || {}; // looks for error data, if empty instantiate errors as empty object
 
   //Check if there were any errors on the form
-  const hasClientErrors =
-    !!nameError ||
-    !!errors.name ||
-    !!emptyDescriptionError ||
-    !!errors.description ||
-    !!emptySectionIdError ||
-    !!errors.sectionId ||
-    (variant && !!emptySectionIdVariantError) ||
-    (variant && !!errors.variantSectionId) ||
-    !!probabilityToBeBestError ||
-    !!errors.probabilityToBeBest ||
-    !!durationError ||
-    !!errors.duration ||
-    !!timeUnitError ||
-    !!errors.timeUnit ||
-    !!startDateError ||
-    !!errors.startDate ||
-    !!startTimeError ||
-    !!endDateError ||
-    !!errors.endDate ||
-    !!endTimeError ||
-    !!emptyStartDateError ||
-    !!emptyEndDateError;
+  const hasClientErrors = renameOnlyMode ? (!!nameError || !!errors.name) :
+    (
+      !!nameError ||
+      !!errors.name ||
+      !!emptyDescriptionError ||
+      !!errors.description ||
+      !!emptySectionIdError ||
+      !!errors.sectionId ||
+      (variant && !!emptySectionIdVariantError) ||
+      (variant && !!errors.variantSectionId) ||
+      !!probabilityToBeBestError ||
+      !!errors.probabilityToBeBest ||
+      !!durationError ||
+      !!errors.duration ||
+      !!timeUnitError ||
+      !!errors.timeUnit ||
+      (canEditStartDateTime && (!!startDateError || !!errors.startDate || !!startTimeError)) ||
+      !!emptyStartDateError ||
+      (canEditEndCondition && (!!endDateError || !!errors.endDate || !!endTimeError || !!emptyEndDateError))
+    )
+
   //check for fetcher state, want to block save draft button if in the middle of sumbitting
   const isSubmitting = fetcher.state === "submitting";
 
   const handleExperimentEdit = async () => {
-    // creates data object for all current state variables
-    const startDateUTC = startDate
-      ? localDateTimeToISOString(startDate, startTime)
-      : "";
-    const effectiveEndTime = endDate && !endTime ? "23:59" : endTime;
-    const endDateUTC = endDate
-      ? localDateTimeToISOString(endDate, effectiveEndTime)
-      : "";
+    const experimentData = renameOnlyMode ? { name: name } : (() => {
 
-    const experimentData = {
-      name: name,
-      description: description,
-      sectionId: sectionId,
-      controlSectionId: controlSectionId,
-      variantSectionId: variantSectionId,
-      variant: String(variant),
-      goal: goalSelected, // holds the "view-page" value
-      endCondition: endCondition, // holds "Manual", "End Data"
-      startDateUTC: startDateUTC, // The date string from s-date-field
-      endDateUTC: endDateUTC, // The date string from s-date-field
-      endDate: endDate, // The date string from s-date-field
-      trafficSplit: experimentChance, // 0-100 value
-      probabilityToBeBest: probabilityToBeBest, //holds validated value 51-100
-      duration: duration, //length of time for experiment run
-      timeUnit: timeUnit,
-    };
+      // creates data object for all current state variables
+      const startDateUTC = startDate
+        ? localDateTimeToISOString(startDate, startTime)
+        : "";
+      const effectiveEndTime = endDate && !endTime ? "23:59" : endTime;
+      const endDateUTC = endDate
+        ? localDateTimeToISOString(endDate, effectiveEndTime)
+        : "";
+
+      return {
+        name: name,
+        description: description,
+        sectionId: sectionId,
+        controlSectionId: controlSectionId,
+        variantSectionId: variantSectionId,
+        variant: String(variant),
+        goal: goalSelected, // holds the "view-page" value
+        endCondition: endCondition, // holds "Manual", "End Data"
+        startDateUTC: startDateUTC, // The date string from s-date-field
+        endDateUTC: endDateUTC, // The date string from s-date-field
+        endDate: endDate, // The date string from s-date-field
+        trafficSplit: experimentChance, // 0-100 value
+        probabilityToBeBest: probabilityToBeBest, //holds validated value 51-100
+        duration: duration, //length of time for experiment run
+        timeUnit: timeUnit,
+      };
+    })();
 
     try {
       await fetcher.submit(experimentData, { method: "POST" });
@@ -607,14 +797,15 @@ export default function EditExperiment() {
     let newEndDateError = "";
     let newEndTimeError = "";
 
-    // Validate start is in future
-    const { dateError: startDErr, timeError: startTErr } =
-      validateStartIsInFuture(startDateVal, startTimeVal);
-    newStartDateError = startDErr;
-    newStartTimeError = startTErr;
+    // Validate start is in future and only validate if field isn't disabled
+    if (canEditStartDateTime) {
+      const { dateError: startDErr, timeError: startTErr } = validateStartIsInFuture(startDateVal, startTimeVal);
+      newStartDateError = startDErr;
+      newStartTimeError = startTErr;
+    }
 
-    // Validate end date is not in the past
-    if (condition === "endDate" && endDateVal) {
+    // Validate end date is not in the past and only validate if field isn't disabled
+    if (canEditEndCondition && condition === "endDate" && endDateVal) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const selectedEndDate = new Date(`${endDateVal}T00:00:00`);
@@ -758,7 +949,7 @@ export default function EditExperiment() {
       <s-button
         slot="primary-action"
         variant="primary"
-        disabled={hasClientErrors || isSubmitting}
+        disabled={!canRename || hasClientErrors || isSubmitting}
         onClick={handleExperimentEdit}
       >
         Save Draft
@@ -775,72 +966,155 @@ export default function EditExperiment() {
       )}
 
       {/*Sidebar panel to display current experiment summary*/}
-      <s-section heading={name ? name : "no experiment name set"} slot="aside">
-        <s-stack gap="small">
-          <s-badge icon={icon}>{label}</s-badge>
-          <s-badge
-            tone={sectionId ? "" : "warning"}
-            icon={sectionId ? "code" : "alert-circle"}
-          >
-            {sectionId || "Section not selected"}
-          </s-badge>
-          <s-stack display={variantDisplay}>
+      <div
+        slot="aside"
+        style={{
+          position: "sticky",
+          top: ".25rem",
+          alignSelf: "flex-start",
+          minWidth: "300px",
+        }}
+      >
+        <s-section heading={name ? name : "no experiment name set"}>
+          <s-stack gap="small">
+            <s-badge icon={icon}>{label}</s-badge>
             <s-badge
-              tone={variantSectionId ? "" : "warning"}
-              icon={variantSectionId ? "code" : "alert-circle"}
+              tone={sectionId ? "" : "warning"}
+              icon={sectionId ? "code" : "alert-circle"}
             >
-              {variantSectionId || "Section not selected"}
+              {sectionId || "Section not selected"}
             </s-badge>
-          </s-stack>
-
-          <s-text font-weight="heavy">Experiment Details</s-text>
-
-          {/* DYNAMIC BULLET LIST */}
-          <s-text>• {customerSegments}</s-text>
-          <s-text>• {variationMap[variant] || "—"}</s-text>
-          <s-text>• {experimentChance}% Chance to show Variant 1</s-text>
-          <s-stack display={variantDisplay}>
-            <s-text>
-              • {variantExperimentChance}% Chance to show Variant 2
-            </s-text>
-          </s-stack>
-          <s-text>
-            • Active from{" "}
-            {startDate
-              ? new Date(`${startDate}T00:00:00`).toDateString(undefined, {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })
-              : "—"}{" "}
-            until{" "}
-            {endDate
-              ? new Date(`${endDate}T00:00:00`).toLocaleDateString(undefined, {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })
-              : "—"}
-          </s-text>
-          {/* Start button for draft experiments */}
-          {loaderData?.experiment?.status === "draft" && (
-            <s-stack justifyContent="center" paddingBlockStart="base">
-                <s-button
-                  variant="primary"
-                  disabled={fetcher.state !== "idle"}
-                  onClick={() => {
-                    fetcher.submit(
-                      { intent: "start" },
-                      { method: "post" }
-                    );
-                  }}
-                >
-                  Start Experiment
-                </s-button>
+            <s-stack display={variantDisplay}>
+              <s-badge
+                tone={variantSectionId ? "" : "warning"}
+                icon={variantSectionId ? "code" : "alert-circle"}
+              >
+                {variantSectionId || "Section not selected"}
+              </s-badge>
             </s-stack>
-          )}
-        </s-stack>
-      </s-section>
+
+            <s-text font-weight="heavy">Experiment Details</s-text>
+
+            {/* DYNAMIC BULLET LIST */}
+            <s-text>• {customerSegments}</s-text>
+            <s-text>• {variationMap[variant] || "—"}</s-text>
+            <s-text>• {experimentChance}% Chance to show Variant 1</s-text>
+            <s-stack display={variantDisplay}>
+              <s-text>
+                • {variantExperimentChance}% Chance to show Variant 2
+              </s-text>
+            </s-stack>
+            <s-text>
+              • Active from{" "}
+              {startDate
+                ? new Date(`${startDate}T00:00:00`).toDateString(undefined, {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })
+                : "—"}{" "}
+              until{" "}
+              {endDate
+                ? new Date(`${endDate}T00:00:00`).toLocaleDateString(undefined, {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })
+                : "—"}
+            </s-text>
+
+            {/* Status + actions (bottom of side panel) */}
+            <s-box paddingBlockStart="base">
+              <s-stack direction="inline" alignItems="center" justifyContent="space-between">
+                <s-stack direction="inline" gap="small" alignItems="center">
+                  <s-text font-weight="heavy">Status</s-text>
+                  {renderStatusBadge(status)}
+                </s-stack>
+
+                <s-button
+                  commandFor={`status-popover-${loaderData.experiment.id}`}
+                  variant="tertiary"
+                  icon="horizontal-dots"
+                  accessibilityLabel="Change status"
+                  disabled={isArchived || statusIntents.size === 0 || fetcher.state !== "idle"}
+                >
+                Change Status
+                </s-button>
+
+                <s-popover id={`status-popover-${loaderData.experiment.id}`}>
+                  <s-stack direction="block">
+                    {statusIntents.has("start") && (
+                      <s-button
+                        variant="tertiary"
+                        commandFor={`status-popover-${loaderData.experiment.id}`}
+                        disabled={fetcher.state !== "idle"}
+                        onClick={() => fetcher.submit({ intent: "start" }, { method: "post" })}
+                      >
+                        Start
+                      </s-button>
+                    )}
+
+                    {statusIntents.has("pause") && (
+                      <s-button
+                        variant="tertiary"
+                        commandFor={`status-popover-${loaderData.experiment.id}`}
+                        disabled={fetcher.state !== "idle"}
+                        onClick={() => fetcher.submit({ intent: "pause" }, { method: "post" })}
+                      >
+                        Pause
+                      </s-button>
+                    )}
+
+                    {statusIntents.has("resume") && (
+                      <s-button
+                        variant="tertiary"
+                        commandFor={`status-popover-${loaderData.experiment.id}`}
+                        disabled={fetcher.state !== "idle"}
+                        onClick={() => fetcher.submit({ intent: "resume" }, { method: "post" })}
+                      >
+                        Resume
+                      </s-button>
+                    )}
+
+                    {statusIntents.has("end") && (
+                      <s-button
+                        variant="tertiary"
+                        commandFor={`status-popover-${loaderData.experiment.id}`}
+                        disabled={fetcher.state !== "idle"}
+                        onClick={() => fetcher.submit({ intent: "end" }, { method: "post" })}
+                      >
+                        End
+                      </s-button>
+                    )}
+
+                    {statusIntents.has("archive") && (
+                      <s-button
+                        variant="tertiary"
+                        commandFor={`status-popover-${loaderData.experiment.id}`}
+                        disabled={fetcher.state !== "idle"}
+                        onClick={() => fetcher.submit({ intent: "archive" }, { method: "post" })}
+                      >
+                        Archive
+                      </s-button>
+                    )}
+
+                    {statusIntents.has("delete") && (
+                      <s-button
+                        variant="tertiary"
+                        commandFor={`status-popover-${loaderData.experiment.id}`}
+                        disabled={fetcher.state !== "idle"}
+                        onClick={() => fetcher.submit({ intent: "delete" }, { method: "post" })}
+                      >
+                        Delete
+                      </s-button>
+                    )}
+                  </s-stack>
+                </s-popover>
+              </s-stack>
+            </s-box>
+          </s-stack>
+        </s-section>
+      </div>
 
       {/*Name Portion of code */}
       <s-section>
@@ -852,6 +1126,7 @@ export default function EditExperiment() {
                 placeholder="Unnamed Experiment"
                 value={name}
                 required
+                disabled={!canRename}
                 onFocus={() => {
                   setNameError(null);
                   if (fetcher.data?.errors?.name) {
@@ -878,6 +1153,7 @@ export default function EditExperiment() {
                 placeholder="Add a detailed description of your experiment"
                 value={description}
                 required
+                disabled={isLocked || !editSchedule}
                 onFocus={() => {
                   setDescriptionError(null);
                   if (fetcher.data?.errors?.description) {
@@ -906,6 +1182,7 @@ export default function EditExperiment() {
               label="Experiment Goal"
               icon={icon}
               value={goalSelected}
+              disabled={isLocked || !editStructure}
               onChange={(e) => {
                 const value = e.target.value;
                 setGoalSelected(value);
@@ -937,6 +1214,7 @@ export default function EditExperiment() {
                 value={sectionId}
                 label="Section ID to be tested"
                 required
+                disabled={isLocked || !editStructure}
                 onFocus={() => {
                   setSectionIdError(null);
                   if (fetcher.data?.errors?.sectionId) {
@@ -965,6 +1243,7 @@ export default function EditExperiment() {
               value={controlSectionId}
               label="Optional: Control Section ID"
               required
+              disabled={isLocked || !editStructure}
               onChange={(e) => {
                 const v = e.target.value;
                 setControlSectionId(v);
@@ -976,6 +1255,7 @@ export default function EditExperiment() {
               label="Chance to show experiment"
               value={experimentChance}
               inputMode="numeric"
+              disabled={isLocked || !editStructure}
               onChange={(e) => {
                 const value = Math.max(
                   0,
@@ -1003,6 +1283,7 @@ export default function EditExperiment() {
                   value={variantSectionId}
                   label="Section ID to be tested"
                   required
+                  disabled={isLocked || !editStructure}
                   onFocus={() => {
                     setSectionIdVariantError(null);
                     if (fetcher.data?.errors?.variantSectionId) {
@@ -1032,12 +1313,13 @@ export default function EditExperiment() {
                 label="Chance to show experiment"
                 value={variantExperimentChance}
                 inputMode="numeric"
+                disabled={isLocked || !editStructure}
                 onChange={(e) => {
                   const value = Math.max(
                     0,
                     Math.min(100, Number(e.target.value)),
                   );
-                  setExperimentChance(value);
+                  setVariantExperimentChance(value);
                 }}
                 min={0}
                 max={100}
@@ -1049,6 +1331,7 @@ export default function EditExperiment() {
             <s-select
               label="Customer segment to test"
               value={customerSegment}
+              disabled={isLocked || !editStructure}
               onChange={(e) => setCustomerSegment(e.target.value)}
               details="The customer segment that the experiment can be shown to."
             >
@@ -1071,7 +1354,7 @@ export default function EditExperiment() {
         <s-button
           icon="minus"
           accessibilityLabel="Remove item"
-          disabled={!variant}
+          disabled={!variant || !editStructure || isLocked}
           onClick={handleVariantUndo}
         >
           Remove Another Variant
@@ -1079,7 +1362,7 @@ export default function EditExperiment() {
         <s-button
           icon="plus"
           accessibilityLabel="Add item"
-          disabled={variant}
+          disabled={variant || !editStructure || isLocked}
           onClick={handleVariant}
         >
           Add Another Variant
@@ -1101,6 +1384,7 @@ export default function EditExperiment() {
                     emptyStartDateError || startDateError || errors.startDate
                   }
                   required
+                  disabled={isLocked || !isDraft}
                   onFocus={() => {
                     setEmptyStartDateError(null);
                     if (fetcher.data?.errors?.startDate) {
@@ -1131,6 +1415,7 @@ export default function EditExperiment() {
                   value={startTime}
                   onChange={handleStartTimeChange}
                   error={startTimeError}
+                  disabled={isLocked || !isDraft}
                 />
               </s-box>
             </s-stack>
@@ -1140,12 +1425,14 @@ export default function EditExperiment() {
               <s-stack direction="inline" gap="base">
                 <s-button
                   variant={endCondition === "manual" ? "primary" : "secondary"}
+                  disabled={isLocked || !editSchedule}
                   onClick={() => setEndCondition("manual")}
                 >
                   Manual
                 </s-button>
                 <s-button
                   variant={endCondition === "endDate" ? "primary" : "secondary"}
+                  disabled={isLocked || !editSchedule}
                   onClick={() => setEndCondition("endDate")}
                 >
                   End date
@@ -1156,6 +1443,7 @@ export default function EditExperiment() {
                       ? "primary"
                       : "secondary"
                   }
+                  disabled={isLocked || !editSchedule}
                   onClick={() => setEndCondition("stableSuccessProbability")}
                 >
                   Stable success probability
@@ -1177,6 +1465,7 @@ export default function EditExperiment() {
                       (endCondition === "endDate" && errors.endDate)
                     }
                     required
+                    disabled={isLocked || !editSchedule}
                     onFocus={() => {
                       setEmptyEndDateError(null);
                       if (fetcher.data?.errors?.endDate) {
@@ -1207,6 +1496,7 @@ export default function EditExperiment() {
                     value={endTime}
                     onChange={handleEndTimeChange}
                     error={endTimeError}
+                    disabled={isLocked || !editSchedule}
                   />
                 </s-box>
               </s-stack>
@@ -1325,40 +1615,8 @@ export default function EditExperiment() {
           <s-button href="/app/experiments">Discard</s-button>
           <s-button
             variant="primary"
-            disabled={hasClientErrors || isSubmitting}
-            onClick={async () => {
-              // creates data object for all current state variables
-              const startDateUTC = startDate
-                ? localDateTimeToISOString(startDate, startTime)
-                : "";
-              const effectiveEndTime = endDate && !endTime ? "23:59" : endTime;
-              const endDateUTC = endDate
-                ? localDateTimeToISOString(endDate, effectiveEndTime)
-                : "";
-
-              const experimentData = {
-                name: name,
-                description: description,
-                sectionId: sectionId,
-                variantSectionId: variantSectionId,
-                variant: String(variant),
-                goal: goalSelected, // holds the "view-page" value
-                endCondition: endCondition, // holds "Manual", "End Data"
-                startDateUTC: startDateUTC, // The date string from s-date-field
-                endDateUTC: endDateUTC, // The date string from s-date-field
-                endDate: endDate, // The date string from s-date-field
-                trafficSplit: experimentChance, // 0-100 value
-                probabilityToBeBest: probabilityToBeBest, //holds validated value 51-100
-                duration: duration, //length of time for experiment run
-                timeUnit: timeUnit,
-              };
-
-              try {
-                await fetcher.submit(experimentData, { method: "POST" });
-              } catch (error) {
-                console.error("Error during fetcher.submit", error);
-              }
-            }}
+            disabled={!canRename || hasClientErrors || isSubmitting}
+            onClick={handleExperimentEdit}
           >
             Save Draft
           </s-button>

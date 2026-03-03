@@ -10,6 +10,7 @@ export function TimeSelect({
   onChange,
   error,
   invalidMessage = 'Enter a time like "1:30 PM" or "13:30"',
+  disabled = false
 }) {
   // controlled display value (human readable like "1:30 PM")
   const times = [];
@@ -45,10 +46,13 @@ export function TimeSelect({
     setDisplay(value ? labelFor(value) : "");
   }, [value]);
 
-  const openPopover = (el) =>
+  const openPopover = (el) => {
+    if (disabled) return;
     el?.querySelector(`#${popoverId}Trigger`)?.click();
+  }
 
   const commitFromField = (raw) => {
+    if (disabled) return;
     const parsed = parseUserTime(raw);
     if (!parsed) {
       // notify parent by passing null / empty so parent can set error string
@@ -69,11 +73,16 @@ export function TimeSelect({
         value={display}
         placeholder="Choose a time"
         error={error}
+        disabled={disabled}
         onFocus={(e) => openPopover(e.currentTarget.parentElement)}
         onClick={(e) => openPopover(e.currentTarget.parentElement)}
-        onInput={(e) => setDisplay(e.currentTarget.value)}
+        onInput={(e) => {
+          if (disabled) return;
+          setDisplay(e.currentTarget.value);
+        }}
         onBlur={(e) => commitFromField(e.currentTarget.value)}
         onKeyDown={(e) => {
+          if (disabled) return;
           if (e.key === "Enter") {
             e.preventDefault();
             commitFromField(e.currentTarget.value);
@@ -87,6 +96,13 @@ export function TimeSelect({
           commandFor={popoverId}
           icon="chevron-down"
           accessibilityLabel="Select time"
+          disabled={disabled}
+          onClick={(e) => {
+            if (disabled) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          }}
         />
       </s-text-field>
 
@@ -99,7 +115,9 @@ export function TimeSelect({
               fullWidth
               variant="tertiary"
               commandFor={popoverId}
+              disabled={disabled}
               onClick={() => {
+                if (disabled) return;
                 onChange(t.value);
                 setDisplay(labelFor(t.value));
               }}

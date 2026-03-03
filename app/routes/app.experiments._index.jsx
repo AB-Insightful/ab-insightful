@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatRuntime } from "../utils/formatRuntime.js";
 import { formatImprovement } from "../utils/formatImprovement.js";
 import { ExperimentStatus } from "@prisma/client";
+import { allowedStatusIntents } from "./policies/experimentPolicy";
 
 // Server side code
 
@@ -33,7 +34,31 @@ export async function loader() {
 export async function action({ request }) {
   const formData = await request.formData();
   const intent = formData.get("intent");
-  const experimentId = formData.get("experimentId");
+  const experimentIdRaw = formData.get("experimentId");
+  const experimentId = Number(experimentIdRaw);
+
+  const isStatusIntent = ["start", "pause", "resume", "end", "archive", "delete"].includes(intent);
+
+  if (isStatusIntent) {
+    if (!Number.isInteger(experimentId) || experimentId <= 0) {
+      return { ok: false, error: "Invalid experiment id." };
+    }
+
+    const { default: db } = await import("../db.server");
+    const existing = await db.experiment.findUnique({
+      where: { id: experimentId },
+      select: { status: true },
+    });
+
+    if (!existing) {
+      return { ok: false, error: "Experiment not found." };
+    }
+
+    const allowed = allowedStatusIntents(existing.status);
+    if (!allowed.has(intent)) {
+      return { ok: false, error: "Status change not allowed for this experiment." };
+    }
+  }
 
   const { 
     pauseExperiment,
@@ -77,7 +102,7 @@ export async function action({ request }) {
 
         //first, find the project experiment belongs to
         const existing = await db.experiment.findUnique({
-          where: { id: Number(experimentId) },
+          where: { id: experimentId },
           select: { projectId: true },
         });
         //if experiment is not found
@@ -89,7 +114,7 @@ export async function action({ request }) {
           where: {
             projectId: existing.projectId,
             name: newName,
-            NOT: { id: Number(experimentId) },
+            NOT: { id: experimentId },
           },
         });
         //if name already is in the database
@@ -98,7 +123,7 @@ export async function action({ request }) {
         }
         //perform the update
         await db.experiment.update({
-          where: { id: Number(experimentId) },
+          where: { id: experimentId },
           data: { name: newName },
         });
         //error handling
@@ -118,8 +143,8 @@ export async function action({ request }) {
         return {ok: false, error: "Failed to archive experiment"}, { status: 500};
       }
 
-      //performs switch case action upon clicking 'I understand" button for tutorial modal
-      case "tutorial_viewed":
+    //performs switch case action upon clicking 'I understand" button for tutorial modal
+    case "tutorial_viewed":
       try {
         const { setViewedListExp } = await import("../services/tutorialData.server");
         await setViewedListExp(1, true); //always sets the item in tutorialdata to true, selects 1st tuple
@@ -355,8 +380,7 @@ export default function Experimentsindex() {
     for (let i = 0; i < experiments.length; i++) {
       //single tuple of the experiment data
       const curExp = experiments[i];
-
-      const resumeLabel = curExp.startDate ? "Resume" : "Start";
+      const intents = allowedStatusIntents(curExp.status);
 
       // call formatRuntime utility
       const runtime = formatRuntime(
@@ -451,7 +475,7 @@ export default function Experimentsindex() {
                   Rename
                 </s-button>
 
-                {curExp.status === ExperimentStatus.draft && (
+                {intents.has("start") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -471,7 +495,7 @@ export default function Experimentsindex() {
                   </s-button>
                 )}
 
-                {curExp.status === ExperimentStatus.active && (
+                {intents.has("pause") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -491,7 +515,7 @@ export default function Experimentsindex() {
                   </s-button>
                 )}
 
-                {(curExp.status === ExperimentStatus.active || curExp.status === ExperimentStatus.paused) && (
+                {intents.has("end") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -511,7 +535,7 @@ export default function Experimentsindex() {
                   </s-button>
                 )}
 
-                {curExp.status === ExperimentStatus.paused && (
+                {intents.has("resume") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -531,7 +555,7 @@ export default function Experimentsindex() {
                   </s-button>
                 )}
 
-                {curExp.status === ExperimentStatus.completed && (
+                {intents.has("archive") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -551,7 +575,7 @@ export default function Experimentsindex() {
                   </s-button>
                 )}
 
-                {curExp.status === ExperimentStatus.draft && (
+                {intents.has("delete") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}

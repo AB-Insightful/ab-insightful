@@ -1,4 +1,4 @@
-function validateStartIsInFuture(startDateStr, startTimeStr = "00:00") {
+export function validateStartIsInFuture(startDateStr, startTimeStr = "00:00") {
   let dateError = "";
   let timeError = "";
 

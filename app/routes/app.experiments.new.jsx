@@ -21,6 +21,7 @@ import { ExperimentStatus } from "@prisma/client";
 import { TimeSelect } from "../utils/timeSelect";
 import { validateStartIsInFuture } from "../utils/validateStartIsInFuture";
 import { validateEndIsAfterStart } from "../utils/validateEndIsAfterStart";
+import { localDateTimeToISOString } from "../utils/localDateTimeToISOString";
 
 // Server side code
 export const action = async ({ request }) => {

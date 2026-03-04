@@ -19,7 +19,7 @@ export default defineConfig({
             reportsDirectory: 'coverage',
             reporter: ['text', 'html', 'lcov'],
             all: true, 
-            include: ['src/**/*.{js,jsx}'], // define which files to perform coverage on
+            include: ['app/**/*.{js,jsx,ts,tsx}', 'src/**/*.{js,jsx}'], // define which files to perform coverage on
             exclude: [ // define which files to not perform coverage on (all tests)
                 'src/**/*.test.*',
                 'src/**/__tests__/**',

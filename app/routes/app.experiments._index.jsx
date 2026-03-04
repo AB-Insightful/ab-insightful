@@ -209,6 +209,9 @@ export default function Experimentsindex() {
   const [renameValue, setRenameValue] = useState("");
   const [renameError, setRenameError] = useState(null);
 
+  //track active filter selection (all by default)
+  const [activeFilter, setActiveFilter] = useState("all");
+
   //check for errors after rename attempt
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.action === "rename_error") {
@@ -329,7 +332,6 @@ export default function Experimentsindex() {
   }
 
   //TODO: restrict based on experiment goal
-  //- re
   function renderTableData(experiments) {
     const rows = [];
 
@@ -612,6 +614,17 @@ export default function Experimentsindex() {
           variant="primary"
           href="/app/experiments/new"
         >Create Experiment</s-button>
+        <div style={{ margin: "24px 0" }}>
+          <s-button commandFor="activity-filter">Filter By</s-button>
+            <s-menu id="activity-filter" accessibilityLabel="Filter by activity">
+              <s-button onClick={() => setActiveFilter("all")}>All</s-button>
+              <s-button onClick={() => setActiveFilter(ExperimentStatus.draft)}>Draft</s-button>
+              <s-button icon="gauge" onClick={() => setActiveFilter(ExperimentStatus.active)}>Active</s-button>
+              <s-button icon="check" onClick={() => setActiveFilter(ExperimentStatus.completed)}>Completed</s-button>
+              <s-button icon="pause-circle" onClick={() => setActiveFilter(ExperimentStatus.paused)}>Paused</s-button>
+              <s-button icon="order" onClick={() => setActiveFilter(ExperimentStatus.archived)}>Archived</s-button>
+            </s-menu>
+        </div>
         {/*modal for tutorial popup */}
           <s-modal
             id="tutorial-modal-settings"
@@ -642,7 +655,6 @@ export default function Experimentsindex() {
           </s-modal>
         <s-section>
           {" "}
-          {/*might be broken */}
           <s-heading>Experiment List</s-heading>
           {/* Table Section of experiment list page */}
           <s-box  background="base"
@@ -663,7 +675,11 @@ export default function Experimentsindex() {
                 {/*Place Quick Access Button here */}
               </s-table-header-row>
               <s-table-body>
-                {renderTableData(experiments)}{" "}
+                {renderTableData(
+                  activeFilter === "all"
+                    ? experiments
+                    : experiments.filter((e) => e.status === activeFilter)
+                )}{" "}
                 {/* function call that returns the jsx data for table rows */}
               </s-table-body>
             </s-table>

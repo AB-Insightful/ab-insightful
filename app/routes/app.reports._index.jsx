@@ -328,31 +328,31 @@ export default function Reports() {
             <s-table-body>{renderTableData(paginatedExperiments)}</s-table-body>
           </s-table>
         </s-box>
-      </s-section>
-      {/*pagination controls*/}
-      <>
-        <div style={{ margin: "10px 0" }}>
-          <s-paragraph>
-            <s-text>
-              Showing {startIndex + 1}-{Math.min(startIndex + itemsPerPage, allActiveExperiments.length)} of {allActiveExperiments.length} experiments
-              {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`}
-            </s-text>
-          </s-paragraph>
-        </div>
+        {/*pagination controls*/}
+        <>
+          <div style={{ margin: "10px 0" }}>
+            <s-paragraph>
+              <s-text>
+                Showing {startIndex + 1}-{Math.min(startIndex + itemsPerPage, allActiveExperiments.length)} of {allActiveExperiments.length} experiments
+                {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`}
+              </s-text>
+            </s-paragraph>
+          </div>
 
-        <s-button-group>
-          <s-button
-            slot="secondary-actions"
-            onClick={() => setCurrentPage(p => p - 1)}
-            disabled={currentPage === 1}
-          >Previous</s-button>
-          <s-button
-            slot="secondary-actions"
-            onClick={() => setCurrentPage(p => p + 1)}
-            disabled={currentPage === totalPages}
-          >Next</s-button>
-        </s-button-group>
-      </>
+          <s-button-group>
+            <s-button
+              slot="secondary-actions"
+              onClick={() => setCurrentPage(p => p - 1)}
+              disabled={currentPage === 1}
+            >Previous</s-button>
+            <s-button
+              slot="secondary-actions"
+              onClick={() => setCurrentPage(p => p + 1)}
+              disabled={currentPage === totalPages}
+            >Next</s-button>
+          </s-button-group>
+        </>
+      </s-section>
     </s-page>
   );
 }

@@ -631,7 +631,6 @@ export default function Experimentsindex() {
           </s-modal>
         <s-section>
           {" "}
-          {/*might be broken */}
           <s-heading>Experiment List</s-heading>
           {/* Table Section of experiment list page */}
           <s-box  background="base"

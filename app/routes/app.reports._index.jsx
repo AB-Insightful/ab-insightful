@@ -74,14 +74,20 @@ export default function Reports() {
   //get date range from context
   const { dateRange } = useDateRange();
 
-  //state for filtered experiments
-  const [filteredExperiments, setFilteredExperiments] = useState(
-    experiments || [],
+  //state for all experiments
+  const allActiveExperiments = (experiments || []).filter(
+    (exp) => exp.status !== ExperimentStatus.archived && exp.status !== ExperimentStatus.draft
   );
   const [filteredSessionData, setFilteredSessionData] = useState(
     sessionData || { sessions: [], total: 0 },
   );
-
+  //pagination elements
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 6;
+  const totalPages = Math.ceil(allActiveExperiments.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedExperiments = allActiveExperiments.slice(startIndex, startIndex + itemsPerPage);
+ 
   //calculate runtime using formatRuntime utility
   const getRuntime = (experiment) => {
     return formatRuntime(
@@ -176,27 +182,8 @@ export default function Reports() {
     return rows;
   }
 
-  //filter experiments based on date range
-  //updated to exclude archived experiments
-  const filterByDateRange = (start, end) => {
-    if (!experiments) return [];
-
-    const startDate = new Date(start);
-    const endDate = new Date(end);
-
-    return experiments.filter((exp) => {
-      if (!exp.startDate) return false;
-      if (exp.status === ExperimentStatus.archived) return false;
-      const expStartDate = new Date(exp.startDate);
-      return expStartDate >= startDate && expStartDate <= endDate;
-    });
-  };
-
   //handle date range change from DateRangePicker component
   const handleDateRangeChange = (newDateRange) => {
-    setFilteredExperiments(
-      filterByDateRange(newDateRange.start, newDateRange.end),
-    );
 
     const start = new Date(newDateRange.start + "T00:00:00");
     const end = new Date(newDateRange.end + "T23:59:59");
@@ -220,7 +207,6 @@ export default function Reports() {
     }
 
     if (dateRange && experiments && sessionData) {
-      setFilteredExperiments(filterByDateRange(dateRange.start, dateRange.end));
 
       const start = new Date(dateRange.start + "T00:00:00");
       const end = new Date(dateRange.end + "T23:59:59");
@@ -339,10 +325,34 @@ export default function Reports() {
               </s-table-header>
             </s-table-header-row>
             {/* This uses the destructured filteredExperiments array */}
-            <s-table-body>{renderTableData(filteredExperiments)}</s-table-body>
+            <s-table-body>{renderTableData(paginatedExperiments)}</s-table-body>
           </s-table>
         </s-box>
       </s-section>
+      {/*pagination controls*/}
+      <>
+        <div style={{ margin: "10px 0" }}>
+          <s-paragraph>
+            <s-text>
+              Showing {startIndex + 1}-{Math.min(startIndex + itemsPerPage, allActiveExperiments.length)} of {allActiveExperiments.length} experiments
+              {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`}
+            </s-text>
+          </s-paragraph>
+        </div>
+
+        <s-button-group>
+          <s-button
+            slot="secondary-actions"
+            onClick={() => setCurrentPage(p => p - 1)}
+            disabled={currentPage === 1}
+          >Previous</s-button>
+          <s-button
+            slot="secondary-actions"
+            onClick={() => setCurrentPage(p => p + 1)}
+            disabled={currentPage === totalPages}
+          >Next</s-button>
+        </s-button-group>
+      </>
     </s-page>
   );
 }

@@ -2,7 +2,8 @@
 // Assumptions:
 // - Node/Remix runtime provides global Request/Response (jsdom environment does).
 // - We only test current production behavior (including the for..in loop calling start/end with undefined ids).
-
+process.env.CRON_SECRET = "test-secret";
+process.env.NODE_ENV = "production";
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { loader } from "../routes/api.cron.poll-experiments.jsx";
 
@@ -39,7 +40,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
     // isolate env mutations per test
     process.env = { ...originalEnv };
     process.env.NODE_ENV = "production";
-    process.env.CRON_SECRET = "secret";
+    process.env.CRON_SECRET = "test-secret";
     delete process.env.ORIGIN;
 
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -105,7 +106,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
 
   test("GET: forbidden when Origin is not internal (production)", async () => {
     const request = makeRequest("GET", {
-      "Cron-Secret": "secret",
+      "Cron-Secret": "test-secret",
       Origin: "https://evil.example",
     });
 
@@ -127,7 +128,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
 
   test("GET: success (no experiments to start or end) returns 200 + message", async () => {
     const request = makeRequest("GET", {
-      "Cron-Secret": "secret",
+      "Cron-Secret": "test-secret",
       Origin: "cron.process.ab-insightful.internal",
     });
 
@@ -153,7 +154,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
 
   test("GET: success (experiments present) calls start/end and returns 200 with payload (header typo preserved)", async () => {
     const request = makeRequest("GET", {
-      "Cron-Secret": "secret",
+      "Cron-Secret": "test-secret",
       Origin: "cron.process.ab-insightful.internal",
     });
 
@@ -210,7 +211,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
 
   test("non-OPTIONS/GET: returns 405", async () => {
     const request = makeRequest("POST", {
-      "Cron-Secret": "secret",
+      "Cron-Secret": "test-secret",
       Origin: "cron.process.ab-insightful.internal",
     });
 

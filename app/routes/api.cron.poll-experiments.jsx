@@ -22,21 +22,6 @@ export async function loader({ request }) {
       env.NODE_ENV == "development"
         ? env.ORIGIN
         : (request.headers.get("Origin") ?? "");
-    if (authHeader !== env.CRON_SECRET) {
-      // basic header auth
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          message: "Unauthorized. Please supply your CRON Secret",
-        }),
-        {
-          status: 401,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        },
-      );
-    }
     if (
       origin !==
       (env.NODE_ENV == "development"
@@ -58,6 +43,22 @@ export async function loader({ request }) {
         },
       );
     }
+    if (authHeader !== env.CRON_SECRET) {
+      // basic header auth
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          message: "Unauthorized. Please supply your CRON Secret",
+        }),
+        {
+          status: 401,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      );
+    }
+
     // poll for experiments
     const { getCandidatesForScheduledEnd } = await import(
       "../services/experiment.server"
@@ -70,7 +71,7 @@ export async function loader({ request }) {
     const ended_experiments = await getCandidatesForScheduledEnd();
     const started_experiments = await getCandidatesForScheduledStart();
     console.log(started_experiments, ended_experiments);
-    if (ended_experiments.length === 0 && started_experiments === 0) {
+    if (ended_experiments.length === 0 && started_experiments.length === 0) {
       // refactor opp: can remove this if statement and just return the else response, but do i want the distinct messaging?
       try {
         return new Response(

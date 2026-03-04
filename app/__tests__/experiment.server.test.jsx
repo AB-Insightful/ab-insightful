@@ -8,17 +8,21 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Prisma } from "@prisma/client";
 
-const fakeFindMany = vi.fn();
 
 vi.mock("../db.server", () => {
+
+  const fakeFindMany = vi.fn();
+
   return {
     default: {
       experiment: {
         findMany: fakeFindMany,
       },
     },
+    __mocks: {fakeFindMany},
   };
 });
+import { __mocks} from "../db.server.js";
 
 import {
   getCandidatesForScheduledEnd,
@@ -42,13 +46,13 @@ describe("services/experiment.server - scheduled candidate queries", () => {
 
   test("getCandidatesForScheduledEnd: success returns array of ids", async () => {
     const rows = [{ id: 1 }, { id: 2 }];
-    fakeFindMany.mockResolvedValueOnce(rows);
+    __mocks.fakeFindMany.mockResolvedValueOnce(rows);
 
     const result = await getCandidatesForScheduledEnd();
 
-    expect(fakeFindMany).toHaveBeenCalledTimes(1);
+    expect(__mocks.fakeFindMany).toHaveBeenCalledTimes(1);
 
-    const callArg = fakeFindMany.mock.calls[0][0];
+    const callArg = __mocks.fakeFindMany.mock.calls[0][0];
     expect(callArg.select).toEqual({ id: true });
     expect(callArg.where).toHaveProperty("status");
     expect(callArg.where).toHaveProperty("endDate");
@@ -60,13 +64,13 @@ describe("services/experiment.server - scheduled candidate queries", () => {
 
   test("getCandidatesForScheduledStart: success returns array of ids", async () => {
     const rows = [{ id: 10 }];
-    fakeFindMany.mockResolvedValueOnce(rows);
+    __mocks.fakeFindMany.mockResolvedValueOnce(rows);
 
     const result = await getCandidatesForScheduledStart();
 
-    expect(fakeFindMany).toHaveBeenCalledTimes(1);
+    expect(__mocks.fakeFindMany).toHaveBeenCalledTimes(1);
 
-    const callArg = fakeFindMany.mock.calls[0][0];
+    const callArg = __mocks.fakeFindMany.mock.calls[0][0];
     expect(callArg.select).toEqual({ id: true });
     expect(callArg.where).toHaveProperty("status");
     expect(callArg.where).toHaveProperty("startDate");
@@ -83,11 +87,11 @@ describe("services/experiment.server - scheduled candidate queries", () => {
       "4.0.0",
     );
 
-    fakeFindMany.mockRejectedValueOnce(prismaError);
+    __mocks.fakeFindMany.mockRejectedValueOnce(prismaError);
 
     const result = await getCandidatesForScheduledEnd();
 
-    expect(fakeFindMany).toHaveBeenCalledTimes(1);
+    expect(__mocks.fakeFindMany).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ error: prismaError.message });
     expect(console.error).toHaveBeenCalled();
   });
@@ -97,21 +101,21 @@ describe("services/experiment.server - scheduled candidate queries", () => {
       "validation error",
     );
 
-    fakeFindMany.mockRejectedValueOnce(validationError);
+    __mocks.fakeFindMany.mockRejectedValueOnce(validationError);
 
     const result = await getCandidatesForScheduledStart();
 
-    expect(fakeFindMany).toHaveBeenCalledTimes(1);
+    expect(__mocks.fakeFindMany).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ error: validationError.message });
     expect(console.error).toHaveBeenCalled();
   });
 
   test("getCandidatesForScheduledEnd: non-Prisma error returns undefined", async () => {
-    fakeFindMany.mockRejectedValueOnce(new Error("unexpected"));
+    __mocks.fakeFindMany.mockRejectedValueOnce(new Error("unexpected"));
 
     const result = await getCandidatesForScheduledEnd();
 
-    expect(fakeFindMany).toHaveBeenCalledTimes(1);
+    expect(__mocks.fakeFindMany).toHaveBeenCalledTimes(1);
     expect(result).toBeUndefined();
   });
 });

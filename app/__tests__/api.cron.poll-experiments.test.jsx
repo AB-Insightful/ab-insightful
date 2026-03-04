@@ -1,23 +1,13 @@
 // app/__tests__/api.cron.poll-experiments.test.jsx
 // Assumptions:
 // - Node/Remix runtime provides global Request/Response (jsdom environment does).
-// - We only test current production behavior (including the for..in loop calling start/end with undefined ids).
-process.env.CRON_SECRET = "test-secret";
-process.env.NODE_ENV = "production";
+// - Production code has been updated so:
+//   - "no experiments" branch uses started_experiments.length === 0
+//   - loops use for..of and call start/end with experiment.id
+//   - response payload keys are: started_experiments, ended_experiments, failures
+//   - Content-Type typo "application.json" in the non-empty branch is preserved
+
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { loader } from "../routes/api.cron.poll-experiments.jsx";
-
-const getCandidatesForScheduledEnd = vi.fn();
-const getCandidatesForScheduledStart = vi.fn();
-const endExperiment = vi.fn();
-const startExperiment = vi.fn();
-
-vi.mock("../services/experiment.server", () => ({
-  getCandidatesForScheduledEnd,
-  getCandidatesForScheduledStart,
-  endExperiment,
-  startExperiment,
-}));
 
 function makeRequest(method, headers = {}) {
   return new Request("http://localhost/api/cron/poll-experiments", {
@@ -34,10 +24,35 @@ async function readJson(response) {
 describe("routes/api.cron.poll-experiments.jsx loader", () => {
   const originalEnv = process.env;
 
+  // service fns (recreated/mocked per test after vi.resetModules)
+  let getCandidatesForScheduledEnd;
+  let getCandidatesForScheduledStart;
+  let endExperiment;
+  let startExperiment;
+
+  async function importLoaderWithMocks() {
+    vi.resetModules();
+
+    getCandidatesForScheduledEnd = vi.fn();
+    getCandidatesForScheduledStart = vi.fn();
+    endExperiment = vi.fn();
+    startExperiment = vi.fn();
+
+    vi.doMock("../services/experiment.server", () => ({
+      getCandidatesForScheduledEnd,
+      getCandidatesForScheduledStart,
+      endExperiment,
+      startExperiment,
+    }));
+
+    // import after env + mocks are set
+    const mod = await import("../routes/api.cron.poll-experiments.jsx");
+    return mod.loader;
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // isolate env mutations per test
     process.env = { ...originalEnv };
     process.env.NODE_ENV = "production";
     process.env.CRON_SECRET = "test-secret";
@@ -45,11 +60,6 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
 
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
-
-    getCandidatesForScheduledEnd.mockResolvedValue(null);
-    getCandidatesForScheduledStart.mockResolvedValue(null);
-    endExperiment.mockResolvedValue(undefined);
-    startExperiment.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -58,6 +68,8 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
   });
 
   test("OPTIONS: returns 204 with CORS + Allow headers", async () => {
+    const loader = await importLoaderWithMocks();
+
     const request = makeRequest("OPTIONS", {
       Origin: "cron.process.ab-insightful.internal",
     });
@@ -82,6 +94,8 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
   });
 
   test("GET: unauthorized when Cron-Secret header does not match env.CRON_SECRET", async () => {
+    const loader = await importLoaderWithMocks();
+
     const request = makeRequest("GET", {
       "Cron-Secret": "wrong",
       Origin: "cron.process.ab-insightful.internal",
@@ -105,6 +119,8 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
   });
 
   test("GET: forbidden when Origin is not internal (production)", async () => {
+    const loader = await importLoaderWithMocks();
+
     const request = makeRequest("GET", {
       "Cron-Secret": "test-secret",
       Origin: "https://evil.example",
@@ -124,16 +140,20 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
 
     expect(getCandidatesForScheduledEnd).not.toHaveBeenCalled();
     expect(getCandidatesForScheduledStart).not.toHaveBeenCalled();
+    expect(startExperiment).not.toHaveBeenCalled();
+    expect(endExperiment).not.toHaveBeenCalled();
   });
 
   test("GET: success (no experiments to start or end) returns 200 + message", async () => {
+    const loader = await importLoaderWithMocks();
+
+    getCandidatesForScheduledEnd.mockResolvedValue([]);
+    getCandidatesForScheduledStart.mockResolvedValue([]);
+
     const request = makeRequest("GET", {
       "Cron-Secret": "test-secret",
       Origin: "cron.process.ab-insightful.internal",
     });
-
-    getCandidatesForScheduledEnd.mockResolvedValue(null);
-    getCandidatesForScheduledStart.mockResolvedValue(null);
 
     const response = await loader({ request });
 
@@ -153,10 +173,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
   });
 
   test("GET: success (experiments present) calls start/end and returns 200 with payload (header typo preserved)", async () => {
-    const request = makeRequest("GET", {
-      "Cron-Secret": "test-secret",
-      Origin: "cron.process.ab-insightful.internal",
-    });
+    const loader = await importLoaderWithMocks();
 
     const started = [{ id: 101 }, { id: 102 }];
     const ended = [{ id: 201 }];
@@ -164,27 +181,36 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
     getCandidatesForScheduledStart.mockResolvedValue(started);
     getCandidatesForScheduledEnd.mockResolvedValue(ended);
 
+    startExperiment.mockResolvedValue(undefined);
+    endExperiment.mockResolvedValue(undefined);
+
+    const request = makeRequest("GET", {
+      "Cron-Secret": "test-secret",
+      Origin: "cron.process.ab-insightful.internal",
+    });
+
     const response = await loader({ request });
 
     expect(response.status).toBe(200);
-    // Production code returns "application.json" (typo). Test current behavior.
     expect(response.headers.get("Content-Type")).toBe("application.json");
 
     const body = await readJson(response);
+
+    // production code stringifies arrays via template literal: `${started_experiments}`
+    // which becomes "[object Object],[object Object]"
     expect(body).toEqual({
       ok: true,
-      start_experiments: started,
-      end_experiments: ended,
+      started_experiments: "[object Object],[object Object]",
+      ended_experiments: "[object Object]",
+      failures: [],
     });
 
-    // NOTE: production loop uses `for (const experiment in started_experiments)`
-    // and then uses `experiment.id`, so it passes undefined (key string has no id).
     expect(startExperiment).toHaveBeenCalledTimes(2);
-    expect(startExperiment).toHaveBeenNthCalledWith(1, undefined);
-    expect(startExperiment).toHaveBeenNthCalledWith(2, undefined);
+    expect(startExperiment).toHaveBeenNthCalledWith(1, 101);
+    expect(startExperiment).toHaveBeenNthCalledWith(2, 102);
 
     expect(endExperiment).toHaveBeenCalledTimes(1);
-    expect(endExperiment).toHaveBeenCalledWith(undefined);
+    expect(endExperiment).toHaveBeenCalledWith(201);
   });
 
   test("GET: development mode logs received request and uses env.ORIGIN for origin check", async () => {
@@ -192,13 +218,15 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
     process.env.ORIGIN = "http://dev-origin.example";
     process.env.CRON_SECRET = "secret";
 
+    const loader = await importLoaderWithMocks();
+
+    getCandidatesForScheduledEnd.mockResolvedValue([]);
+    getCandidatesForScheduledStart.mockResolvedValue([]);
+
     const request = makeRequest("GET", {
       "Cron-Secret": "secret",
       Origin: "https://ignored-in-dev.example",
     });
-
-    getCandidatesForScheduledEnd.mockResolvedValue(null);
-    getCandidatesForScheduledStart.mockResolvedValue(null);
 
     const response = await loader({ request });
 
@@ -210,6 +238,8 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
   });
 
   test("non-OPTIONS/GET: returns 405", async () => {
+    const loader = await importLoaderWithMocks();
+
     const request = makeRequest("POST", {
       "Cron-Secret": "test-secret",
       Origin: "cron.process.ab-insightful.internal",
@@ -218,7 +248,6 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
     const response = await loader({ request });
 
     expect(response.status).toBe(405);
-    const bodyText = await response.text();
-    expect(bodyText).toBe("");
+    expect(await response.text()).toBe("");
   });
 });

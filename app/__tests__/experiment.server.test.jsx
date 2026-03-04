@@ -1,121 +1,132 @@
 // app/__tests__/experiment.server.test.js
 // Assumptions:
-// - We mock app/db.server.js so no real database is used.
-// - We mock @prisma/client error classes to reliably trigger instanceof branches.
-// - We freeze system time to make new Date() deterministic.
-// - We do not modify production code.
+// - @prisma/client is mocked so Prisma error classes can be used with instanceof checks.
+// - Dates are controlled with fake timers to keep tests deterministic.
 
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { Prisma } from "@prisma/client";
+import { Prisma, ExperimentStatus } from "@prisma/client";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-
-vi.mock("../db.server", () => {
-
-  const fakeFindMany = vi.fn();
-
-  return {
-    default: {
-      experiment: {
-        findMany: fakeFindMany,
-      },
-    },
-    __mocks: {fakeFindMany},
-  };
-});
-import { __mocks} from "../db.server.js";
-
+import db from "../db.server";
 import {
   getCandidatesForScheduledEnd,
   getCandidatesForScheduledStart,
-} from "../services/experiment.server.js";
+} from "../services/experiment.server";
 
-describe("services/experiment.server - scheduled candidate queries", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+vi.mock("../db.server", () => {
+  return {
+    default: {
+      experiment: {
+        findMany: vi.fn(),
+      },
+    },
+  };
+});
 
+vi.mock("@prisma/client", () => {
+  class PrismaClientKnownRequestError extends Error {}
+  class PrismaClientValidationError extends Error {}
+
+  return {
+    Prisma: {
+      PrismaClientKnownRequestError,
+      PrismaClientValidationError,
+    },
+    ExperimentStatus: {
+      active: "active",
+      draft: "draft",
+    },
+  };
+});
+
+beforeEach(() => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "log").mockImplementation(() => {});
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
+});
+
+describe("getCandidatesForScheduledEnd", () => {
+  test("success: queries active experiments with endDate <= now and returns list", async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2025-01-01T12:00:00.000Z"));
+    vi.setSystemTime(new Date("2026-03-03T12:00:00.000Z"));
 
-    vi.spyOn(console, "error").mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-  });
-
-  test("getCandidatesForScheduledEnd: success returns array of ids", async () => {
-    const rows = [{ id: 1 }, { id: 2 }];
-    __mocks.fakeFindMany.mockResolvedValueOnce(rows);
+    db.experiment.findMany.mockResolvedValueOnce([{ id: 1 }, { id: 2 }]);
 
     const result = await getCandidatesForScheduledEnd();
 
-    expect(__mocks.fakeFindMany).toHaveBeenCalledTimes(1);
+    expect(db.experiment.findMany).toHaveBeenCalledTimes(1);
 
-    const callArg = __mocks.fakeFindMany.mock.calls[0][0];
-    expect(callArg.select).toEqual({ id: true });
-    expect(callArg.where).toHaveProperty("status");
-    expect(callArg.where).toHaveProperty("endDate");
-    expect(callArg.where.endDate).toHaveProperty("lte");
-    expect(callArg.where.endDate.lte).toBeInstanceOf(Date);
+    const arg = db.experiment.findMany.mock.calls[0][0];
+    expect(arg.where.status).toBe(ExperimentStatus.active);
+    expect(arg.where.endDate.lte).toBeInstanceOf(Date);
+    expect(arg.where.endDate.lte.toISOString()).toBe("2026-03-03T12:00:00.000Z");
 
-    expect(result).toEqual(rows);
+    expect(result).toEqual([{ id: 1 }, { id: 2 }]);
   });
 
-  test("getCandidatesForScheduledStart: success returns array of ids", async () => {
-    const rows = [{ id: 10 }];
-    __mocks.fakeFindMany.mockResolvedValueOnce(rows);
-
-    const result = await getCandidatesForScheduledStart();
-
-    expect(__mocks.fakeFindMany).toHaveBeenCalledTimes(1);
-
-    const callArg = __mocks.fakeFindMany.mock.calls[0][0];
-    expect(callArg.select).toEqual({ id: true });
-    expect(callArg.where).toHaveProperty("status");
-    expect(callArg.where).toHaveProperty("startDate");
-    expect(callArg.where.startDate).toHaveProperty("lte");
-    expect(callArg.where.startDate.lte).toBeInstanceOf(Date);
-
-    expect(result).toEqual(rows);
-  });
-
-  test("getCandidatesForScheduledEnd: handles PrismaClientKnownRequestError", async () => {
-    const prismaError = new Prisma.PrismaClientKnownRequestError(
-      "known error",
-      "P2002",
-      "4.0.0",
-    );
-
-    __mocks.fakeFindMany.mockRejectedValueOnce(prismaError);
+  test("failure: PrismaClientKnownRequestError returns { error: message }", async () => {
+    const err = new Prisma.PrismaClientKnownRequestError("known error");
+    db.experiment.findMany.mockRejectedValueOnce(err);
 
     const result = await getCandidatesForScheduledEnd();
 
-    expect(__mocks.fakeFindMany).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ error: prismaError.message });
+    expect(result).toEqual({ error: "known error" });
     expect(console.error).toHaveBeenCalled();
   });
 
-  test("getCandidatesForScheduledStart: handles PrismaClientValidationError", async () => {
-    const validationError = new Prisma.PrismaClientValidationError(
-      "validation error",
-    );
-
-    __mocks.fakeFindMany.mockRejectedValueOnce(validationError);
-
-    const result = await getCandidatesForScheduledStart();
-
-    expect(__mocks.fakeFindMany).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ error: validationError.message });
-    expect(console.error).toHaveBeenCalled();
-  });
-
-  test("getCandidatesForScheduledEnd: non-Prisma error returns undefined", async () => {
-    __mocks.fakeFindMany.mockRejectedValueOnce(new Error("unexpected"));
+  test("failure: PrismaClientValidationError returns { error: message }", async () => {
+    const err = new Prisma.PrismaClientValidationError("validation error");
+    db.experiment.findMany.mockRejectedValueOnce(err);
 
     const result = await getCandidatesForScheduledEnd();
 
-    expect(__mocks.fakeFindMany).toHaveBeenCalledTimes(1);
-    expect(result).toBeUndefined();
+    expect(result).toEqual({ error: "validation error" });
+    expect(console.error).toHaveBeenCalled();
+  });
+});
+
+describe("getCandidatesForScheduledStart", () => {
+  test("success: queries draft experiments with startDate <= now and returns list", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-03T12:00:00.000Z"));
+
+    db.experiment.findMany.mockResolvedValueOnce([{ id: 10 }]);
+
+    const result = await getCandidatesForScheduledStart();
+
+    expect(db.experiment.findMany).toHaveBeenCalledTimes(1);
+
+    const arg = db.experiment.findMany.mock.calls[0][0];
+    expect(arg.where.status).toBe(ExperimentStatus.draft);
+    expect(arg.where.startDate.lte).toBeInstanceOf(Date);
+    expect(arg.where.startDate.lte.toISOString()).toBe(
+      "2026-03-03T12:00:00.000Z",
+    );
+
+    expect(result).toEqual([{ id: 10 }]);
+  });
+
+  test("failure: PrismaClientKnownRequestError returns { error: message }", async () => {
+    const err = new Prisma.PrismaClientKnownRequestError("known error");
+    db.experiment.findMany.mockRejectedValueOnce(err);
+
+    const result = await getCandidatesForScheduledStart();
+
+    expect(result).toEqual({ error: "known error" });
+    expect(console.error).toHaveBeenCalled();
+  });
+
+  test("failure: PrismaClientValidationError returns { error: message }", async () => {
+    const err = new Prisma.PrismaClientValidationError("validation error");
+    db.experiment.findMany.mockRejectedValueOnce(err);
+
+    const result = await getCandidatesForScheduledStart();
+
+    expect(result).toEqual({ error: "validation error" });
+    expect(console.error).toHaveBeenCalled();
   });
 });

@@ -1,11 +1,4 @@
-
-export const EXPERIMENT_STATUS = {
-  draft: "draft",
-  active: "active",
-  paused: "paused",
-  completed: "completed",
-  archived: "archived",
-};
+import { ExperimentStatus } from "@prisma/client";
 
 // Always allow renaming of experiments
 export function canRenameExperiment(_status) {
@@ -15,8 +8,8 @@ export function canRenameExperiment(_status) {
 // Lock completed or archived experiments
 export function isLockedStatus(status) {
   return (
-    status === EXPERIMENT_STATUS.completed ||
-    status === EXPERIMENT_STATUS.archived
+    status === ExperimentStatus.completed ||
+    status === ExperimentStatus.archived
   );
 }
 
@@ -27,25 +20,25 @@ export function canEditExperiment(status) {
 
 // Fully editable structure only in draft
 export function canEditStructure(status) {
-  return status === EXPERIMENT_STATUS.draft;
+  return status === ExperimentStatus.draft;
 }
 
 // Editable schedule in draft, active, paused
 export function canEditSchedule(status) {
   return (
-    status === EXPERIMENT_STATUS.draft ||
-    status === EXPERIMENT_STATUS.active ||
-    status === EXPERIMENT_STATUS.paused
+    status === ExperimentStatus.draft ||
+    status === ExperimentStatus.active ||
+    status === ExperimentStatus.paused
   );
 }
 
 // Which status-change intents are allowed from the current status
 const STATUS_INTENTS = {
-  [EXPERIMENT_STATUS.draft]: new Set(["start", "delete"]),
-  [EXPERIMENT_STATUS.active]: new Set(["pause", "end"]),
-  [EXPERIMENT_STATUS.paused]: new Set(["resume", "end"]),
-  [EXPERIMENT_STATUS.completed]: new Set(["archive"]),
-  [EXPERIMENT_STATUS.archived]: new Set([]),
+  [ExperimentStatus.draft]: new Set(["start", "delete"]),
+  [ExperimentStatus.active]: new Set(["pause", "end"]),
+  [ExperimentStatus.paused]: new Set(["resume", "end"]),
+  [ExperimentStatus.completed]: new Set(["archive"]),
+  [ExperimentStatus.archived]: new Set([]),
 };
 
 export function allowedStatusIntents(status) {

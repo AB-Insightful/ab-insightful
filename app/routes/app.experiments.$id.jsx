@@ -1520,6 +1520,7 @@ export default function EditExperiment() {
                       max="100"
                       step="1"
                       value={probabilityToBeBest}
+                      disabled={isLocked || !editSchedule}
                       required
                       error={
                         probabilityToBeBestError ||
@@ -1572,6 +1573,7 @@ export default function EditExperiment() {
                       min="1"
                       value={duration}
                       error={durationError}
+                      disabled={isLocked || !editSchedule}
                       required
                       onChange={(e) => {
                         const v = e.target.value;
@@ -1594,6 +1596,7 @@ export default function EditExperiment() {
                         label="Time Unit"
                         error={timeUnitError}
                         value={timeUnit}
+                        disabled={isLocked || !editSchedule}
                         onChange={(e) => {
                           setTimeUnit(e.target.value);
                         }}

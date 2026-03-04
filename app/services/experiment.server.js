@@ -968,14 +968,14 @@ async function persistConversion(payload, Goal_Type) {
     },
     create: {
       deviceType: payload.device_type,
-      moneyValue: 0, // TODO change to actually compute this (why do we need this anyways?)
+      moneyValue: new Prisma.Decimal(payload.total_price ?? 0),
       user: { connect: { id: payload.client_id } },
       variant: { connect: { id: allocation.variantId } },
       goal: { connect: { id: goal.id } },
       experiment: { connect: { id: allocation.experimentId } },
     },
     update: {
-      moneyValue: new Prisma.Decimal(0),
+      moneyValue: new Prisma.Decimal(payload.total_price ?? 0),
     },
   });
   if (ResultOfNewConversion) {

@@ -166,6 +166,7 @@ model Variant {
 
   experimentId Int        @map("experiment_id") // Foreign key
   experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade) // connects to Experiment's PK
+  trafficAllocation Decimal @default(0) // How much traffic is allocated to this variant of the experiment
 
   allocations Allocation[]
   conversions Conversion[]

@@ -15,7 +15,7 @@ if (typeof window !== "undefined") {
 
 import { authenticate } from "../shopify.server";
 import { useFetcher, redirect, useLoaderData, useRevalidator, useSearchParams } from "react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo} from "react";
 import db from "../db.server";
 import { ExperimentStatus } from "@prisma/client";
 import { TimeSelect } from "../utils/timeSelect";
@@ -102,6 +102,8 @@ export const loader = async ({ params, request }) => {
   }
 
   return {
+    shop: session.shop, // e.g., "emmanuel-store.myshopify.com"
+    appHandle: process.env.SHOPIFY_APP_HANDLE || "ab-insightful-1",
     experiment: {
       id: experiment.id,
       status: experiment.status,
@@ -527,6 +529,13 @@ export const action = async ({ request, params }) => {
   }
 };
 
+// Statically Building the app's URL
+// Helper to derive store slug (e.g., 'emmanuel-store')
+const getAdminBaseUrl = (shop, handle) => {
+  const slug = shop.replace(".myshopify.com", "");
+  return `https://admin.shopify.com/store/${slug}/apps/${handle}`;
+};
+
 //--------------------------- client side ----------------------------------------
 
 
@@ -536,8 +545,12 @@ export default function EditExperiment() {
   const loaderData = useLoaderData();
   const revalidator = useRevalidator();
 
+  const {shop, appHandle, experiment} = loaderData; 
+  const adminBaseUrl = useMemo(() => getAdminBaseUrl(shop, appHandle), [shop, appHandle]);
+  const reportsURL = `${adminBaseUrl}/app/reports/${experiment.id}`;
+
   // useSearchParams to render the succesful creation of an experiment
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   // Dedicated fetcher for the banner actions
   const bannerFetcher = useFetcher(); 
 
@@ -562,19 +575,20 @@ export default function EditExperiment() {
 
   const handleDismissBanner = () => setShowSuccessBanner(false);
 
-  // Clipboard functionality
-  const handleCopyExperimentLink = () => {
-    // Strips the ?isNewlyCreated flag so the link shared is "clean"
-    const cleanUrl = window.location.href.split('?')[0];
-    navigator.clipboard.writeText(cleanUrl);
-    // Optional: Add a Shopify Toast here for "Link Copied"
+ const copyToClipboard = async (text, successMsg) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      window.shopify?.toast?.show(successMsg);
+    } catch (err) {
+      console.error("Failed to copy!", err);
+    }
   };
 
-  const handleCopyReportsLink = () => {
-    const reportsUrl = `${window.location.origin}/app/reports/${loaderData.experiment.id}`;
-    navigator.clipboard.writeText(reportsUrl);
-    // Optional: Add a Shopify Toast here for "Link Copied"
-  };
+  const handleCopyExperimentLink = () => 
+    copyToClipboard(`${adminBaseUrl}/app/experiments/${experiment.id}`, "Experiment link copied!");
+
+  const handleCopyReportsLink = () => 
+    copyToClipboard(reportsURL, "Report link copied!");
 
   // allowable edits
   const status = loaderData?.experiment?.status;
@@ -1060,16 +1074,29 @@ export default function EditExperiment() {
                 <s-button variant="secondary" onClick={handleCopyReportsLink}>
                   Copy Reports Link
                 </s-button>
-                <s-button variant="secondary" href={`/app/reports/${loaderData.experiment.id}`}>
+                <s-button variant="secondary" href={reportsURL}>
                   Navigate to Reports
                 </s-button>
                 {/* Start Experiment */}
-                {status === ExperimentStatus.draft && (
+                {(status === ExperimentStatus.draft || status === ExperimentStatus.active || status === ExperimentStatus.paused) && (
                   <s-button 
-                    variant="primary"
-                    onClick={() => bannerFetcher.submit({ intent: "start" }, { method: "post" })}
+                    variant={status === ExperimentStatus.draft ? "primary" : "secondary"}
+                    disabled={bannerFetcher.state !== "idle"}
+                    onClick={() => {
+                      let intent = "start";
+                      if (status === ExperimentStatus.active) intent = "pause";
+                      if (status === ExperimentStatus.paused) intent = "resume";
+                      bannerFetcher.submit({ intent }, { method: "post" });
+                    }}
                     >
-                      {bannerFetcher.state === "submitting" ? "Starting...": "Start Experiment"}
+                      {bannerFetcher.state === "submitting" 
+                      ? "Updating..." 
+                      : status === ExperimentStatus.draft
+                        ? "Start Experiment"
+                        : status === ExperimentStatus.active
+                          ? "Pause"
+                          : "Resume"
+                        }
                     </s-button>
                 )}
               </s-stack>

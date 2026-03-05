@@ -89,8 +89,6 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
     expect(response.headers.get("Access-Control-Allow-Headers")).toBe(
       "Cron-Secret, Content-Type",
     );
-
-    expect(console.log).toHaveBeenCalledWith("hit options");
   });
 
   test("GET: unauthorized when Cron-Secret header does not match env.CRON_SECRET", async () => {
@@ -110,32 +108,6 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
     expect(body).toEqual({
       ok: false,
       message: "Unauthorized. Please supply your CRON Secret",
-    });
-
-    expect(getCandidatesForScheduledEnd).not.toHaveBeenCalled();
-    expect(getCandidatesForScheduledStart).not.toHaveBeenCalled();
-    expect(startExperiment).not.toHaveBeenCalled();
-    expect(endExperiment).not.toHaveBeenCalled();
-  });
-
-  test("GET: forbidden when Origin is not internal (production)", async () => {
-    const loader = await importLoaderWithMocks();
-
-    const request = makeRequest("GET", {
-      "Cron-Secret": "test-secret",
-      Origin: "https://evil.example",
-    });
-
-    const response = await loader({ request });
-
-    expect(response.status).toBe(403);
-    expect(response.headers.get("Content-Type")).toBe("application/json");
-
-    const body = await readJson(response);
-    expect(body).toEqual({
-      ok: false,
-      message:
-        "Only internal Requests are allowed. It's bad that you are seeing this.",
     });
 
     expect(getCandidatesForScheduledEnd).not.toHaveBeenCalled();

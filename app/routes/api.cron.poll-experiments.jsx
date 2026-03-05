@@ -4,7 +4,6 @@ export async function loader({ request }) {
     console.log("[poll-experiments] received request: ", request);
   }
   if (request.method === "OPTIONS") {
-    console.log("hit options");
     return new Response(null, {
       status: 204,
       headers: {
@@ -18,31 +17,6 @@ export async function loader({ request }) {
   } else if (request.method === "GET") {
     // handle the job
     const authHeader = request.headers.get("Cron-Secret") ?? "";
-    const origin =
-      env.NODE_ENV == "development"
-        ? env.ORIGIN
-        : (request.headers.get("Origin") ?? "");
-    if (
-      origin !==
-      (env.NODE_ENV == "development"
-        ? env.ORIGIN
-        : "cron.process.ab-insightful.internal")
-    ) {
-      // ensure requests come from fly's internal network.
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          message:
-            "Only internal Requests are allowed. It's bad that you are seeing this.",
-        }),
-        {
-          status: 403,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        },
-      );
-    }
     if (authHeader !== env.CRON_SECRET) {
       // basic header auth
       return new Response(

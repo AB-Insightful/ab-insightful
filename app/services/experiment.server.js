@@ -66,7 +66,7 @@ export async function createExperiment(
    Experiment Queries
    ==================================================================================================== */
 
-// Get active experiment ID, Section ID and Probability - used on frontend for showing.
+// Returns active experiments with variant-level data for the storefront embed script.
 export async function GetFrontendExperimentsData() {
   const experiments = await db.experiment.findMany({
     where: {
@@ -74,13 +74,27 @@ export async function GetFrontendExperimentsData() {
     },
     select: {
       id: true,
-      sectionId: true,
-      controlSectionId: true,
-      trafficSplit: true,
+      variants: {
+        select: {
+          id: true,
+          name: true,
+          configData: true,
+          trafficAllocation: true,
+        },
+      },
     },
   });
 
-  return experiments;
+  return experiments.map((exp) => ({
+    id: exp.id,
+    variants: exp.variants.map((v) => ({
+      id: v.id,
+      name: v.name,
+      sectionId: v.configData?.sectionId ?? null,
+      trafficAllocation: Number(v.trafficAllocation),
+      isControl: v.name === "Control",
+    })),
+  }));
 }
 
 // Function to get experiments list.

@@ -14,7 +14,7 @@ if (typeof window !== "undefined") {
 }
 
 import { authenticate } from "../shopify.server";
-import { useFetcher, redirect, useLoaderData, useRevalidator } from "react-router";
+import { useFetcher, redirect, useLoaderData, useRevalidator, useSearchParams } from "react-router";
 import { useState, useEffect } from "react";
 import db from "../db.server";
 import { ExperimentStatus } from "@prisma/client";
@@ -536,6 +536,46 @@ export default function EditExperiment() {
   const loaderData = useLoaderData();
   const revalidator = useRevalidator();
 
+  // useSearchParams to render the succesful creation of an experiment
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Dedicated fetcher for the banner actions
+  const bannerFetcher = useFetcher(); 
+
+  const [showSuccessBanner, setShowSuccessBanner] = useState(
+    searchParams.get("isNewlyCreated") === "true"
+  );
+
+  // Transient cleanup
+  useEffect(() => {
+    if (showSuccessBanner) {
+      // Functional equivalent of "consume and strip"
+      const cleanPath = window.location.pathname;
+      
+      // Official App Bridge 4+ way to replace history without a reload
+      if (window.shopify && window.shopify.navigation) {
+        window.shopify.navigation.navigate(cleanPath, { replace: true });
+      } else {
+        window.history.replaceState(null, "", cleanPath);
+      }
+    }
+  }, []); // Only runs once on mount
+
+  const handleDismissBanner = () => setShowSuccessBanner(false);
+
+  // Clipboard functionality
+  const handleCopyExperimentLink = () => {
+    // Strips the ?isNewlyCreated flag so the link shared is "clean"
+    const cleanUrl = window.location.href.split('?')[0];
+    navigator.clipboard.writeText(cleanUrl);
+    // Optional: Add a Shopify Toast here for "Link Copied"
+  };
+
+  const handleCopyReportsLink = () => {
+    const reportsUrl = `${window.location.origin}/app/reports/${loaderData.experiment.id}`;
+    navigator.clipboard.writeText(reportsUrl);
+    // Optional: Add a Shopify Toast here for "Link Copied"
+  };
+
   // allowable edits
   const status = loaderData?.experiment?.status;
   const isDraft = status === ExperimentStatus.draft;
@@ -1002,6 +1042,41 @@ export default function EditExperiment() {
 
   return (
     <s-page heading="Edit Experiment" variant="headingLg">
+      {/* Success Notification UI Component */}
+      { showSuccessBanner && (
+        <s-box paddingBlockend="base">
+          <s-banner
+          title="Experiment created"
+          tone="success"
+          onDismiss={handleDismissBanner}
+          >
+            <s-stack gap="small" direction="block">
+              <s-paragraph> Your experiment has been successfully created! </s-paragraph>
+              <s-stack direction="inline" gap="small">
+                {/*Clipboard logic*/}
+                <s-button variant="secondary" onClick={handleCopyExperimentLink}>
+                  Copy Experiment Link
+                </s-button>
+                <s-button variant="secondary" onClick={handleCopyReportsLink}>
+                  Copy Reports Link
+                </s-button>
+                <s-button variant="secondary" href={`/app/reports/${loaderData.experiment.id}`}>
+                  Navigate to Reports
+                </s-button>
+                {/* Start Experiment */}
+                {status === ExperimentStatus.draft && (
+                  <s-button 
+                    variant="primary"
+                    onClick={() => bannerFetcher.submit({ intent: "start" }, { method: "post" })}
+                    >
+                      {bannerFetcher.state === "submitting" ? "Starting...": "Start Experiment"}
+                    </s-button>
+                )}
+              </s-stack>
+            </s-stack>
+          </s-banner>
+        </s-box>
+      )}
       <s-button
         slot="primary-action"
         variant="primary"

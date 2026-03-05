@@ -463,17 +463,19 @@ export default function Index() {
                     />
                     <Tooltip />
                     <Legend />
-                    <Line
-                      type="monotone"
-                      dataKey={experiment.variants[0]?.name ?? "Baseline"}
-                      stroke="#8884d8"
-                      activeDot={{ r: 8 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey={experiment.variants[1]?.name ?? "Variant B"}
-                      stroke="#82ca9d"
-                    />
+                    {experiment.variants.map((v, index) => {
+                      const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
+                      return (
+                        <Line
+                          key={v.id}
+                          type="monotone"
+                          dataKey={v.name}
+                          stroke={colors[index % colors.length]}
+                          activeDot={{ r: 8 }}
+                          dot={false}
+                        />
+                      );
+                    })}
                   </LineChart>
                 </ResponsiveContainer>
               ) : (

@@ -42,12 +42,11 @@ export async function updateLatestSession(userdata) {
     where: {
       shopifyCustomerID: userdata.client_id,
     },
-    update: {
-      latestSession: userdata.timestamp,
-    },
+    update: {},
     create: {
       shopifyCustomerID: userdata.client_id,
-      deviceType: userdata.device_type,
+      latestSession: new Date(userdata.latestSession),
+      deviceType: userdata.deviceType ?? null,
     },
   });
   return result;

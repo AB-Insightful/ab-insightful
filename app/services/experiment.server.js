@@ -924,9 +924,11 @@ async function handleExperiment_IncludeEvent(payload) {
       userId: user.id,
       experimentId: payload.experiment_id,
       variantId: variant.id,
+      deviceType: payload.device_type ?? payload.deviceType ?? null,
     },
     update: {
       variantId: variant.id,
+      deviceType: payload.device_type ?? payload.deviceType ?? null,
     },
   });
   if (!result) {

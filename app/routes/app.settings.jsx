@@ -14,6 +14,8 @@ export const loader = async ({ request }) => {
     create: { shop: session.shop, name: `${session.shop} Project`, defaultGoal: "completedCheckout" },
     select: {
       defaultGoal: true,
+      enableExperimentStart: true,
+      enableExperimentEnd: true,
       contactEmails: { select: { id: true, email: true } },
       contactPhones: { select: { id: true, phoneNumber: true } },
     },
@@ -26,6 +28,8 @@ export const loader = async ({ request }) => {
            
   return {
     defaultGoal: project.defaultGoal,
+    enableExperimentStart: project.enableExperimentStart,
+    enableExperimentEnd: project.enableExperimentEnd,
     contactEmails: project.contactEmails,
     contactPhones: project.contactPhones,
     tutorialData: tutorialInfo
@@ -130,6 +134,45 @@ export const action = async ({ request }) => {
     return { ok: true };
   }
 
+  if (intent === "deleteAll") {
+    
+    //locate the project
+    const project = await db.project.findUnique({
+      where: { shop: session.shop },
+      select: { id: true },
+    });
+
+    await db.contactEmail.deleteMany({ where: { projectId: project.id } });
+    await db.contactPhone.deleteMany({ where: { projectId: project.id } });
+    return { ok: true };
+  }
+
+  if (intent === "updateExperimentStart") {
+    const value = formData.get("value") === "true";
+    await db.project.update({
+      where: { shop: session.shop },
+      data: { enableExperimentStart: value },
+    });
+    return { ok: true, intent: "updateExperimentStart" };
+  }
+
+  if (intent === "updateExperimentEnd") {
+    const value = formData.get("value") === "true";
+    await db.project.update({
+      where: { shop: session.shop },
+      data: { enableExperimentEnd: value },
+    });
+    return { ok: true, intent: "updateExperimentEnd" };
+  }
+
+  if (intent === "disableNotifications") {
+    await db.project.update({
+      where: { shop: session.shop },
+      data: { enableExperimentStart: false, enableExperimentEnd: false },
+    });
+    return { ok: true, intent: "disableNotifications" };
+  }
+
   //error state
   return { error: "Unknown intent.", field: null };
 };
@@ -143,9 +186,10 @@ function formatPhone(digits) {
 }
 
 export default function Settings() {
-  const { defaultGoal, contactEmails, contactPhones, tutorialData } = useLoaderData();
+  const { defaultGoal, enableExperimentStart, enableExperimentEnd, contactEmails, contactPhones, tutorialData, } = useLoaderData();
   const fetcher = useFetcher();
   const goalFetcher = useFetcher();
+  const notifFetcher = useFetcher();
   const tutorialFetcher = useFetcher(); // for tutorial actions
   const modalRef = useRef(null);
 
@@ -153,10 +197,15 @@ export default function Settings() {
   const [emailInput, setEmailInput] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
   const [selectedDefaultGoal, setSelectedDefaultGoal] = useState(defaultGoal);
+  const [selectedExperimentStart, setEnableExperimentStart] = useState(enableExperimentStart ?? false);
+  const [selectedExperimentEnd, setEnableExperimentEnd] = useState(enableExperimentEnd ?? false);
   const [savedDefaultGoal, setSavedDefaultGoal] = useState(defaultGoal);
   const [showGoalSaveSuccess, setShowGoalSaveSuccess] = useState(false);
+  const [showStartSaveSuccess, setShowStartSaveSuccess] = useState(false);
+  const [showEndSaveSuccess, setShowEndSaveSuccess] = useState(false);
   const [isGoalSaveHovered, setIsGoalSaveHovered] = useState(false);
   const [isGoalSavePressed, setIsGoalSavePressed] = useState(false);
+  const [showDisableSaveSuccess, setShowDisableSaveSuccess] = useState(false);
   //chip id on hover
   const [hoveredEmailId, setHoveredEmailId] = useState(null);
   const [hoveredPhoneId, setHoveredPhoneId] = useState(null);
@@ -173,16 +222,38 @@ export default function Settings() {
   }, [defaultGoal]);
 
   useEffect(() => {
+    setEnableExperimentStart(enableExperimentStart ?? false);
+    setEnableExperimentEnd(enableExperimentEnd ?? false);
+  }, [enableExperimentStart, enableExperimentEnd]);
+
+  useEffect(() => {
     if (
       goalFetcher.state === "idle" &&
-      goalFetcher.data?.ok &&
+      goalFetcher.data?.ok && 
       goalFetcher.data?.intent === "updateDefaultGoal"
     ) {
-      setSavedDefaultGoal(goalFetcher.data.defaultGoal);
-      setSelectedDefaultGoal(goalFetcher.data.defaultGoal);
-      setShowGoalSaveSuccess(true);
+        setSavedDefaultGoal(goalFetcher.data.defaultGoal);
+        setSelectedDefaultGoal(goalFetcher.data.defaultGoal);
+        setShowGoalSaveSuccess(true);
     }
   }, [goalFetcher.state, goalFetcher.data]);
+
+  //notifications success popups
+  useEffect(() => {
+  if (notifFetcher.state === "idle" && notifFetcher.data?.ok) {
+    if (notifFetcher.data?.intent === "updateExperimentStart") {
+      setShowStartSaveSuccess(true);
+      setShowDisableSaveSuccess(false);
+    } else if (notifFetcher.data?.intent === "updateExperimentEnd") {
+      setShowEndSaveSuccess(true);
+      setShowDisableSaveSuccess(false);
+    } else if (notifFetcher.data?.intent === "disableNotifications") {
+      setShowDisableSaveSuccess(true);
+      setShowStartSaveSuccess(false);
+      setShowEndSaveSuccess(false);
+    }
+  }
+}, [notifFetcher.state, notifFetcher.data]);
 
   useEffect(() => {
     if (hasPendingGoalChanges) {
@@ -195,6 +266,7 @@ export default function Settings() {
   const handleDeleteEmail = (id) => {fetcher.submit({ intent: "deleteEmail", id: String(id) }, { method: "post" });};
   const handleAddPhone = () => {fetcher.submit({ intent: "addPhone", phone: phoneInput }, { method: "post" });};
   const handleDeletePhone = (id) => {fetcher.submit({ intent: "deletePhone", id: String(id) }, { method: "post" });};
+  const handleDeleteAllContact = () => {fetcher.submit({ intent: "deleteAll" }, { method: "post" });};   
   const handleSaveDefaultGoal = () => {
     if (!hasPendingGoalChanges || isSavingGoal) return;
     goalFetcher.submit(
@@ -242,97 +314,154 @@ export default function Settings() {
 
       {/*notification settings*/}
       <s-section heading="Notification Settings">
+        <s-stack direction="inline" gap="large" alignItems="start">
+          {/*left side: phone/email fields*/}
+          <div>
+            <s-stack direction="block" gap="small">
+              {/*email*/}
+              <s-stack direction="block" gap="small">
+                <s-stack direction="inline" gap="small" alignItems="end">
+                  {/*entry field*/}
+                  <s-box inlineSize="400px">
+                    <s-email-field
+                      label="Email"
+                      placeholder="username@example.com"
+                      value={emailInput}
+                      onInput={(e) => setEmailInput(e.target.value)}
+                      error={emailError ?? undefined}
+                    />
+                  </s-box>
+                  {/*save button*/}
+                  <s-button
+                    variant="primary"
+                    onClick={handleAddEmail}
+                    disabled={fetcher.state !== "idle"}
+                  >
+                    Save
+                  </s-button>
+                </s-stack>
+                {/*email chips*/}
+                {contactEmails.length > 0 && (
+                  <div style={{ maxWidth: "400px", overflowX: "auto" }}>
+                    <s-stack direction="inline" gap="extraSmall" wrap>
+                      {contactEmails.map((entry) => (
+                        <s-clickable-chip
+                          key={entry.id}
+                          onClick={() => handleDeleteEmail(entry.id)}
+                          onMouseEnter={() => setHoveredEmailId(entry.id)}
+                          onMouseLeave={() => setHoveredEmailId(null)}
+                        >
+                          <span style={{ position: "relative", display: "inline-block" }}>
+                            <span style={{ visibility: "hidden" }}>
+                              {entry.email.length > "Delete".length ? entry.email : "Delete"}
+                            </span>
+                            <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              {hoveredEmailId === entry.id ? "Delete" : entry.email}
+                            </span>
+                          </span>
+                        </s-clickable-chip>
+                      ))}
+                    </s-stack>
+                  </div>
+                )}
+              </s-stack>
 
-        {/*email*/}
-        <s-stack direction="block" gap="small">
-          <s-stack direction="inline" gap="small" alignItems="end">
-            <s-box inlineSize="300px">
-              <s-email-field
-                label="Email"
-                placeholder="username@example.com"
-                value={emailInput}
-                onInput={(e) => setEmailInput(e.target.value)}
-                error={emailError ?? undefined}
-              />
-            </s-box>
-            <s-button
-              variant="primary"
-              onClick={handleAddEmail}
-              disabled={fetcher.state !== "idle"}
-            >
-              Save
-            </s-button>
-          </s-stack>
-
-          {/*email chips*/}
-          {contactEmails.length > 0 && (
-            <s-stack direction="inline" gap="extraSmall" wrap>
-              {contactEmails.map((entry) => (
-                <s-clickable-chip
-                  key={entry.id}
-                  onClick={() => handleDeleteEmail(entry.id)}
-                  onMouseEnter={() => setHoveredEmailId(entry.id)}
-                  onMouseLeave={() => setHoveredEmailId(null)}
-                >
-                  <span style={{ position: "relative", display: "inline-block" }}>
-                    <span style={{ visibility: "hidden" }}>
-                      {entry.email.length > "Delete".length ? entry.email : "Delete"}
-                    </span>
-                    <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {hoveredEmailId === entry.id ? "Delete" : entry.email}
-                    </span>
-                  </span>
-                </s-clickable-chip>
-              ))}
+              {/*phone*/}
+              <s-stack direction="block" gap="small">
+                <s-stack direction="inline" gap="small" alignItems="end">
+                  {/*entry field*/}
+                  <s-box inlineSize="400px">
+                    <s-text-field
+                      label="Phone Number"
+                      placeholder="555-555-5555"
+                      value={phoneInput}
+                      onInput={(e) => setPhoneInput(e.target.value)}
+                      error={phoneError ?? undefined}
+                    />
+                  </s-box>
+                  {/*save button*/}
+                  <s-button
+                    variant="primary"
+                    onClick={handleAddPhone}
+                    disabled={fetcher.state !== "idle"}
+                  >
+                    Save
+                  </s-button>
+                </s-stack>
+                {/*phone chips*/}
+                {contactPhones.length > 0 && (
+                  <div style={{ maxWidth: "400px", overflowX: "auto" }}>
+                    <s-stack direction="inline" gap="extraSmall" wrap>
+                      {contactPhones.map((entry) => (
+                        <s-clickable-chip
+                          key={entry.id}
+                          onClick={() => handleDeletePhone(entry.id)}
+                          onMouseEnter={() => setHoveredPhoneId(entry.id)}
+                          onMouseLeave={() => setHoveredPhoneId(null)}
+                        >
+                          <span style={{ position: "relative", display: "inline-block" }}>
+                            <span style={{ visibility: "hidden" }}>
+                              {formatPhone(entry.phoneNumber).length > "Delete".length ? formatPhone(entry.phoneNumber) : "Delete"}
+                            </span>
+                            <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              {hoveredPhoneId === entry.id ? "Delete" : formatPhone(entry.phoneNumber)}
+                            </span>
+                          </span>
+                        </s-clickable-chip>
+                      ))}
+                    </s-stack>
+                  </div>
+                )}
+              </s-stack>
             </s-stack>
-          )}
+          </div>
+          {/*right side, button cluster*/}
+          <div style={{ margin: "10px 0" }}>
+            <s-checkbox
+              label="Notify when an experiment starts"
+              checked={selectedExperimentStart}
+              onChange={(e) => {
+                setEnableExperimentStart(e.target.checked);
+                fetcher.submit({ intent: "updateExperimentStart", value: String(e.target.checked) }, { method: "post" });
+                notifFetcher.submit({ intent: "updateExperimentStart", value: String(e.target.checked) }, { method: "post" });
+              }}
+            />
+            {showStartSaveSuccess ? <s-text tone="success">Save success!</s-text> : null}
+            <s-checkbox
+              label="Notify when an experiment ends"
+              checked={selectedExperimentEnd}
+              onChange={(e) => {
+                setEnableExperimentEnd(e.target.checked);
+                fetcher.submit({ intent: "updateExperimentEnd", value: String(e.target.checked) }, { method: "post" });
+                notifFetcher.submit({ intent: "updateExperimentEnd", value: String(e.target.checked) }, { method: "post" });
+              }}
+            />
+            {showEndSaveSuccess ? <s-text tone="success">Save success!</s-text> : null}
+            <div style={{ margin: "10px 0" }}>
+              <s-button
+                inLineSize="fill"
+                onClick={() => {
+                  setEnableExperimentStart(false);
+                  setEnableExperimentEnd(false);
+                  setShowDisableSaveSuccess(false);
+                  notifFetcher.submit({ intent: "disableNotifications" }, { method: "post" });
+                }}
+              >
+                Disable Notifications
+              </s-button>
+              {showDisableSaveSuccess ? <s-text tone="success">Notifications disabled!</s-text> : null}
+            </div>
+            <div style={{ margin: "10px 0" }} >
+              <s-button 
+                inLineSize = "fill" 
+                tone = "critical" 
+                onClick={() => handleDeleteAllContact()}
+              >
+                Delete All Contact Information
+              </s-button>
+            </div>
+          </div>
         </s-stack>
-
-        {/*phone*/}
-        <s-stack direction="block" gap="small">
-          <s-stack direction="inline" gap="small" alignItems="end">
-            <s-box inlineSize="300px">
-              <s-text-field
-                label="Phone Number"
-                placeholder="555-555-5555"
-                value={phoneInput}
-                onInput={(e) => setPhoneInput(e.target.value)}
-                error={phoneError ?? undefined}
-              />
-            </s-box>
-            <s-button
-              variant="primary"
-              onClick={handleAddPhone}
-              disabled={fetcher.state !== "idle"}
-            >
-              Save
-            </s-button>
-          </s-stack>
-
-          {/*phone chips*/}
-          {contactPhones.length > 0 && (
-            <s-stack direction="inline" gap="extraSmall" wrap>
-              {contactPhones.map((entry) => (
-                <s-clickable-chip
-                  key={entry.id}
-                  onClick={() => handleDeletePhone(entry.id)}
-                  onMouseEnter={() => setHoveredPhoneId(entry.id)}
-                  onMouseLeave={() => setHoveredPhoneId(null)}
-                >
-                  <span style={{ position: "relative", display: "inline-block" }}>
-                    <span style={{ visibility: "hidden" }}>
-                      {formatPhone(entry.phoneNumber).length > "Delete".length ? formatPhone(entry.phoneNumber) : "Delete"}
-                    </span>
-                    <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {hoveredPhoneId === entry.id ? "Delete" : formatPhone(entry.phoneNumber)}
-                    </span>
-                  </span>
-                </s-clickable-chip>
-              ))}
-            </s-stack>
-          )}
-        </s-stack>
-
       </s-section>
 
       {/*experiment configuration*/}

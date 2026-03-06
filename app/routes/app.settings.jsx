@@ -1,8 +1,7 @@
 //imports
 import { authenticate } from "../shopify.server";
 import { useLoaderData, useFetcher } from "react-router"
-import { useEffect, useRef } from "react";
-import { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import db from "../db.server";
 
 //loader for default goal, contact email and contact phone
@@ -23,12 +22,16 @@ export const loader = async ({ request }) => {
   const { getTutorialData } = await import ("../services/tutorialData.server");
   const tutorialInfo = await getTutorialData();
 
-           
+  //import email toggle notification preset data. 
+  const { getEmailNotifToggle } = await import ("../services/project.server");
+  const emailStatus = await getEmailNotifToggle();
+        
   return {
     defaultGoal: project.defaultGoal,
     contactEmails: project.contactEmails,
     contactPhones: project.contactPhones,
-    tutorialData: tutorialInfo
+    tutorialData: tutorialInfo,
+    emailNotifEnabled: emailStatus
   };
 };
 
@@ -48,7 +51,40 @@ export const action = async ({ request }) => {
     });
     return { ok: true, intent: "updateDefaultGoal", defaultGoal };
   }
-  
+  else if( intent === "set_email_notif_false")
+  {
+    try {
+        const { setEmailNotifToggle} = await import ("../services/project.server");
+        await setEmailNotifToggle(false)
+
+    } catch (error) {
+      console.error("Email toggle value change was invalid: ", error)
+      return {ok: false, error: "failed to change email toggle"}, { status: 500};
+    }
+  }
+  else if (intent === "set_email_notif_true")
+  {
+    //actual notification toggle update
+    try {
+      const { setEmailNotifToggle} = await import ("../services/project.server");
+      await setEmailNotifToggle(true)
+    } catch (error) {
+      console.error("Email toggle value change was invalid: ", error)
+      return {ok: false, error: "failed to change email toggle"}, { status: 500};
+    }
+    //function and commands that send email (for testing purposes)
+    try {
+      const { sendEmailTopic } = await import ("../services/notifications.server");
+      await sendEmailTopic(); 
+    }
+    catch (error) {
+      console.error("Email Notification Toggle Error: ", error);
+      return {ok: false, error: "failed to send email"}, { status: 500};
+    } 
+    
+    
+  }
+
   if(intent === "tutorial_viewed")
   {
     try {
@@ -143,7 +179,7 @@ function formatPhone(digits) {
 }
 
 export default function Settings() {
-  const { defaultGoal, contactEmails, contactPhones, tutorialData } = useLoaderData();
+  const { defaultGoal, contactEmails, contactPhones, tutorialData, emailNotifEnabled } = useLoaderData();
   const fetcher = useFetcher();
   const goalFetcher = useFetcher();
   const tutorialFetcher = useFetcher(); // for tutorial actions
@@ -166,6 +202,37 @@ export default function Settings() {
 
   const hasPendingGoalChanges = selectedDefaultGoal !== savedDefaultGoal;
   const isSavingGoal = goalFetcher.state !== "idle";
+
+  //notification toggle fields
+  const [emailEnabled, setEmailEnabled] = useState(emailNotifEnabled);
+  //string show ties in with emailEnabled variable
+  const emailNotifToggleDetails = emailEnabled
+    ? 'E-mail notifications enabled'
+    : 'E-mail notifications disabled';
+
+
+  function handleEmailNotificationToggle(event){
+    const notifToggleType = event.currentTarget.checked;
+    setEmailEnabled(event.currentTarget.checked);
+    if (notifToggleType)
+    {
+      //Shoud be put since it is a notification change? 
+      fetcher.submit(
+        {intent: "set_email_notif_true"},
+        {method: "put"}
+      )
+      console.log('enabled e-mail notifications');
+      //call complex function here
+    }
+    else
+    {
+      console.log('disabled email notifications')
+      fetcher.submit(
+        {intent: "set_email_notif_false"},
+        {method: "put"}
+      )
+    }
+  }
 
   useEffect(() => {
     setSelectedDefaultGoal(defaultGoal);
@@ -242,96 +309,116 @@ export default function Settings() {
 
       {/*notification settings*/}
       <s-section heading="Notification Settings">
-
         {/*email*/}
-        <s-stack direction="block" gap="small">
-          <s-stack direction="inline" gap="small" alignItems="end">
-            <s-box inlineSize="300px">
-              <s-email-field
-                label="Email"
-                placeholder="username@example.com"
-                value={emailInput}
-                onInput={(e) => setEmailInput(e.target.value)}
-                error={emailError ?? undefined}
-              />
-            </s-box>
-            <s-button
-              variant="primary"
-              onClick={handleAddEmail}
-              disabled={fetcher.state !== "idle"}
-            >
-              Save
-            </s-button>
-          </s-stack>
-
-          {/*email chips*/}
-          {contactEmails.length > 0 && (
-            <s-stack direction="inline" gap="extraSmall" wrap>
-              {contactEmails.map((entry) => (
-                <s-clickable-chip
-                  key={entry.id}
-                  onClick={() => handleDeleteEmail(entry.id)}
-                  onMouseEnter={() => setHoveredEmailId(entry.id)}
-                  onMouseLeave={() => setHoveredEmailId(null)}
-                >
-                  <span style={{ position: "relative", display: "inline-block" }}>
-                    <span style={{ visibility: "hidden" }}>
-                      {entry.email.length > "Delete".length ? entry.email : "Delete"}
-                    </span>
-                    <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {hoveredEmailId === entry.id ? "Delete" : entry.email}
-                    </span>
-                  </span>
-                </s-clickable-chip>
-              ))}
+        {/*grid to fit both notifications options */}
+        <s-grid
+          gridTemplateColumns="@container (inline-size <= 640px) 1fr, 2fr 1fr"
+          >
+          <s-stack direction="block" gap="small">
+            <s-stack direction="inline" gap="small" alignItems="end">
+              <s-box inlineSize="300px">
+                <s-email-field
+                  label="Email"
+                  placeholder="username@example.com"
+                  value={emailInput}
+                  onInput={(e) => setEmailInput(e.target.value)}
+                  error={emailError ?? undefined}
+                />
+              </s-box>
+              <s-button
+                variant="primary"
+                onClick={handleAddEmail}
+                disabled={fetcher.state !== "idle"}
+              >
+                Save
+              </s-button>
             </s-stack>
-          )}
-        </s-stack>
 
-        {/*phone*/}
-        <s-stack direction="block" gap="small">
-          <s-stack direction="inline" gap="small" alignItems="end">
-            <s-box inlineSize="300px">
-              <s-text-field
-                label="Phone Number"
-                placeholder="555-555-5555"
-                value={phoneInput}
-                onInput={(e) => setPhoneInput(e.target.value)}
-                error={phoneError ?? undefined}
-              />
-            </s-box>
-            <s-button
-              variant="primary"
-              onClick={handleAddPhone}
-              disabled={fetcher.state !== "idle"}
-            >
-              Save
-            </s-button>
+            {/*email chips*/}
+            {contactEmails.length > 0 && (
+              <s-stack direction="inline" gap="extraSmall" wrap>
+                {contactEmails.map((entry) => (
+                  <s-clickable-chip
+                    key={entry.id}
+                    onClick={() => handleDeleteEmail(entry.id)}
+                    onMouseEnter={() => setHoveredEmailId(entry.id)}
+                    onMouseLeave={() => setHoveredEmailId(null)}
+                  >
+                    <span style={{ position: "relative", display: "inline-block" }}>
+                      <span style={{ visibility: "hidden" }}>
+                        {entry.email.length > "Delete".length ? entry.email : "Delete"}
+                      </span>
+                      <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {hoveredEmailId === entry.id ? "Delete" : entry.email}
+                      </span>
+                    </span>
+                  </s-clickable-chip>
+                ))}
+              </s-stack>
+            )}
           </s-stack>
-
-          {/*phone chips*/}
-          {contactPhones.length > 0 && (
-            <s-stack direction="inline" gap="extraSmall" wrap>
-              {contactPhones.map((entry) => (
-                <s-clickable-chip
-                  key={entry.id}
-                  onClick={() => handleDeletePhone(entry.id)}
-                  onMouseEnter={() => setHoveredPhoneId(entry.id)}
-                  onMouseLeave={() => setHoveredPhoneId(null)}
-                >
-                  <span style={{ position: "relative", display: "inline-block" }}>
-                    <span style={{ visibility: "hidden" }}>
-                      {formatPhone(entry.phoneNumber).length > "Delete".length ? formatPhone(entry.phoneNumber) : "Delete"}
-                    </span>
-                    <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {hoveredPhoneId === entry.id ? "Delete" : formatPhone(entry.phoneNumber)}
-                    </span>
-                  </span>
-                </s-clickable-chip>
-              ))}
+          
+          {/*email notification toggle*/}
+            <s-stack direction="inline" gap="small" alignItems="end">
+            <s-switch
+              id="email-notif-toggle"
+              label="Enable E-mail Notifications"
+              details= {emailNotifToggleDetails}
+              checked={emailEnabled}
+              onChange={handleEmailNotificationToggle}
+              >
+              Enable E-mail Notifications</s-switch> 
+                {emailEnabled && (<s-icon
+                  type = "check-circle-filled"
+                  size = "base"
+                  tone="success"
+                  ></s-icon>)}             
             </s-stack>
-          )}
-        </s-stack>
+          {/*phone*/}
+          <s-stack direction="block" gap="large">
+            <s-stack direction="inline" gap="small" alignItems="end">
+              <s-box inlineSize="300px">
+                <s-text-field
+                  label="Phone Number"
+                  placeholder="555-555-5555"
+                  value={phoneInput}
+                  onInput={(e) => setPhoneInput(e.target.value)}
+                  error={phoneError ?? undefined}
+                />
+              </s-box>
+              <s-button
+                variant="primary"
+                onClick={handleAddPhone}
+                disabled={fetcher.state !== "idle"}
+              >
+                Save
+              </s-button>
+            </s-stack>
+
+            {/*phone chips*/}
+            {contactPhones.length > 0 && (
+              <s-stack direction="inline" gap="extraSmall" wrap>
+                {contactPhones.map((entry) => (
+                  <s-clickable-chip
+                    key={entry.id}
+                    onClick={() => handleDeletePhone(entry.id)}
+                    onMouseEnter={() => setHoveredPhoneId(entry.id)}
+                    onMouseLeave={() => setHoveredPhoneId(null)}
+                  >
+                    <span style={{ position: "relative", display: "inline-block" }}>
+                      <span style={{ visibility: "hidden" }}>
+                        {formatPhone(entry.phoneNumber).length > "Delete".length ? formatPhone(entry.phoneNumber) : "Delete"}
+                      </span>
+                      <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {hoveredPhoneId === entry.id ? "Delete" : formatPhone(entry.phoneNumber)}
+                      </span>
+                    </span>
+                  </s-clickable-chip>
+                ))}
+              </s-stack>
+            )}
+          </s-stack>
+        </s-grid> {/* end of vertical grid */}
 
       </s-section>
 

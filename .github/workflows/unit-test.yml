@@ -1,0 +1,25 @@
+name: Unit Test
+on: 
+  workflow_dispatch:
+    branches:
+      - dev
+      - staging
+      - prod
+  pull_request: 
+    branches:  
+      - dev
+      - staging
+      - prod
+jobs: 
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - run: npm ci 
+      - run: npm run test 
+      

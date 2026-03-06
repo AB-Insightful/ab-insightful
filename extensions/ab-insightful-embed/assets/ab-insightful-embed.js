@@ -11,113 +11,133 @@ if (appConfigBlock) {
 }
 
 function initializeApp(appUrl) {
-  const experimentsAPIUrl = `${appUrl}/api/experiments`;
-  let experiment_ids = {};
-  fetch(experimentsAPIUrl, {
-    method: "GET",
-  })
-    .then((res) => {
-      return res.json();
-    })
-    .then((data) => {
-      data.forEach((experiment) => {
-        const variantMatch = document.getElementById(experiment.sectionId);
-        if (variantMatch) {
-          console.log(
-            `[ab-insightful-embed] Match! ID: ${experiment.sectionId} Element: ${variantMatch}`,
-          );
-          if (experiment.controlSectionId) {
-            const controlMatch = document.getElementById(
-              experiment.controlSectionId,
-            );
-            // Variant has a control element that needs to be hidden if the user is in variant group
-            if (controlMatch) {
-              invokeExperiment(
-                experiment.id,
-                experiment.trafficSplit,
-                variantMatch,
-                appUrl,
-                controlMatch,
-              );
-            }
-          } else {
-            invokeExperiment(
-              experiment.id,
-              experiment.trafficSplit,
-              variantMatch,
-              appUrl,
-            );
-          }
-        }
+  fetch(`${appUrl}/api/experiments`, { method: "GET" })
+    .then((res) => res.json())
+    .then((experiments) => {
+      const assignments = migrateOldCookies(getAssignments(), experiments);
+
+      experiments.forEach((experiment) => {
+        processExperiment(experiment, assignments, appUrl);
       });
+
+      saveAssignments(assignments);
     })
-    .catch((error) => {
-      console.log(error);
+    .catch((err) => {
+      console.error("[ab-insightful] Failed to fetch experiments:", err);
     });
 }
 
-// Function to decide whether to activate an experiment for the current client given an active experiment
-function invokeExperiment(
-  id,
-  chanceToShow,
-  element,
-  appUrl,
-  controlElement = null,
-) {
-  // Two cookies - one for experiments involved in control, one for involved in variants
-  // Both are comma separated lists of id's
-  const involvedControlExperiments = getCookie("ab-control-ids");
-  const involvedVariantExperiments = getCookie("ab-variant-ids");
-  // Check if this user is already in the experiment as a control
-  if (involvedControlExperiments) {
-    const expids = involvedControlExperiments.split(",");
-    if (expids.includes(String(id))) {
-      element.style.display = "none";
-      return;
+function processExperiment(experiment, assignments, appUrl) {
+  // Only relevant if at least one variant section exists on this page
+  const variantsOnPage = experiment.variants.filter(
+    (v) => v.sectionId && document.getElementById(v.sectionId),
+  );
+  if (variantsOnPage.length === 0) return;
+
+  const expKey = String(experiment.id);
+  let assignedVariant = null;
+  let isNew = false;
+
+  // Check for an existing assignment
+  if (assignments[expKey] != null) {
+    assignedVariant = experiment.variants.find(
+      (v) => v.id === assignments[expKey],
+    );
+    // If the stored variant no longer exists in the experiment, reassign
+    if (!assignedVariant) {
+      delete assignments[expKey];
     }
   }
 
-  // Check if this user is already in the experiment as a variant
-  if (involvedVariantExperiments) {
-    const expids = involvedVariantExperiments.split(",");
-    if (expids.includes(String(id))) {
-      if (controlElement) {
-        controlElement.style.display = "none";
-      }
-      return;
-    }
+  // New assignment via weighted random selection
+  if (!assignedVariant) {
+    assignedVariant = weightedRandomSelect(experiment.variants);
+    isNew = true;
   }
 
-  // Base case: not in control or variant list - add to experiment
-  const chance = Number(chanceToShow);
-  if (Math.random() <= chance) {
-    // You are part of experiment - hide control
-    if (controlElement) {
-        controlElement.style.display = "none";
-      }
-    // Add to variant experiment
-    document.cookie =
-      "ab-variant-ids=" +
-      (involvedVariantExperiments ? involvedVariantExperiments + "," : "") +
-      id +
-      "; path=/";
+  assignments[expKey] = assignedVariant.id;
 
-    // Setup data to send to server to notify of new experiment user
-    const user_id = getCookie("_shopify_y");
-    submitExperimentUser(user_id, id, "Variant A", appUrl);
-  } else {
-    // You are part of control group - hide experiment
-    element.style.display = "none";
-    // Add to control group
-    document.cookie =
-      "ab-control-ids=" +
-      (involvedControlExperiments ? involvedControlExperiments + "," : "") +
-      id +
-      "; path=/";
-    // Include user in Control on server
-    const user_id = getCookie("_shopify_y");
-    submitExperimentUser(user_id, id, "Control", appUrl);
+  // Show assigned variant section, hide every other variant section
+  experiment.variants.forEach((v) => {
+    if (!v.sectionId) return;
+    const el = document.getElementById(v.sectionId);
+    if (!el) return;
+    el.style.display = v.id === assignedVariant.id ? "" : "none";
+  });
+
+  if (isNew) {
+    const userId = getCookie("_shopify_y");
+    submitExperimentUser(userId, experiment.id, assignedVariant.name, appUrl);
   }
+}
+
+// Pick one variant using cumulative traffic allocation weights.
+function weightedRandomSelect(variants) {
+  const rand = Math.random();
+  let cumulative = 0;
+  for (const v of variants) {
+    cumulative += v.trafficAllocation;
+    if (rand < cumulative) return v;
+  }
+  return variants[variants.length - 1];
+}
+
+// --- Cookie helpers ---
+
+function getAssignments() {
+  const raw = getCookie("ab-assignments");
+  if (!raw) return {};
+  try {
+    return JSON.parse(decodeURIComponent(raw));
+  } catch {
+    return {};
+  }
+}
+
+function saveAssignments(assignments) {
+  const encoded = encodeURIComponent(JSON.stringify(assignments));
+  document.cookie = "ab-assignments=" + encoded + "; path=/; max-age=31536000";
+}
+
+// Migrate legacy ab-control-ids / ab-variant-ids cookies into the new format
+// so returning visitors keep their original assignment.
+function migrateOldCookies(assignments, experiments) {
+  const oldControl = getCookie("ab-control-ids");
+  const oldVariant = getCookie("ab-variant-ids");
+  if (!oldControl && !oldVariant) return assignments;
+
+  const expMap = {};
+  experiments.forEach((exp) => {
+    expMap[String(exp.id)] = exp.variants;
+  });
+
+  if (oldControl) {
+    oldControl.split(",").forEach((raw) => {
+      const id = raw.trim();
+      if (!id || assignments[id] != null) return;
+      const variants = expMap[id];
+      if (!variants) return;
+      const control = variants.find((v) => v.isControl);
+      if (control) assignments[id] = control.id;
+    });
+  }
+
+  if (oldVariant) {
+    oldVariant.split(",").forEach((raw) => {
+      const id = raw.trim();
+      if (!id || assignments[id] != null) return;
+      const variants = expMap[id];
+      if (!variants) return;
+      const treatment = variants.find((v) => !v.isControl);
+      if (treatment) assignments[id] = treatment.id;
+    });
+  }
+
+  // Clear legacy cookies
+  document.cookie = "ab-control-ids=; path=/; max-age=0";
+  document.cookie = "ab-variant-ids=; path=/; max-age=0";
+
+  return assignments;
 }
 
 function getCookie(name) {
@@ -125,38 +145,32 @@ function getCookie(name) {
   const ca = document.cookie.split(";");
   for (let i = 0; i < ca.length; i++) {
     let c = ca[i];
-    while (c.charAt(0) === " ") {
-      c = c.substring(1, c.length);
-    }
-    if (c.indexOf(nameEQ) === 0) {
-      return c.substring(nameEQ.length, c.length);
-    }
+    while (c.charAt(0) === " ") c = c.substring(1);
+    if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length);
   }
   return null;
 }
 
-async function submitExperimentUser(user_id, experiment_id, variant, appUrl) {
-  const collectUrl = `${appUrl}/api/collect`;
+async function submitExperimentUser(userId, experimentId, variantName, appUrl) {
   const payload = {
     event_type: "experiment_include",
-    client_id: user_id,
-    experiment_id: experiment_id,
-    variant: variant,
+    client_id: userId,
+    experiment_id: experimentId,
+    variant: variantName,
     timestamp: new Date().toISOString(),
   };
-  fetch(collectUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json", // Indicate that the body is JSON
-    },
-    body: JSON.stringify(payload),
-  })
-    .then((res) => {
-      if (!res.ok) {
-        throw new Error("User not attributed to experiment");
-      }
-    })
-    .catch((error) => {
-      console.log(error);
+
+  try {
+    const res = await fetch(`${appUrl}/api/collect`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
+    if (!res.ok) throw new Error("Server responded with " + res.status);
+  } catch (err) {
+    console.error(
+      "[ab-insightful] Failed to submit experiment inclusion:",
+      err,
+    );
+  }
 }

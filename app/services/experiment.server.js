@@ -5,42 +5,54 @@ import { Prisma } from "@prisma/client";
 import { ExperimentStatus } from "@prisma/client";
 
 // Function to create an experiment. Returns the created experiment object.
+// Accepts an array of treatment variant objects, each with { sectionId, trafficAllocation }.
+// A Control variant is always created automatically with the remaining traffic.
+// Variant names are auto-generated: "Control", "Variant A", "Variant B", "Variant C", ...
 export async function createExperiment(
   experimentData,
-  {
-    variantEnabled = false,
-    controlSectionId = "",
-    primaryVariantSectionId = "",
-    secondaryVariantSectionId = "",
-  } = {},
+  { controlSectionId = "", variants = [] } = {},
 ) {
   console.log("Creating experiment with data:", experimentData);
+
+  const VARIANT_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+  const treatmentAllocation = variants.reduce(
+    (sum, v) => sum + (v.trafficAllocation || 0),
+    0,
+  );
+  const controlAllocation = 1.0 - treatmentAllocation;
+
+  if (controlAllocation < -0.01) {
+    throw new Error(
+      `Treatment traffic allocations exceed 1.0 (sum: ${treatmentAllocation.toFixed(4)})`,
+    );
+  }
+
+  if (Math.abs(treatmentAllocation + Math.max(0, controlAllocation) - 1.0) > 0.01) {
+    throw new Error(
+      `Traffic allocations must sum to ~1.0 (got ${(treatmentAllocation + controlAllocation).toFixed(4)})`,
+    );
+  }
 
   const variantCreates = [];
 
   variantCreates.push({
     name: "Control",
     configData: controlSectionId ? { sectionId: controlSectionId } : null,
+    trafficAllocation: Math.max(0, controlAllocation),
   });
 
-  if (primaryVariantSectionId) {
+  variants.forEach((v, i) => {
     variantCreates.push({
-      name: "Variant A",
-      configData: { sectionId: primaryVariantSectionId },
+      name: `Variant ${VARIANT_LABELS[i]}`,
+      configData: v.sectionId ? { sectionId: v.sectionId } : null,
+      trafficAllocation: v.trafficAllocation,
     });
-  }
+  });
 
-  if (variantEnabled && secondaryVariantSectionId) {
-    variantCreates.push({
-      name: "Variant B",
-      configData: { sectionId: secondaryVariantSectionId },
-    });
-  }
-
-  // Update Prisma database using npx prisma
   const result = await db.experiment.create({
     data: {
-      ...experimentData, // Will include all DB fields of a new experiment
+      ...experimentData,
       variants: {
         create: variantCreates,
       },
@@ -54,7 +66,7 @@ export async function createExperiment(
    Experiment Queries
    ==================================================================================================== */
 
-// Get active experiment ID, Section ID and Probability - used on frontend for showing.
+// Returns active experiments with variant-level data for the storefront embed script.
 export async function GetFrontendExperimentsData() {
   const experiments = await db.experiment.findMany({
     where: {
@@ -62,13 +74,27 @@ export async function GetFrontendExperimentsData() {
     },
     select: {
       id: true,
-      sectionId: true,
-      controlSectionId: true,
-      trafficSplit: true,
+      variants: {
+        select: {
+          id: true,
+          name: true,
+          configData: true,
+          trafficAllocation: true,
+        },
+      },
     },
   });
 
-  return experiments;
+  return experiments.map((exp) => ({
+    id: exp.id,
+    variants: exp.variants.map((v) => ({
+      id: v.id,
+      name: v.name,
+      sectionId: v.configData?.sectionId ?? null,
+      trafficAllocation: Number(v.trafficAllocation),
+      isControl: v.name === "Control",
+    })),
+  }));
 }
 
 // [Ryan] function to get experiments that are active and have an end date that is either Now or has Passed
@@ -898,9 +924,11 @@ async function handleExperiment_IncludeEvent(payload) {
       userId: user.id,
       experimentId: payload.experiment_id,
       variantId: variant.id,
+      deviceType: payload.device_type ?? payload.deviceType ?? null,
     },
     update: {
       variantId: variant.id,
+      deviceType: payload.device_type ?? payload.deviceType ?? null,
     },
   });
   if (!result) {

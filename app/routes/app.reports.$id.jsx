@@ -196,9 +196,8 @@ export default function Report() {
   
   const PROB_THRESHOLD = 0.8;
   const DELTA_THRESHOLD = 0.01;
-  const control = analysis[0]; // baseline
+  const control = analysis.find(a => a.variantName === "Control");
 
-  // if no analysis exists yet
   if (!control){
     return {
       status: 'default',
@@ -209,7 +208,8 @@ export default function Report() {
   
   /* Searches for variants in the experiment which 
   *  currently have a PoB >= 80% */ 
-  const currentWinners = analysis.slice(1).filter(variant => {
+  const currentWinners = analysis.filter(variant => {
+    if (variant.variantName === "Control") return false;
     const delta = variant.conversionRate - control.conversionRate;
     return variant.probabilityOfBeingBest >= PROB_THRESHOLD && delta > DELTA_THRESHOLD;
   });
@@ -270,15 +270,16 @@ export default function Report() {
 
   // Table code
   function renderTableData() {
-    if (analysis.length === 0 ) return []; // simple exit if the array is empty
+    if (safeAnalysis.length === 0) return [];
     const rows = [];
-    const control = safeAnalysis[0]; // Reference the baseline for delta calculations
+    const control = safeAnalysis.find(a => a.variantName === "Control");
 
     for (let i = 0; i < safeAnalysis.length; i++) {
       const cur = safeAnalysis[i];
+      const isControl = cur.variantName === "Control";
       
       // Probability to be Best: 80% Win / 20% Loss rule
-      let probColor = "inherit"; // inherit ensures the default font color is used if no winner/loser
+      let probColor = "inherit";
       if (cur.probabilityOfBeingBest > 0.8) probColor = "#2e7d32"; 
       else if (cur.probabilityOfBeingBest < 0.2) probColor = "#d32f2f";
 
@@ -288,7 +289,7 @@ export default function Report() {
 
       // Goal Completion Rate: Delta > 1% rule
       let rateColor = "inherit";
-      if (i > 0 && control) {
+      if (!isControl && control) {
         const delta = (cur.conversionRate - control.conversionRate) * 100;
         if (delta > 1) rateColor = "#2e7d32";
         else if (delta < -1) rateColor = "#d32f2f";
@@ -296,7 +297,7 @@ export default function Report() {
 
       // Improvement rule (> 50% Win, < 0% Loss)
       let impColor = "inherit";
-      if (i>0){ // skips Control since it's BaseLine
+      if (!isControl) {
         if (cur.improvement > 50){
           impColor = "#2e7d32";
         } else if (cur.improvement < 0){
@@ -316,7 +317,7 @@ export default function Report() {
           </s-table-cell>
           <s-table-cell>
             <span style = {{color: impColor}}> 
-              {i === 0 ? 'Baseline' : formatPercent(cur.improvement / 100)}
+              {isControl ? 'Baseline' : formatPercent(cur.improvement / 100)}
             </span>
           </s-table-cell>
           {/* Probability to be Best: 80/20 significance rule */}

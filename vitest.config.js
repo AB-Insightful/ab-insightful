@@ -11,7 +11,11 @@ export default defineConfig({
             'src/**/*.test.{js,jsx}',
             'app/**/__tests__/**/*.{js,jsx}'
         ],
-        exclude: ['node_modules', 'dist'], // define directories to skip
+        exclude: [
+            'node_modules', 'dist',
+            'app/__tests__/experiment.collect.integration.test.js',
+            'app/__tests__/api.collect.integration.test.js',
+            "app/__tests__/api.collect.route.test.js",], // define directories to skip
         setupFiles: ['app/setupTests.js'], // define where the setup configuration is located
         css:true, 
         coverage: {

@@ -44,7 +44,7 @@ export const loader = async ({ params, request }) => {
           goal: true,
         },
       },
-      variants: false, // we only need to know if variants exist and the first variant's sectionId, so we can skip fetching all variant details
+      variants: true,
     },
   });
 
@@ -85,15 +85,30 @@ export const loader = async ({ params, request }) => {
     ? goalNameToKey[primaryGoal.goal.name] || "completedCheckout"
     : "completedCheckout";
 
+  const controlVariant = experiment.variants.find((v) => v.name === "Control");
+  const treatmentVariants = experiment.variants
+    .filter((v) => v.name !== "Control")
+    .sort((a, b) => a.id - b.id)
+    .map((v) => ({
+      sectionId: v.configData?.sectionId || "",
+      trafficAllocation: Math.round(Number(v.trafficAllocation) * 100),
+    }));
+
+  if (treatmentVariants.length === 0) {
+    treatmentVariants.push({
+      sectionId: experiment.sectionId || "",
+      trafficAllocation: Math.round(Number(experiment.trafficSplit) * 100),
+    });
+  }
+
   return {
     experiment: {
       id: experiment.id,
       status: experiment.status,
       name: experiment.name,
       description: experiment.description,
-      sectionId: experiment.sectionId,
-      controlSectionId: experiment.controlSectionId,
-      trafficSplit: experiment.trafficSplit * 100, // Convert back to percentage
+      controlSectionId: controlVariant?.configData?.sectionId || experiment.controlSectionId || "",
+      variants: treatmentVariants,
       startDate: formatDate(experiment.startDate),
       startTime: formatTime(experiment.startDate),
       endDate: formatDate(experiment.endDate),
@@ -103,11 +118,6 @@ export const loader = async ({ params, request }) => {
       probabilityToBeBest: experiment.probabilityToBeBest,
       duration: experiment.duration,
       timeUnit: experiment.timeUnit,
-      hasVariants: experiment.variants && experiment.variants.length > 0,
-      variantSectionId:
-        experiment.variants && experiment.variants.length > 0
-          ? experiment.variants[0].sectionId
-          : "",
     },
   };
 };
@@ -244,19 +254,28 @@ export const action = async ({ request, params }) => {
   /* ====================================================================================================
    Read Form Fields
    ==================================================================================================== */
-  // Get POST request form data & create experiment
+  // Get POST request form data & update experiment
   const name = (formData.get("name") || "").trim();
   const description = (formData.get("description") || "").trim();
-  const sectionId = (formData.get("sectionId") || "").trim();
   const controlSectionId = (formData.get("controlSectionId") || "").trim();
-  const variantSectionId = (formData.get("variantSectionId") || "").trim();
-  const variantEnabled = formData.get("variant") === "true";
   const goalValue = (formData.get("goal") || "").trim();
   const endCondition = (formData.get("endCondition") || "").trim();
-  const trafficSplitStr = (formData.get("trafficSplit") || "50").trim(); // Default to "0"
   const probabilityToBeBestStr = (formData.get("probabilityToBeBest") || "").trim();
   const durationStr = (formData.get("duration") || "").trim();
   const timeUnitValue = (formData.get("timeUnit") || "").trim();
+
+  let variantInputs;
+  try {
+    variantInputs = JSON.parse(formData.get("variantsJSON") || "[]");
+  } catch {
+    variantInputs = [];
+  }
+  const sectionId = (variantInputs[0]?.sectionId || "").trim();
+  const totalTrafficPct = variantInputs.reduce(
+    (sum, v) => sum + (v.trafficAllocation || 0),
+    0,
+  );
+  const trafficSplitStr = String(totalTrafficPct);
 
   // Date/Time Fields (accepts both client-side UTC strings or separate date/time fields)
   const startDateUTC = (formData.get("startDateUTC") || "").trim();
@@ -274,6 +293,12 @@ export const action = async ({ request, params }) => {
 
   if (!name) errors.name = "Name is required";
   if (!description) errors.description = "Description is required";
+  variantInputs.forEach((v, i) => {
+    if (!(v.sectionId || "").trim()) {
+      errors[`variant_${i}_sectionId`] =
+        `Variant ${String.fromCharCode(65 + i)} Section ID is required`;
+    }
+  });
   if (!startDateStr && !startDateUTC)
     errors.startDate = "Start Date is required";
   if (endCondition === "stableSuccessProbability" && !probabilityToBeBestStr)
@@ -414,6 +439,40 @@ export const action = async ({ request, params }) => {
     updateData.trafficSplit = parseFloat(trafficSplitStr) / 100.0;
   }
 
+  // Build variant operations (draft only - recreate all variants)
+  let variantOps = null;
+  if (editStructure) {
+    const VARIANT_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const treatmentVariants = variantInputs.map((v) => ({
+      sectionId: (v.sectionId || "").trim(),
+      trafficAllocation: (v.trafficAllocation || 0) / 100.0,
+    }));
+    const treatmentAllocation = treatmentVariants.reduce(
+      (sum, v) => sum + v.trafficAllocation,
+      0,
+    );
+    const controlAllocation = Math.max(0, 1.0 - treatmentAllocation);
+
+    const variantCreates = [];
+    variantCreates.push({
+      name: "Control",
+      configData: controlSectionId ? { sectionId: controlSectionId } : null,
+      trafficAllocation: controlAllocation,
+    });
+    treatmentVariants.forEach((v, i) => {
+      variantCreates.push({
+        name: `Variant ${VARIANT_LABELS[i]}`,
+        configData: v.sectionId ? { sectionId: v.sectionId } : null,
+        trafficAllocation: v.trafficAllocation,
+      });
+    });
+
+    variantOps = {
+      deleteMany: {},
+      create: variantCreates,
+    };
+  }
+
   /* ====================================================================================================
    Goal Ops for Draft
    ==================================================================================================== */
@@ -453,6 +512,7 @@ export const action = async ({ request, params }) => {
       data: {
         ...updateData,
         ...(goalOps ? { experimentGoals: goalOps } : {}),
+        ...(variantOps ? { variants: variantOps } : {}),
       },
     });
 
@@ -500,22 +560,22 @@ export default function EditExperiment() {
   const [nameError, setNameError] = useState(null);
   const [description, setDescription] = useState("");
   const [emptyDescriptionError, setDescriptionError] = useState(null);
-  const [sectionId, setSectionId] = useState("");
+  const MAX_VARIANTS = 4;
+  const VARIANT_LABELS = ["A", "B", "C", "D"];
+
+  const [variants, setVariants] = useState([
+    { sectionId: "", trafficAllocation: 50 },
+  ]);
+  const [variantSectionErrors, setVariantSectionErrors] = useState([null]);
+  const [addControlSection, setAddControlSection] = useState(false);
   const [controlSectionId, setControlSectionId] = useState("");
-  const [emptySectionIdError, setSectionIdError] = useState(null);
-  const [emptySectionIdVariantError, setSectionIdVariantError] = useState(null);
   const [emptyStartDateError, setEmptyStartDateError] = useState(null);
   const [emptyEndDateError, setEmptyEndDateError] = useState(null);
   const [endDate, setEndDate] = useState("");
   const [endDateError, setEndDateError] = useState("");
-  const [experimentChance, setExperimentChance] = useState(50);
   const [endCondition, setEndCondition] = useState("manual");
   const [goalSelected, setGoalSelected] = useState("completedCheckout");
   const [customerSegment, setCustomerSegment] = useState("allSegments");
-  const [variant, setVariant] = useState(false);
-  const [variantDisplay, setVariantDisplay] = useState("none");
-  const [variantSectionId, setVariantSectionId] = useState("");
-  const [variantExperimentChance, setVariantExperimentChance] = useState(50);
   const [startDate, setStartDate] = useState("");
   const [startDateError, setStartDateError] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -584,9 +644,10 @@ export default function EditExperiment() {
       const exp = loaderData.experiment;
       setName(exp.name);
       setDescription(exp.description);
-      setSectionId(exp.sectionId);
-      setControlSectionId(exp.controlSectionId);
-      setExperimentChance(exp.trafficSplit);
+      setControlSectionId(exp.controlSectionId || "");
+      if (exp.controlSectionId) {
+        setAddControlSection(true);
+      }
       setStartDate(exp.startDate);
       setStartTime(exp.startTime);
       setEndDate(exp.endDate);
@@ -597,10 +658,9 @@ export default function EditExperiment() {
       setDuration(exp.duration || "");
       setTimeUnit(exp.timeUnit || "days");
 
-      if (exp.hasVariants) {
-        setVariant(true);
-        setVariantDisplay("auto");
-        setVariantSectionId(exp.variantSectionId);
+      if (exp.variants && exp.variants.length > 0) {
+        setVariants(exp.variants);
+        setVariantSectionErrors(exp.variants.map(() => null));
       }
     }
   }, [loaderData]);
@@ -616,6 +676,11 @@ export default function EditExperiment() {
 
   const errors = fetcher.data?.errors || {}; // looks for error data, if empty instantiate errors as empty object
 
+  const controlAllocation = Math.max(
+    0,
+    100 - variants.reduce((sum, v) => sum + v.trafficAllocation, 0),
+  );
+
   //Check if there were any errors on the form
   const hasClientErrors = renameOnlyMode ? (!!nameError || !!errors.name) :
     (
@@ -623,10 +688,7 @@ export default function EditExperiment() {
       !!errors.name ||
       !!emptyDescriptionError ||
       !!errors.description ||
-      !!emptySectionIdError ||
-      !!errors.sectionId ||
-      (variant && !!emptySectionIdVariantError) ||
-      (variant && !!errors.variantSectionId) ||
+      variantSectionErrors.some((e) => !!e) ||
       !!probabilityToBeBestError ||
       !!errors.probabilityToBeBest ||
       !!durationError ||
@@ -644,7 +706,6 @@ export default function EditExperiment() {
   const handleExperimentEdit = async () => {
     const experimentData = renameOnlyMode ? { name: name } : (() => {
 
-      // creates data object for all current state variables
       const startDateUTC = startDate
         ? localDateTimeToISOString(startDate, startTime)
         : "";
@@ -656,18 +717,15 @@ export default function EditExperiment() {
       return {
         name: name,
         description: description,
-        sectionId: sectionId,
         controlSectionId: controlSectionId,
-        variantSectionId: variantSectionId,
-        variant: String(variant),
-        goal: goalSelected, // holds the "view-page" value
-        endCondition: endCondition, // holds "Manual", "End Data"
-        startDateUTC: startDateUTC, // The date string from s-date-field
-        endDateUTC: endDateUTC, // The date string from s-date-field
-        endDate: endDate, // The date string from s-date-field
-        trafficSplit: experimentChance, // 0-100 value
-        probabilityToBeBest: probabilityToBeBest, //holds validated value 51-100
-        duration: duration, //length of time for experiment run
+        variantsJSON: JSON.stringify(variants),
+        goal: goalSelected,
+        endCondition: endCondition,
+        startDateUTC: startDateUTC,
+        endDateUTC: endDateUTC,
+        endDate: endDate,
+        probabilityToBeBest: probabilityToBeBest,
+        duration: duration,
         timeUnit: timeUnit,
       };
     })();
@@ -696,20 +754,20 @@ export default function EditExperiment() {
     }
   };
 
-  const handleSectionIdBlur = () => {
-    if (!sectionId.trim()) {
-      setSectionIdError("Section ID is a required field");
-    } else {
-      setSectionIdError(null); //clears error once user fixes
-    }
+  const updateVariant = (index, field, value) => {
+    setVariants((prev) =>
+      prev.map((v, i) => (i === index ? { ...v, [field]: value } : v)),
+    );
   };
 
-  const handleSectionIdVariantBlur = () => {
-    if (variant && !variantSectionId.trim()) {
-      setSectionIdVariantError("Section ID is a required field");
-    } else {
-      setSectionIdVariantError(null); //clears error once user fixes
-    }
+  const handleVariantSectionIdBlur = (index) => {
+    setVariantSectionErrors((prev) => {
+      const next = [...prev];
+      next[index] = !variants[index].sectionId.trim()
+        ? "Section ID is a required field"
+        : null;
+      return next;
+    });
   };
 
   const handleStartDateBlur = () => {
@@ -898,17 +956,25 @@ export default function EditExperiment() {
     setEndTimeError(errors.endTimeError);
   };
 
-  const handleVariant = () => {
-    setVariant(true);
-    setVariantDisplay("auto");
-    setVariantExperimentChance(50);
+  const handleAddVariant = () => {
+    if (variants.length >= MAX_VARIANTS) return;
+    const newCount = variants.length + 1;
+    const evenSplit = Math.floor(100 / (newCount + 1));
+    setVariants((prev) => [
+      ...prev.map((v) => ({ ...v, trafficAllocation: evenSplit })),
+      { sectionId: "", trafficAllocation: evenSplit },
+    ]);
+    setVariantSectionErrors((prev) => [...prev, null]);
   };
 
-  const handleVariantUndo = () => {
-    setVariant(false);
-    setVariantDisplay("none");
-    setVariantSectionId("");
-    setVariantExperimentChance();
+  const handleRemoveVariant = () => {
+    if (variants.length <= 1) return;
+    const newCount = variants.length - 1;
+    const evenSplit = Math.floor(100 / (newCount + 1));
+    setVariants((prev) =>
+      prev.slice(0, -1).map((v) => ({ ...v, trafficAllocation: evenSplit })),
+    );
+    setVariantSectionErrors((prev) => prev.slice(0, -1));
   };
 
   const descriptionError = errors.description;
@@ -925,16 +991,6 @@ export default function EditExperiment() {
     allSegments: "All Segments",
     desktopVisitors: "Desktop Visitors",
     mobileVisitors: "Mobile Visitors",
-  };
-
-  const variationMap = {
-    false: "Single Variation",
-    true: "Multiple Variations",
-  };
-
-  const variantMap = {
-    false: "none",
-    true: "auto",
   };
 
   // derive current badge info and icon from selected goal
@@ -978,32 +1034,32 @@ export default function EditExperiment() {
         <s-section heading={name ? name : "no experiment name set"}>
           <s-stack gap="small">
             <s-badge icon={icon}>{label}</s-badge>
-            <s-badge
-              tone={sectionId ? "" : "warning"}
-              icon={sectionId ? "code" : "alert-circle"}
-            >
-              {sectionId || "Section not selected"}
-            </s-badge>
-            <s-stack display={variantDisplay}>
+            {variants.map((v, i) => (
               <s-badge
-                tone={variantSectionId ? "" : "warning"}
-                icon={variantSectionId ? "code" : "alert-circle"}
+                key={i}
+                tone={v.sectionId ? "" : "warning"}
+                icon={v.sectionId ? "code" : "alert-circle"}
               >
-                {variantSectionId || "Section not selected"}
+                Variant {VARIANT_LABELS[i]}:{" "}
+                {v.sectionId || "Section not selected"}
               </s-badge>
-            </s-stack>
+            ))}
 
             <s-text font-weight="heavy">Experiment Details</s-text>
 
-            {/* DYNAMIC BULLET LIST */}
             <s-text>• {customerSegments}</s-text>
-            <s-text>• {variationMap[variant] || "—"}</s-text>
-            <s-text>• {experimentChance}% Chance to show Variant 1</s-text>
-            <s-stack display={variantDisplay}>
-              <s-text>
-                • {variantExperimentChance}% Chance to show Variant 2
+            <s-text>
+              •{" "}
+              {variants.length === 1
+                ? "Single Variation"
+                : `${variants.length} Variations`}
+            </s-text>
+            {variants.map((v, i) => (
+              <s-text key={i}>
+                • {v.trafficAllocation}% Variant {VARIANT_LABELS[i]}
               </s-text>
-            </s-stack>
+            ))}
+            <s-text>• {controlAllocation}% Control</s-text>
             <s-text>
               • Active from{" "}
               {startDate
@@ -1201,132 +1257,104 @@ export default function EditExperiment() {
       <s-section heading="Experiment Details">
         <s-form>
           <s-stack direction="block" gap="base" paddingBlock="base">
-            <s-stack direction="block" gap="small">
-              <s-stack display={variantDisplay}>
-                <s-heading>Variant 1</s-heading>
-              </s-stack>
-              {/*Custom Label Row (SectionID + help link)*/}
-              <s-link href="#" target="_blank">
-                How do I find my section?
-              </s-link>
-              <s-text-field
-                placeholder="shopify-section-sections--25210977943842__header"
-                value={sectionId}
-                label="Section ID to be tested"
-                required
-                disabled={isLocked || !editStructure}
-                onFocus={() => {
-                  setSectionIdError(null);
-                  if (fetcher.data?.errors?.sectionId) {
-                    //clear server-side errors by resetting fetcher data
-                    fetcher.data = {
-                      ...fetcher.data,
-                      errors: { ...fetcher.data.errors, sectionId: undefined },
-                    };
-                  }
-                }}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setSectionId(v);
-                  if (emptySectionIdError && v.trim()) setSectionIdError(null);
-                }}
-                onBlur={handleSectionIdBlur}
-                error={errors.sectionId || emptySectionIdError}
-                details="The associated Shopify section ID to be tested. Must be visible on production site"
-              />
-            </s-stack>
-
-            {/* There is no error checking for this section intentionally. If a user supplies a control ID, that's great */}
-            {/* But, you don't need it and may not want it, so it can be blank. */}
-            <s-text-field
-              placeholder="shopify-section-sections--25210972849284__header"
-              value={controlSectionId}
-              label="Optional: Control Section ID"
-              required
-              disabled={isLocked || !editStructure}
-              onChange={(e) => {
-                const v = e.target.value;
-                setControlSectionId(v);
-              }}
-              details="The control section ID that will be replaced by the variant for users who are in the experiment. Must be visible on production site"
-            />
-
-            <s-number-field
-              label="Chance to show experiment"
-              value={experimentChance}
-              inputMode="numeric"
-              disabled={isLocked || !editStructure}
-              onChange={(e) => {
-                const value = Math.max(
-                  0,
-                  Math.min(100, Number(e.target.value)),
-                );
-                setExperimentChance(value);
-              }}
-              min={0}
-              max={100}
-              step={1}
-              suffix="%"
-            />
-
-            {/* Variant 2 fields */}
-            <s-stack display={variantDisplay} paddingBlock="base">
-              <s-heading>Variant 2</s-heading>
-
-              <s-stack direction="block" gap="small" paddingBlock="base">
-                {/*Custom Label Row (SectionID + help link)*/}
+            {variants.map((variant, i) => (
+              <s-stack
+                key={i}
+                direction="block"
+                gap="small"
+                paddingBlock={i > 0 ? "base" : undefined}
+              >
+                <s-heading>Variant {VARIANT_LABELS[i]}</s-heading>
                 <s-link href="#" target="_blank">
                   How do I find my section?
                 </s-link>
                 <s-text-field
                   placeholder="shopify-section-sections--25210977943842__header"
-                  value={variantSectionId}
+                  value={variant.sectionId}
                   label="Section ID to be tested"
                   required
                   disabled={isLocked || !editStructure}
                   onFocus={() => {
-                    setSectionIdVariantError(null);
-                    if (fetcher.data?.errors?.variantSectionId) {
-                      //clear server-side errors by resetting fetcher data
+                    setVariantSectionErrors((prev) => {
+                      const next = [...prev];
+                      next[i] = null;
+                      return next;
+                    });
+                    if (fetcher.data?.errors?.[`variant_${i}_sectionId`]) {
                       fetcher.data = {
                         ...fetcher.data,
                         errors: {
                           ...fetcher.data.errors,
-                          variantSectionId: undefined,
+                          [`variant_${i}_sectionId`]: undefined,
                         },
                       };
                     }
                   }}
                   onChange={(e) => {
-                    const v = e.target.value;
-                    setVariantSectionId(v);
-                    if (emptySectionIdVariantError && v.trim())
-                      setSectionIdVariantError(null);
+                    const val = e.target.value;
+                    updateVariant(i, "sectionId", val);
+                    if (variantSectionErrors[i] && val.trim()) {
+                      setVariantSectionErrors((prev) => {
+                        const next = [...prev];
+                        next[i] = null;
+                        return next;
+                      });
+                    }
                   }}
-                  onBlur={handleSectionIdVariantBlur}
-                  error={errors.variantSectionId || emptySectionIdVariantError}
+                  onBlur={() => handleVariantSectionIdBlur(i)}
+                  error={
+                    variantSectionErrors[i] || errors[`variant_${i}_sectionId`]
+                  }
                   details="The associated Shopify section ID to be tested. Must be visible on production site"
                 />
+                <s-number-field
+                  label={`Traffic allocation for Variant ${VARIANT_LABELS[i]}`}
+                  value={variant.trafficAllocation}
+                  inputMode="numeric"
+                  disabled={isLocked || !editStructure}
+                  onChange={(e) => {
+                    const othersTotal = variants.reduce(
+                      (sum, v, idx) => (idx !== i ? sum + v.trafficAllocation : sum),
+                      0,
+                    );
+                    const maxAllowed = 100 - othersTotal;
+                    const value = Math.max(0, Math.min(maxAllowed, Number(e.target.value)));
+                    updateVariant(i, "trafficAllocation", value);
+                  }}
+                  min={0}
+                  max={100 - variants.reduce((sum, v, idx) => (idx !== i ? sum + v.trafficAllocation : sum), 0)}
+                  step={1}
+                  suffix="%"
+                />
               </s-stack>
+            ))}
 
-              <s-number-field
-                label="Chance to show experiment"
-                value={variantExperimentChance}
-                inputMode="numeric"
+            <s-checkbox
+              label="Add a control section ID"
+              checked={addControlSection}
+              disabled={isLocked || !editStructure}
+              details="If you want the variant section to replace the control section, add a control section ID"
+              onChange={() => {
+                setAddControlSection(!addControlSection);
+              }}
+            />
+            {addControlSection && (
+              <s-text-field
+                placeholder="shopify-section-sections--25210972849284__header"
+                value={controlSectionId}
+                label="Control Section ID"
                 disabled={isLocked || !editStructure}
                 onChange={(e) => {
-                  const value = Math.max(
-                    0,
-                    Math.min(100, Number(e.target.value)),
-                  );
-                  setVariantExperimentChance(value);
+                  const v = e.target.value;
+                  setControlSectionId(v);
                 }}
-                min={0}
-                max={100}
-                step={1}
-                suffix="%"
+                details="The control section ID that will be replaced by the variant for users who are in the experiment. Must be visible on production site"
               />
-            </s-stack>
+            )}
+            <s-text font-weight="heavy">
+              Control allocation: {controlAllocation}%. Control allocation is
+              calculated from the remaining percentage after all variants.
+            </s-text>
 
             <s-select
               label="Customer segment to test"
@@ -1353,17 +1381,17 @@ export default function EditExperiment() {
       >
         <s-button
           icon="minus"
-          accessibilityLabel="Remove item"
-          disabled={!variant || !editStructure || isLocked}
-          onClick={handleVariantUndo}
+          accessibilityLabel="Remove variant"
+          disabled={variants.length <= 1 || !editStructure || isLocked}
+          onClick={handleRemoveVariant}
         >
-          Remove Another Variant
+          Remove Variant
         </s-button>
         <s-button
           icon="plus"
-          accessibilityLabel="Add item"
-          disabled={variant || !editStructure || isLocked}
-          onClick={handleVariant}
+          accessibilityLabel="Add variant"
+          disabled={variants.length >= MAX_VARIANTS || !editStructure || isLocked}
+          onClick={handleAddVariant}
         >
           Add Another Variant
         </s-button>

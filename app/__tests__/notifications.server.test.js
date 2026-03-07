@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vite
 
 const sendMock = vi.fn();
 
+//built mock for aws sns 
 vi.mock("@aws-sdk/client-sns", () => {
   class SNSClient {
     constructor(config) {
-      this.config = config;     // optional: lets you assert region later
+      this.config = config;   
     }
     send = sendMock;
   }
@@ -30,13 +31,14 @@ vi.mock("@aws-sdk/client-sns", () => {
 let sendEmailTopic;
 let subscribeEmail;
 
+//needs these imports regularly
 beforeAll(async () => {
-  // ✅ use your real file path (you mentioned this is correct now)
   const mod = await import("../services/notifications.server.js");
   sendEmailTopic = mod.sendEmailTopic;
   subscribeEmail = mod.subscribeEmail;
 });
 
+//arbitrary secrets, used later for the tests
 describe("SNS functions", () => {
   beforeEach(() => {
     sendMock.mockReset();
@@ -49,6 +51,7 @@ describe("SNS functions", () => {
     delete process.env.AWS_TOPIC;
   });
 
+  //tests for static message. Will need to change later once this is more dynamic
   it("sendEmailTopic sends PublishCommand with expected payload", async () => {
     const fakeResponse = { MessageId: "abc-123" };
     sendMock.mockResolvedValue(fakeResponse);
@@ -67,6 +70,7 @@ describe("SNS functions", () => {
     });
   });
 
+  //simple test for subscribing. Will be utilized more for future sprints. 
   it("subscribeEmail sends SubscribeCommand with expected email", async () => {
     const fakeResponse = { SubscriptionArn: "pending confirmation" };
     sendMock.mockResolvedValue(fakeResponse);

@@ -60,10 +60,9 @@ export const action = async ({ request }) => {
     try {
         const { setEmailNotifToggle} = await import ("../services/project.server");
         await setEmailNotifToggle(false)
-
     } catch (error) {
       console.error("Email toggle value change was invalid: ", error)
-      return {ok: false, error: "failed to change email toggle"}, { status: 500};
+      return { ok: false, error: "failed to change email toggle" }; // also fix comma operator    
     }
   }
   else if (intent === "set_email_notif_true")
@@ -72,9 +71,10 @@ export const action = async ({ request }) => {
     try {
       const { setEmailNotifToggle} = await import ("../services/project.server");
       await setEmailNotifToggle(true)
+      
     } catch (error) {
       console.error("Email toggle value change was invalid: ", error)
-      return {ok: false, error: "failed to change email toggle"}, { status: 500};
+      return {ok: false, error: "failed to change email toggle"};
     }
     //function and commands that send email (for testing purposes)
     try {
@@ -83,7 +83,7 @@ export const action = async ({ request }) => {
     }
     catch (error) {
       console.error("Email Notification Toggle Error: ", error);
-      return {ok: false, error: "failed to send email"}, { status: 500};
+      return {ok: false, error: "failed to send email"};
     } 
     
     

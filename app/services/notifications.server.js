@@ -1,5 +1,4 @@
 // This file focuses on functions tied to the Amazon SNS
-import db from "../db.server";
 import { SNSClient, PublishCommand, SubscribeCommand } from "@aws-sdk/client-sns";
 
 //will initiate a static message to the topic

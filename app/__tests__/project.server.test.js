@@ -1,13 +1,10 @@
 
 import { describe, it, expect, vi, beforeEach, beforeAll, afterEach } from "vitest";
 
-// --- Prisma/DB mocks ---
+//prisma mocks
 const updateMock = vi.fn();
 const findUniqueMock = vi.fn();
 
-// IMPORTANT: this path must match EXACTLY how project.server.js imports db.
-// If project.server.js has: import db from "../db.server";
-// then from app/services/ -> "../db.server" is correct.
 vi.mock("../db.server", () => {
   return {
     default: {
@@ -101,7 +98,7 @@ describe("project.server.js", () => {
 
   it("getEmailNotifToggle returns null and logs when project is not found", async () => {
     findUniqueMock.mockResolvedValue(null);
-
+    // function for checking logs
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     const result = await getEmailNotifToggle(999);

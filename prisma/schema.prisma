@@ -9,15 +9,15 @@ generator client {
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
   provider = "sqlite"
-  url      = "file:dev.sqlite"
+  url      = env("DATABASE_URL")
 }
 
 // Session model for Shopify authentication
 model Session {
-  id            String    @id
+  id            String        @id
   shop          String
   state         String
-  isOnline      Boolean   @default(false)
+  isOnline      Boolean       @default(false)
   scope         String?
   expires       DateTime?
   accessToken   String
@@ -25,10 +25,10 @@ model Session {
   firstName     String?
   lastName      String?
   email         String?
-  accountOwner  Boolean   @default(false)
+  accountOwner  Boolean       @default(false)
   locale        String?
-  collaborator  Boolean?  @default(false)
-  emailVerified Boolean?  @default(false)
+  collaborator  Boolean?      @default(false)
+  emailVerified Boolean?      @default(false)
   webPixelId    String?
   tutorialData  TutorialData?
 }
@@ -64,17 +64,17 @@ enum ExperimentStatus {
 }
 
 model Experiment {
-  id           Int              @id @default(autoincrement()) @map("experiment_id")
-  name         String
-  description  String
-  status       ExperimentStatus @default(draft) // look for the enum datatype
-  trafficSplit Decimal          @map("traffic_split")
-  startDate    DateTime?        @map("start_date")
-  endDate      DateTime?        @map("end_date")
-  endCondition String?
+  id               Int              @id @default(autoincrement()) @map("experiment_id")
+  name             String
+  description      String
+  status           ExperimentStatus @default(draft) // look for the enum datatype
+  trafficSplit     Decimal          @map("traffic_split")
+  startDate        DateTime?        @map("start_date")
+  endDate          DateTime?        @map("end_date")
+  endCondition     String?
   controlSectionId String?
-  sectionId    String
-  createdAt    DateTime         @default(now())
+  sectionId        String
+  createdAt        DateTime         @default(now())
 
   probabilityToBeBest Int?      @map("probability_to_be_best")
   duration            Int?
@@ -149,10 +149,10 @@ model ExperimentAudience {
 }
 
 model ExperimentHistory {
-  id         Int                @id @default(autoincrement()) @map("history_id")
-  prevStatus ExperimentStatus   @map("prev_status") // draft
-  newStatus  ExperimentStatus   @map("new_status") // active
-  changedAt  DateTime           @default(now()) @map("changed_at")
+  id         Int              @id @default(autoincrement()) @map("history_id")
+  prevStatus ExperimentStatus @map("prev_status") // draft
+  newStatus  ExperimentStatus @map("new_status") // active
+  changedAt  DateTime         @default(now()) @map("changed_at")
 
   experimentId Int        @map("experiment_id") // Foreign key
   experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade) // connects to Experiment's PK
@@ -164,9 +164,9 @@ model Variant {
   description String?
   configData  Json?   @map("config_data") // Stores variant-specific settings (like a different sectionId)
 
-  experimentId Int        @map("experiment_id") // Foreign key
-  experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade) // connects to Experiment's PK
-  trafficAllocation Decimal @default(0) // How much traffic is allocated to this variant of the experiment
+  experimentId      Int        @map("experiment_id") // Foreign key
+  experiment        Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade) // connects to Experiment's PK
+  trafficAllocation Decimal    @default(0) // How much traffic is allocated to this variant of the experiment
 
   allocations Allocation[]
   conversions Conversion[]
@@ -259,17 +259,18 @@ model Analysis {
 }
 
 model TutorialData {
-  id                    Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  session               Session @relation(fields: [sessionId], references: [id] ) //one way association   
-  sessionId             String  @unique
+  session   Session @relation(fields: [sessionId], references: [id]) //one way association   
+  sessionId String  @unique
 
-  generalSettings       Boolean
-  createExperiment      Boolean
-  viewedListExperiment  Boolean
-  viewedReportsPage     Boolean
-  onSiteTracking        Boolean //might not be used
+  generalSettings      Boolean
+  createExperiment     Boolean
+  viewedListExperiment Boolean
+  viewedReportsPage    Boolean
+  onSiteTracking       Boolean //might not be used
 }
+
 //store user's email for scheduled reports
 model ContactEmail {
   id        Int      @id @default(autoincrement()) @map("email_id")

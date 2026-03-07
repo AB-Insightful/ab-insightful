@@ -20,7 +20,7 @@
     "typecheck": "react-router typegen && tsc --noEmit",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
-    "test:integration": "vitest run --config vitest.integration.config.js --coverage",
+    "test:integration": "npm run seed:test && vitest run --config vitest.integration.config.js --coverage",
     "seed:dev": "node prisma/seed.js --environment=dev",
     "seed:test": "node prisma/seed.js --environment=test",
     "seed:demo": "node prisma/seed.js --environment=demo"

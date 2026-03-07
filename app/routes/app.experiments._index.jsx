@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatRuntime } from "../utils/formatRuntime.js";
 import { formatImprovement } from "../utils/formatImprovement.js";
 import { ExperimentStatus } from "@prisma/client";
+import { allowedStatusIntents } from "./policies/experimentPolicy";
 
 // Server side code
 
@@ -33,7 +34,31 @@ export async function loader() {
 export async function action({ request }) {
   const formData = await request.formData();
   const intent = formData.get("intent");
-  const experimentId = formData.get("experimentId");
+  const experimentIdRaw = formData.get("experimentId");
+  const experimentId = Number(experimentIdRaw);
+
+  const isStatusIntent = ["start", "pause", "resume", "end", "archive", "delete"].includes(intent);
+
+  if (isStatusIntent) {
+    if (!Number.isInteger(experimentId) || experimentId <= 0) {
+      return { ok: false, error: "Invalid experiment id." };
+    }
+
+    const { default: db } = await import("../db.server");
+    const existing = await db.experiment.findUnique({
+      where: { id: experimentId },
+      select: { status: true },
+    });
+
+    if (!existing) {
+      return { ok: false, error: "Experiment not found." };
+    }
+
+    const allowed = allowedStatusIntents(existing.status);
+    if (!allowed.has(intent)) {
+      return { ok: false, error: "Status change not allowed for this experiment." };
+    }
+  }
 
   const { 
     pauseExperiment,
@@ -77,7 +102,7 @@ export async function action({ request }) {
 
         //first, find the project experiment belongs to
         const existing = await db.experiment.findUnique({
-          where: { id: Number(experimentId) },
+          where: { id: experimentId },
           select: { projectId: true },
         });
         //if experiment is not found
@@ -89,7 +114,7 @@ export async function action({ request }) {
           where: {
             projectId: existing.projectId,
             name: newName,
-            NOT: { id: Number(experimentId) },
+            NOT: { id: experimentId },
           },
         });
         //if name already is in the database
@@ -98,7 +123,7 @@ export async function action({ request }) {
         }
         //perform the update
         await db.experiment.update({
-          where: { id: Number(experimentId) },
+          where: { id: experimentId },
           data: { name: newName },
         });
         //error handling
@@ -118,8 +143,8 @@ export async function action({ request }) {
         return {ok: false, error: "Failed to archive experiment"}, { status: 500};
       }
 
-      //performs switch case action upon clicking 'I understand" button for tutorial modal
-      case "tutorial_viewed":
+    //performs switch case action upon clicking 'I understand" button for tutorial modal
+    case "tutorial_viewed":
       try {
         const { setViewedListExp } = await import("../services/tutorialData.server");
         await setViewedListExp(1, true); //always sets the item in tutorialdata to true, selects 1st tuple
@@ -183,6 +208,9 @@ export default function Experimentsindex() {
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
   const [renameError, setRenameError] = useState(null);
+
+  //track active filter selection (all by default)
+  const [activeFilter, setActiveFilter] = useState("all");
 
   //check for errors after rename attempt
   useEffect(() => {
@@ -304,7 +332,6 @@ export default function Experimentsindex() {
   }
 
   //TODO: restrict based on experiment goal
-  //- re
   function renderTableData(experiments) {
     const rows = [];
 
@@ -355,8 +382,7 @@ export default function Experimentsindex() {
     for (let i = 0; i < experiments.length; i++) {
       //single tuple of the experiment data
       const curExp = experiments[i];
-
-      const resumeLabel = curExp.startDate ? "Resume" : "Start";
+      const intents = allowedStatusIntents(curExp.status);
 
       // call formatRuntime utility
       const runtime = formatRuntime(
@@ -451,7 +477,7 @@ export default function Experimentsindex() {
                   Rename
                 </s-button>
 
-                {curExp.status === ExperimentStatus.draft && (
+                {intents.has("start") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -471,7 +497,7 @@ export default function Experimentsindex() {
                   </s-button>
                 )}
 
-                {curExp.status === ExperimentStatus.active && (
+                {intents.has("pause") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -491,7 +517,7 @@ export default function Experimentsindex() {
                   </s-button>
                 )}
 
-                {(curExp.status === ExperimentStatus.active || curExp.status === ExperimentStatus.paused) && (
+                {intents.has("end") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -511,7 +537,7 @@ export default function Experimentsindex() {
                   </s-button>
                 )}
 
-                {curExp.status === ExperimentStatus.paused && (
+                {intents.has("resume") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -531,7 +557,7 @@ export default function Experimentsindex() {
                   </s-button>
                 )}
 
-                {curExp.status === ExperimentStatus.completed && (
+                {intents.has("archive") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -551,7 +577,7 @@ export default function Experimentsindex() {
                   </s-button>
                 )}
 
-                {curExp.status === ExperimentStatus.draft && (
+                {intents.has("delete") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -588,6 +614,17 @@ export default function Experimentsindex() {
           variant="primary"
           href="/app/experiments/new"
         >Create Experiment</s-button>
+        <div style={{ margin: "24px 0" }}>
+          <s-button commandFor="activity-filter">Filter By</s-button>
+            <s-menu id="activity-filter" accessibilityLabel="Filter by activity">
+              <s-button onClick={() => setActiveFilter("all")}>All</s-button>
+              <s-button onClick={() => setActiveFilter(ExperimentStatus.draft)}>Draft</s-button>
+              <s-button icon="gauge" onClick={() => setActiveFilter(ExperimentStatus.active)}>Active</s-button>
+              <s-button icon="check" onClick={() => setActiveFilter(ExperimentStatus.completed)}>Completed</s-button>
+              <s-button icon="pause-circle" onClick={() => setActiveFilter(ExperimentStatus.paused)}>Paused</s-button>
+              <s-button icon="order" onClick={() => setActiveFilter(ExperimentStatus.archived)}>Archived</s-button>
+            </s-menu>
+        </div>
         {/*modal for tutorial popup */}
           <s-modal
             id="tutorial-modal-settings"
@@ -618,7 +655,6 @@ export default function Experimentsindex() {
           </s-modal>
         <s-section>
           {" "}
-          {/*might be broken */}
           <s-heading>Experiment List</s-heading>
           {/* Table Section of experiment list page */}
           <s-box  background="base"
@@ -639,7 +675,11 @@ export default function Experimentsindex() {
                 {/*Place Quick Access Button here */}
               </s-table-header-row>
               <s-table-body>
-                {renderTableData(experiments)}{" "}
+                {renderTableData(
+                  activeFilter === "all"
+                    ? experiments
+                    : experiments.filter((e) => e.status === activeFilter)
+                )}{" "}
                 {/* function call that returns the jsx data for table rows */}
               </s-table-body>
             </s-table>

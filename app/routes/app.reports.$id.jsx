@@ -1,7 +1,7 @@
 // Report page for an individual experiment
 
 import { useState, useEffect, useMemo } from "react";
-import { useLoaderData } from "react-router";
+import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import {
   useDateRange,
   formatDateForDisplay,
@@ -18,6 +18,67 @@ import {
   ResponsiveContainer,
   ReferenceLine
 } from "recharts";
+import { ExperimentStatus } from "@prisma/client";
+import { isLockedStatus, allowedStatusIntents } from "./policies/experimentPolicy";
+import { authenticate } from "../shopify.server";
+import db from "../db.server";
+
+export const action = async ({ request, params }) => {
+  await authenticate.admin(request);
+
+  const formData = await request.formData();
+  const experimentId = parseInt(params.id, 10);
+  const intent = formData.get("intent");
+
+  if (!experimentId || Number.isNaN(experimentId)) {
+    return { ok: false, error: "Invalid experiment id." };
+  }
+
+  const existing = await db.experiment.findUnique({ where: { id: experimentId } });
+  if (!existing) return { ok: false, error: "Experiment not found." };
+
+  const allowed = allowedStatusIntents(existing.status);
+  if (intent && !allowed.has(intent)) {
+    return { ok: false, error: "Status change not allowed for this experiment." };
+  }
+
+  const {
+    pauseExperiment,
+    resumeExperiment,
+    endExperiment,
+    startExperiment,
+    deleteExperiment,
+    archiveExperiment,
+  } = await import("../services/experiment.server");
+
+  try {
+    switch (intent) {
+      case "start":
+        await startExperiment(experimentId);
+        return { ok: true, action: ExperimentStatus.active };
+      case "pause":
+        await pauseExperiment(experimentId);
+        return { ok: true, action: ExperimentStatus.paused };
+      case "resume":
+        await resumeExperiment(experimentId);
+        return { ok: true, action: ExperimentStatus.active };
+      case "end":
+        await endExperiment(experimentId);
+        return { ok: true, action: ExperimentStatus.completed };
+      case "archive":
+        await archiveExperiment(experimentId);
+        return { ok: true, action: ExperimentStatus.archived };
+      case "delete":
+        await deleteExperiment(experimentId);
+        return { ok: true, action: "deleteExperiment" };
+      default:
+        return { ok: false, error: "Unknown intent." };
+    }
+  } catch (e) {
+    console.error("[REPORT][STATUS ACTION FAIL]", e);
+    return { ok: false, error: "Failed to update status." };
+  }
+};
 
 // Server-side loader. params is for the id
 export async function loader({ params }) {
@@ -78,6 +139,51 @@ export default function Report() {
   const { experiment, analysis } = useLoaderData();
   const safeAnalysis = (analysis ?? []).filter(Boolean);
 
+  //status manager refresher
+  const fetcher = useFetcher();
+  const revalidator = useRevalidator();
+  const status = experiment?.status;
+
+  //locks edit button based on status of experiment
+  const isLocked = status === ExperimentStatus.completed || status === ExperimentStatus.archived;
+
+  const statusIntents = allowedStatusIntents(status);
+  const isArchived = status === ExperimentStatus.archived;
+
+  useEffect(() => {
+    if (fetcher.state !== "idle") return;
+    if (!fetcher.data?.ok) return;
+
+    //if deleting a draft reroute
+    if (fetcher.data.action === "deleteExperiment") {
+      window.location.href = "/app/experiments";
+      return;
+    }
+
+    const refreshActions = [
+      ExperimentStatus.active,
+      ExperimentStatus.paused,
+      ExperimentStatus.completed,
+      ExperimentStatus.archived,
+    ];
+
+    if (refreshActions.includes(fetcher.data.action)) {
+      revalidator.revalidate();
+    }
+  }, [fetcher.state, fetcher.data, revalidator]);
+
+  const renderStatusBadge = (status) => {
+    if (status === ExperimentStatus.active)
+      return <s-badge tone="info" icon="gauge">Active</s-badge>;
+    if (status === ExperimentStatus.paused)
+      return <s-badge tone="caution" icon="pause-circle">Paused</s-badge>;
+    if (status === ExperimentStatus.completed)
+      return <s-badge tone="success" icon="check">Completed</s-badge>;
+    if (status === ExperimentStatus.archived)
+      return <s-badge tone="warning" icon="order">Archived</s-badge>;
+    return <s-badge icon="draft-orders">Draft</s-badge>;
+  };
+
   // Human readable metrics helper
   const formatPercent = (val) => {
     if (val === null || val === undefined) return "-";
@@ -90,20 +196,20 @@ export default function Report() {
   
   const PROB_THRESHOLD = 0.8;
   const DELTA_THRESHOLD = 0.01;
-  const control = analysis[0]; // baseline
+  const control = analysis.find(a => a.variantName === "Control");
 
-  // if no analysis exists yet
   if (!control){
     return {
       status: 'default',
-      title: "Collectiong Data",
+      title: "Collecting Data",
       message: "We need more visitors to generate a report."
     };
   }
   
   /* Searches for variants in the experiment which 
   *  currently have a PoB >= 80% */ 
-  const currentWinners = analysis.slice(1).filter(variant => {
+  const currentWinners = analysis.filter(variant => {
+    if (variant.variantName === "Control") return false;
     const delta = variant.conversionRate - control.conversionRate;
     return variant.probabilityOfBeingBest >= PROB_THRESHOLD && delta > DELTA_THRESHOLD;
   });
@@ -164,15 +270,16 @@ export default function Report() {
 
   // Table code
   function renderTableData() {
-    if (analysis.length === 0 ) return []; // simple exit if the array is empty
+    if (safeAnalysis.length === 0) return [];
     const rows = [];
-    const control = safeAnalysis[0]; // Reference the baseline for delta calculations
+    const control = safeAnalysis.find(a => a.variantName === "Control");
 
     for (let i = 0; i < safeAnalysis.length; i++) {
       const cur = safeAnalysis[i];
+      const isControl = cur.variantName === "Control";
       
       // Probability to be Best: 80% Win / 20% Loss rule
-      let probColor = "inherit"; // inherit ensures the default font color is used if no winner/loser
+      let probColor = "inherit";
       if (cur.probabilityOfBeingBest > 0.8) probColor = "#2e7d32"; 
       else if (cur.probabilityOfBeingBest < 0.2) probColor = "#d32f2f";
 
@@ -182,7 +289,7 @@ export default function Report() {
 
       // Goal Completion Rate: Delta > 1% rule
       let rateColor = "inherit";
-      if (i > 0 && control) {
+      if (!isControl && control) {
         const delta = (cur.conversionRate - control.conversionRate) * 100;
         if (delta > 1) rateColor = "#2e7d32";
         else if (delta < -1) rateColor = "#d32f2f";
@@ -190,7 +297,7 @@ export default function Report() {
 
       // Improvement rule (> 50% Win, < 0% Loss)
       let impColor = "inherit";
-      if (i>0){ // skips Control since it's BaseLine
+      if (!isControl) {
         if (cur.improvement > 50){
           impColor = "#2e7d32";
         } else if (cur.improvement < 0){
@@ -210,7 +317,7 @@ export default function Report() {
           </s-table-cell>
           <s-table-cell>
             <span style = {{color: impColor}}> 
-              {i === 0 ? 'Baseline' : formatPercent(cur.improvement / 100)}
+              {isControl ? 'Baseline' : formatPercent(cur.improvement / 100)}
             </span>
           </s-table-cell>
           {/* Probability to be Best: 80/20 significance rule */}
@@ -292,7 +399,10 @@ export default function Report() {
   return (
     <s-page heading={heading}>
       {/* Action button */}
-      <s-button slot="primary-action" href={`/app/experiments/${experiment.id}`}>
+      <s-button 
+        slot="primary-action" 
+        href={`/app/experiments/${experiment.id}`}
+        disabled={isLocked}>
         Edit Experiment
       </s-button>
       <div 
@@ -301,7 +411,7 @@ export default function Report() {
           position: 'sticky',
           top: 'var(--s-spacing-large-100, .5rem)', // Use Shopify tokens for the top offset
           alignSelf: 'flex-start',
-          width: '250px',
+          minWidth: "300px",
           zIndex: 1, // Ensures it stays above background elements while scrolling
         }}
       >
@@ -327,10 +437,119 @@ export default function Report() {
                   {experiment.experimentGoals?.[0]?.goal?.name || "Primary Goal"}
                 </s-badge>
                 <s-text type="generic">Section ID: {experiment.sectionId}</s-text>
-                <s-text type="generic">Status: {experiment.status}</s-text>
                 <s-text type="generic">
                   Started: {experiment.startDate ? new Date(experiment.startDate).toLocaleDateString() : 'Not yet started'}
                 </s-text>
+
+                {/* Status + actions (bottom of side panel) */}
+                <s-box paddingBlockStart="base">
+                  <s-stack direction="inline" alignItems="center" justifyContent="space-between">
+                    <s-stack direction="inline" gap="small" alignItems="center">
+                      <s-text font-weight="heavy">Status</s-text>
+                      {renderStatusBadge(status)}
+                    </s-stack>
+
+                    <s-button
+                      commandFor={`status-popover-${experiment.id}`}
+                      variant="tertiary"
+                      icon="horizontal-dots"
+                      accessibilityLabel="Change status"
+                      disabled={isArchived || statusIntents.size === 0 || fetcher.state !== "idle"}
+                    >
+                      Change Status
+                    </s-button>
+
+                    <s-popover id={`status-popover-${experiment.id}`}>
+                      <s-stack direction="block">
+                        {statusIntents.has("start") && (
+                          <s-button
+                            variant="tertiary"
+                            commandFor={`status-popover-${experiment.id}`}
+                            disabled={fetcher.state !== "idle"}
+                            onClick={() =>
+                              fetcher.submit({ intent: "start" }, { method: "post" })
+                            }
+                          >
+                            Start
+                          </s-button>
+                        )}
+
+                        {statusIntents.has("pause") && (
+                          <s-button
+                            variant="tertiary"
+                            commandFor={`status-popover-${experiment.id}`}
+                            disabled={fetcher.state !== "idle"}
+                            onClick={() =>
+                              fetcher.submit({ intent: "pause" }, { method: "post" })
+                            }
+                          >
+                            Pause
+                          </s-button>
+                        )}
+
+                        {statusIntents.has("resume") && (
+                          <s-button
+                            variant="tertiary"
+                            commandFor={`status-popover-${experiment.id}`}
+                            disabled={fetcher.state !== "idle"}
+                            onClick={() =>
+                              fetcher.submit({ intent: "resume" }, { method: "post" })
+                            }
+                          >
+                            Resume
+                          </s-button>
+                        )}
+
+                        {statusIntents.has("end") && (
+                          <s-button
+                            variant="tertiary"
+                            commandFor={`status-popover-${experiment.id}`}
+                            disabled={fetcher.state !== "idle"}
+                            onClick={() =>
+                              fetcher.submit({ intent: "end" }, { method: "post" })
+                            }
+                          >
+                            End
+                          </s-button>
+                        )}
+
+                        {statusIntents.has("archive") && (
+                          <s-button
+                            variant="tertiary"
+                            commandFor={`status-popover-${experiment.id}`}
+                            disabled={fetcher.state !== "idle"}
+                            onClick={() =>
+                              fetcher.submit({ intent: "archive" }, { method: "post" })
+                            }
+                          >
+                            Archive
+                          </s-button>
+                        )}
+
+                        {statusIntents.has("delete") && (
+                          <s-button
+                            variant="tertiary"
+                            commandFor={`status-popover-${experiment.id}`}
+                            disabled={fetcher.state !== "idle"}
+                            onClick={() =>
+                              fetcher.submit({ intent: "delete" }, { method: "post" })
+                            }
+                          >
+                            Delete
+                          </s-button>
+                        )}
+                      </s-stack>
+                    </s-popover>
+                  </s-stack>
+
+                  {fetcher.data?.error && (
+                    <s-box paddingBlockStart="base">
+                      <s-banner tone="critical" title="Status update failed">
+                        <p>{fetcher.data.error}</p>
+                      </s-banner>
+                    </s-box>
+                  )}
+                </s-box>
               </s-stack>
             </s-section>
           </s-stack>

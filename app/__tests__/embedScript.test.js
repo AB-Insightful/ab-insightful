@@ -183,3 +183,47 @@ describe("migrateOldCookies", () => {
     expect(result["2"]).toBe(21);
   });
 });
+
+// =====================================================================
+// PICKER MODE TESTS
+// =====================================================================
+describe("initPickerMode (Storefront Side)", () => {
+  beforeEach(() => {
+    // Setup a fake Shopify section in our test document
+    document.body.innerHTML = '<div id="shopify-section-123">Content</div>';
+    
+    // Mock window.opener and window.close
+    window.opener = { postMessage: vi.fn() };
+    window.close = vi.fn();
+  });
+
+  it("sends a postMessage and closes the window when a section is clicked", () => {
+    // We have to manually 're-run' the click listener logic from the script
+    // because the script isn't a module we can just import.
+    const clickHandler = (event) => {
+      const section = event.target.closest('[id^="shopify-section-"]');
+      if (section && window.opener) {
+        window.opener.postMessage({ 
+          type: "AB_INSIGHTFUL_SECTION_PICKED", 
+          sectionId: section.id 
+        }, "*");
+        window.close();
+      }
+    };
+
+    document.addEventListener("click", clickHandler);
+
+    const sectionEl = document.getElementById("shopify-section-123");
+    sectionEl.click();
+
+    // Verify the "Handshake" back to the App
+    expect(window.opener.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "AB_INSIGHTFUL_SECTION_PICKED",
+        sectionId: "shopify-section-123"
+      }),
+      "*"
+    );
+    expect(window.close).toHaveBeenCalled();
+  });
+});

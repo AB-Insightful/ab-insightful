@@ -297,6 +297,7 @@ export const loader = async ({ request }) => {
   return {
     defaultGoal: project?.defaultGoal ?? "completedCheckout",
     tutorialData: tutorialInfo,
+    shopDomain: session.shop, // provides shop domain for sectionId Picker Mode
   };
 };
 
@@ -305,7 +306,7 @@ export const loader = async ({ request }) => {
 export default function CreateExperiment() {
   //fetcher stores the data in the fields into a form that can be retrieved
   const fetcher = useFetcher();
-  const { defaultGoal, tutorialData } = useLoaderData();
+  const { defaultGoal, tutorialData, shopDomain } = useLoaderData();
   const tutorialFetcher = useFetcher();
   const modalRef = useRef(null);
 
@@ -338,6 +339,54 @@ export default function CreateExperiment() {
   const [startTimeError, setStartTimeError] = useState("");
   const [endTimeError, setEndTimeError] = useState("");
 
+  const pickingTargetRef = useRef({type: null, index:null});
+
+  const handleLaunchPicker = (type, index = null) => {
+    pickingTargetRef.current = { type, index };
+    window.open(`https://${shopDomain}?ab_insightful_picker=true`, "_blank");
+  };
+  
+  // Message bridge listener 
+  useEffect(() => {
+    const handleMessage = (event) => {
+      // Verify the message is the type we expect
+      if (event.data && event.data.type === "AB_INSIGHTFUL_SECTION_PICKED") {
+        const pickedId = event.data.sectionId; // Loads selected sectionId on live site
+        const target = pickingTargetRef.current;
+
+        if (target.type === "variant" && target.index !== null) {
+          // Update the specific variant sectionID picked 
+          setVariants((prev) =>
+            prev.map((v, i) =>
+              i === target.index ? { ...v, sectionId: pickedId } : v
+            )
+          );
+          
+          // Clear any visual errors for this section
+          setVariantSectionErrors((prev) => {
+            const next = [...prev];
+            next[target.index] = null;
+            return next;
+          });
+        } else if (target.type === "control") {
+          setControlSectionId(pickedId);
+        }
+
+        // Reset the tracker
+        pickingTargetRef.current = { type: null, index: null };
+        
+        // Shopify App Bridge success toast
+        if (typeof shopify !== "undefined" && shopify.toast) {
+          shopify.toast.show("Section ID copied!");
+        }
+
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
   //tutorial display conditional
   useEffect(() => {
     if (
@@ -349,6 +398,8 @@ export default function CreateExperiment() {
       modalRef.current.showOverlay();
     }
   }, [tutorialData]);
+
+
 
   useEffect(() => {
     // keep all date/time errors in sync whenever any date/time value changes
@@ -801,7 +852,7 @@ export default function CreateExperiment() {
           alignSelf: "flex-start",
         }}
       >
-        <s-section heading={name ? name : "no experiment name set"}>
+        <s-section heading={name ? name : "Unnamed Experiment"}>
           <s-stack gap="small">
             <s-badge icon={icon}>{label}</s-badge>
             {variants.map((v, i) => (
@@ -945,47 +996,54 @@ export default function CreateExperiment() {
                 paddingBlock={i > 0 ? "base" : undefined}
               >
                 <s-heading>Variant {VARIANT_LABELS[i]}</s-heading>
-                <s-link href="#" target="_blank">
-                  How do I find my section?
-                </s-link>
-                <s-text-field
-                  placeholder="shopify-section-sections--25210977943842__header"
-                  value={variant.sectionId}
-                  label="Section ID to be tested"
-                  required
-                  onFocus={() => {
-                    setVariantSectionErrors((prev) => {
-                      const next = [...prev];
-                      next[i] = null;
-                      return next;
-                    });
-                    if (fetcher.data?.errors?.[`variant_${i}_sectionId`]) {
-                      fetcher.data = {
-                        ...fetcher.data,
-                        errors: {
-                          ...fetcher.data.errors,
-                          [`variant_${i}_sectionId`]: undefined,
-                        },
-                      };
-                    }
-                  }}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    updateVariant(i, "sectionId", val);
-                    if (variantSectionErrors[i] && val.trim()) {
-                      setVariantSectionErrors((prev) => {
-                        const next = [...prev];
-                        next[i] = null;
-                        return next;
-                      });
-                    }
-                  }}
-                  onBlur={() => handleVariantSectionIdBlur(i)}
-                  error={
-                    variantSectionErrors[i] || errors[`variant_${i}_sectionId`]
-                  }
-                  details="The associated Shopify section ID to be tested. Must be visible on production site"
-                />
+                <s-stack direction="inline" gap="small" alignItems="end">
+                  <div style={{ flex: 1 }}>
+                    <s-text-field
+                      placeholder="shopify-section-sections--25210977943842__header"
+                      value={variant.sectionId}
+                      label="Section ID to be tested"
+                      required
+                      onFocus={() => {
+                        setVariantSectionErrors((prev) => {
+                          const next = [...prev];
+                          next[i] = null;
+                          return next;
+                        });
+                        if (fetcher.data?.errors?.[`variant_${i}_sectionId`]) {
+                          fetcher.data = {
+                            ...fetcher.data,
+                            errors: {
+                              ...fetcher.data.errors,
+                              [`variant_${i}_sectionId`]: undefined,
+                            },
+                          };
+                        }
+                      }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        updateVariant(i, "sectionId", val);
+                        if (variantSectionErrors[i] && val.trim()) {
+                          setVariantSectionErrors((prev) => {
+                            const next = [...prev];
+                            next[i] = null;
+                            return next;
+                          });
+                        }
+                      }}
+                      onBlur={() => handleVariantSectionIdBlur(i)}
+                      error={variantSectionErrors[i] || errors[`variant_${i}_sectionId`]}
+                      details="The associated Shopify section ID to be tested. Must be visible on production site"
+                    />
+                  </div>
+                  <div style={{ paddingBottom: '24px' }}>
+                    <s-button 
+                      variant="secondary"
+                      onClick={() => handleLaunchPicker("variant", i)}
+                    >
+                      Select Visually
+                    </s-button>
+                  </div>
+                </s-stack>
                 <s-number-field
                   label={`Traffic allocation for Variant ${VARIANT_LABELS[i]}`}
                   value={variant.trafficAllocation}
@@ -1015,16 +1073,28 @@ export default function CreateExperiment() {
               }}
             />
             {addControlSection && (
-              <s-text-field
-                placeholder="shopify-section-sections--25210972849284__header"
-                value={controlSectionId}
-                label="Control Section ID"
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setControlSectionId(v);
-                }}
-                details="The control section ID that will be replaced by the variant for users who are in the experiment. Must be visible on production site"
-              />
+              <s-stack direction="inline" gap="small" alignItems="end">
+                <div style={{ flex: 1 }}>
+                  <s-text-field
+                    placeholder="shopify-section-sections--25210972849284__header"
+                    value={controlSectionId}
+                    label="Control Section ID"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setControlSectionId(v);
+                    }}
+                    details="The control section ID that will be replaced by the variant for users who are in the experiment. Must be visible on production site."
+                  />
+                </div>
+                <div style={{ paddingBottom: '44px' }}> 
+                  <s-button 
+                    variant="secondary"
+                    onClick={() => handleLaunchPicker("control")}
+                  >
+                    Select Visually
+                  </s-button>
+                </div>
+              </s-stack>
             )}
             <s-text font-weight="heavy">
               Control allocation: {controlAllocation}%. Control allocation is

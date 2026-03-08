@@ -85,7 +85,7 @@ export async function loader({ params, request }) {
   // Parse the experiment ID from parameters
   const experimentId = parseInt(params.id);
   const url = new URL(request.url);
-  const deviceSegment = url.searchParams.get("segment") || "all";
+  const deviceSegment = url.searchParams.get("segment") ?? "all";
 
   // Validate experiment ID
   if (!experimentId || isNaN(experimentId)) {
@@ -96,6 +96,7 @@ export async function loader({ params, request }) {
   const { getExperimentReportData } = await import(
     "../services/experiment.server"
   );
+  console.log("QUERY SEGMENT:", deviceSegment);
   const experimentReportData = await getExperimentReportData(experimentId, deviceSegment);
 
   //additional loader data
@@ -107,6 +108,11 @@ export async function loader({ params, request }) {
   
   const {getExperimentById} = await import("../services/experiment.server");
   const experimentInfo = await getExperimentById(experimentId);
+
+  if (!experimentInfo) {
+    throw new Response("Experiment not found", {status: 404 });
+  }
+
   const {getImprovement} = await import("../services/experiment.server");
   const improvementPercent = await getImprovement(experimentId, deviceSegment);
 
@@ -127,6 +133,25 @@ export async function loader({ params, request }) {
 
   // dumps any null data before returning 
   const analysis = results.filter(Boolean);
+
+  const mobileCount = await db.analysis.count({
+  where: { experimentId: 9103, deviceSegment: "mobile" },
+  });
+
+  const desktopCount = await db.analysis.count({
+    where: { experimentId: 9103, deviceSegment: "desktop" },
+  });
+
+  const allCount = await db.analysis.count({
+    where: { experimentId: 9103, deviceSegment: "all" },
+  });
+
+  console.log("[REPORT] experimentId:", experimentId);
+  console.log("[REPORT] deviceSegment:", deviceSegment);
+  console.log("[REPORT] experimentReportData analyses:", experimentReportData?.analyses?.length ?? 0);
+  console.log("[REPORT] table analysis rows:", analysis.length);
+  console.log("DATABASE_URL:", process.env.DATABASE_URL);
+  console.log("[DB COUNTS]", { allCount, mobileCount, desktopCount });
   return { experiment:{ 
     ...experimentReportData,
     status: experimentInfo.status,

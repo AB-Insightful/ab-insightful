@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useLoaderData, useFetcher } from "react-router";
 import { formatRuntime } from "../utils/formatRuntime.js";
 import { useDateRange } from "../contexts/DateRangeContext";
@@ -193,7 +193,7 @@ export default function Reports() {
     return rows;
   }
 
-  const applyDateRange = (range) => {
+  const applyDateRange = useCallback((range) => {
     if (!range?.start || !range?.end) {
       setFilteredSessionData(sessionData || { sessions: [], total: 0 });
       setFilteredConversionsData(conversionsData || { sessions: [], total: 0 });
@@ -222,7 +222,7 @@ export default function Reports() {
       sessions: updatedConversions,
       total: updatedConversions.reduce((acc, curr) => acc + curr.count, 0),
     });
-  };
+  }, [sessionData, conversionsData]);
 
   //handle date range change from DateRangePicker component
   const handleDateRangeChange = (newDateRange) => {
@@ -240,7 +240,7 @@ export default function Reports() {
     if (experiments && sessionData && conversionsData) {
       applyDateRange(dateRange);
     }
-  }, [tutorialData, dateRange, experiments, sessionData, conversionsData]);
+  }, [tutorialData, dateRange, experiments, sessionData, conversionsData, applyDateRange]);
 
   return (
     <s-page heading="Reports">

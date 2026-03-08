@@ -360,7 +360,7 @@ export default function Settings() {
       >
         <s-stack gap="base">
           <s-paragraph>
-            Here is some tutorial information.
+            Welcome to the Settings page. This page allows you to manage your email notifications and other application settings. You can adjust default experiment settings, manage notifications, configure integrations, and control user permissions. Changes made here will affect how the application behaves, so remember to save your updates before leaving the page.
           </s-paragraph>
         
             <s-button

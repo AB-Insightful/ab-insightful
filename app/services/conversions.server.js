@@ -31,7 +31,7 @@ export async function getConversionsReportData(admin, start, end) {
                     FROM sessions
                     SHOW sessions, sessions_with_cart_additions, sessions_that_reached_checkout,
                     sessions_that_completed_checkout, conversion_rate 
-                    BY day SINCE ${startDate} UNTIL ${endDate}`,
+                    TIMESERIES day SINCE ${startDate} UNTIL ${endDate}`,
         },
       },
     );

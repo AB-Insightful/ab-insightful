@@ -81,9 +81,11 @@ export const action = async ({ request, params }) => {
 };
 
 // Server-side loader. params is for the id
-export async function loader({ params }) {
+export async function loader({ params, request }) {
   // Parse the experiment ID from parameters
   const experimentId = parseInt(params.id);
+  const url = new URL(request.url);
+  const deviceSegment = url.searchParams.get("segment") || "all";
 
   // Validate experiment ID
   if (!experimentId || isNaN(experimentId)) {
@@ -94,7 +96,7 @@ export async function loader({ params }) {
   const { getExperimentReportData } = await import(
     "../services/experiment.server"
   );
-  const experimentReportData = await getExperimentReportData(experimentId);
+  const experimentReportData = await getExperimentReportData(experimentId, deviceSegment);
 
   //additional loader data
   if (!Number.isInteger(experimentId)) throw new Response("Invalid id", {status: 400}); //basic safety check for valid exp id
@@ -106,12 +108,12 @@ export async function loader({ params }) {
   const {getExperimentById} = await import("../services/experiment.server");
   const experimentInfo = await getExperimentById(experimentId);
   const {getImprovement} = await import("../services/experiment.server");
-  const improvementPercent = await getImprovement(experimentId);
+  const improvementPercent = await getImprovement(experimentId, deviceSegment);
 
   //improves performance by performing queries synchronized, then wait for all of queries to finish. 
   const results = await Promise.all(
     variants.map(async (v) => {
-      const a = await getAnalysis(experimentId, v.id);
+      const a = await getAnalysis(experimentId, v.id, deviceSegment);
       if (!a) return null;
       return {
         ...a,
@@ -130,13 +132,14 @@ export async function loader({ params }) {
     status: experimentInfo.status,
     startDate: experimentInfo.startDate
   },
-  analysis
+  analysis,
+  deviceSegment,
 };
 }
 
 export default function Report() {
   // Load report information
-  const { experiment, analysis } = useLoaderData();
+  const { experiment, analysis, deviceSegment } = useLoaderData();
   const safeAnalysis = (analysis ?? []).filter(Boolean);
 
   //status manager refresher
@@ -441,11 +444,50 @@ export default function Report() {
                   Started: {experiment.startDate ? new Date(experiment.startDate).toLocaleDateString() : 'Not yet started'}
                 </s-text>
 
+                {/* Segment view toggle */}
+                <s-box paddingBlockStart="base">
+                <s-stack direction="inline" alignItems="center" gap="small">
+                  <s-text type="generic">Segment:</s-text>
+                  <s-box
+                    border="base"
+                    borderRadius="large"
+                    padding="small-50"
+                    background="subdued"
+                  >
+                    <s-stack direction="inline" gap="extra-tight">
+                      <s-button
+                        size="slim"
+                        href={`?segment=all`}
+                        variant={deviceSegment === "all" ? "primary" : "tertiary"}
+                      >
+                        All
+                      </s-button>
+
+                      <s-button
+                        size="slim"
+                        href={`?segment=mobile`}
+                        variant={deviceSegment === "mobile" ? "primary" : "tertiary"}
+                      >
+                        Mobile
+                      </s-button>
+
+                      <s-button
+                        size="slim"
+                        href={`?segment=desktop`}
+                        variant={deviceSegment === "desktop" ? "primary" : "tertiary"}
+                      >
+                        Desktop
+                      </s-button>
+                    </s-stack>
+                  </s-box>
+                </s-stack>
+              </s-box>
+
                 {/* Status + actions (bottom of side panel) */}
                 <s-box paddingBlockStart="base">
                   <s-stack direction="inline" alignItems="center" justifyContent="space-between">
                     <s-stack direction="inline" gap="small" alignItems="center">
-                      <s-text font-weight="heavy">Status</s-text>
+                      <s-text type="generic">Status</s-text>
                       {renderStatusBadge(status)}
                     </s-stack>
 

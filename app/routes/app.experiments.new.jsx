@@ -276,9 +276,11 @@ export const action = async ({ request }) => {
       variants: treatmentVariants,
     });
 
-    return redirect(`/app/experiments/${experiment.id}`);
-  }
-}; //end async action
+    return redirect(`/app/experiments/${experiment.id}?isNewlyCreated=true`);
+    }
+  }; //end async action
+
+  
 
 //pull the default goal stored in database, completedCheckout if empty
 export const loader = async ({ request }) => {

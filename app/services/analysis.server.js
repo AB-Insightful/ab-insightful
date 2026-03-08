@@ -21,6 +21,16 @@ export async function getAnalysisById(id) {
   return null;
 }
 
+function normalizeDeviceSegment(deviceType) {
+  const value = String(deviceType ?? "").toLowerCase();
+
+  if (value === "mobile") return "mobile";
+  if (value === "desktop") return "desktop";
+  if (value === "tablet") return "tablet";
+  if (!value) return "unknown";
+  return "unknown";
+}
+
 // Function to aggregate real Allocation and Conversion data for active experiments into new Analysis rows for all active experiments
 export async function createAnalysisSnapshot() {
   // 1. Get active experiments with their variants and goals
@@ -54,12 +64,12 @@ export async function createAnalysisSnapshot() {
 
   // 2. Aggregate allocations and conversions
   const allocationGroups = await db.allocation.groupBy({
-    by: ["experimentId", "variantId"],
+    by: ["experimentId", "variantId", "deviceType"],
     _count: { id: true },
     where: { experimentId: { in: experimentIds } },
   });
   const conversionGroups = await db.conversion.groupBy({
-    by: ["experimentId", "variantId", "goalId"],
+    by: ["experimentId", "variantId", "goalId", "deviceType"],
     _count: { id: true },
     where: { experimentId: { in: experimentIds } },
   });
@@ -68,15 +78,20 @@ export async function createAnalysisSnapshot() {
   const allocationMap = new Map();
   // Basically what this is saying is make a data structure with key value pairs. The key will always be "experimentID-variantid" and the value will be the count.
   for (const row of allocationGroups) {
-    allocationMap.set(`${row.experimentId}-${row.variantId}`, row._count.id);
+    const segment = normalizeDeviceSegment(row.deviceType);
+    allocationMap.set(`${row.experimentId}-${row.variantId}-${segment}`, row._count.id);
+
+    const allKey = `${row.experimentId}-${row.variantId}-all`;
+    allocationMap.set(allKey, (allocationMap.get(allKey) ?? 0) + row._count.id,);
   }
 
   const conversionMap = new Map();
   for (const row of conversionGroups) {
-    conversionMap.set(
-      `${row.experimentId}-${row.variantId}-${row.goalId}`,
-      row._count.id,
-    );
+    const segment = normalizeDeviceSegment(row.deviceType);
+    conversionMap.set(`${row.experimentId}-${row.variantId}-${row.goalId}-${segment}`, row._count.id,);
+
+    const allKey = `${row.experimentId}-${row.variantId}-${row.goalId}-all`;
+    conversionMap.set(allKey, (conversionMap.get(allKey) ?? 0) + row._count.id);
   }
 
   // 4. Build Analysis rows for every (experiment, variant, goal) combo
@@ -92,32 +107,36 @@ export async function createAnalysisSnapshot() {
         )
       : 1;
 
+    // At this point we're looking at each experiment -> it's variants -> the goals of that experiment
     for (const variant of exp.variants) {
-      const totalUsers = allocationMap.get(`${exp.id}-${variant.id}`) ?? 0;
-      // Nothing to do if there's no total users. In otherwords, experiment with no data.
-      if (totalUsers === 0) continue;
-
-      // At this point we're looking at each experiment -> it's variants -> the goals of that experiment
       for (const eg of exp.experimentGoals) {
-        const totalConversions =
-          conversionMap.get(`${exp.id}-${variant.id}-${eg.goalId}`) ?? 0;
-        const conversionRate = totalConversions / totalUsers;
-        const postAlpha = totalConversions + 1;
-        const postBeta = totalUsers - totalConversions + 1;
+        for (const deviceSegment of ["all", "mobile", "desktop"]) {
+          const totalUsers = allocationMap.get(`${exp.id}-${variant.id}-${deviceSegment}`) ?? 0;
+          // Nothing to do if there's no total users. In otherwords, experiment with no data.
+          if (totalUsers === 0) continue;
+        
+          const totalConversions =
+            conversionMap.get(`${exp.id}-${variant.id}-${eg.goalId}-${deviceSegment}`) ?? 0;
 
-        // Stack all the analysis data into the rows so it can be inserted all together later
-        analysisRows.push({
-          daysAnalyzed,
-          totalUsers,
-          totalConversions,
-          conversionRate,
-          postAlpha,
-          postBeta,
-          credIntervalLift: { lower: 0, upper: 0 },
-          experimentId: exp.id,
-          variantId: variant.id,
-          goalId: eg.goalId,
-        });
+          const conversionRate = totalConversions / totalUsers;
+          const postAlpha = totalConversions + 1;
+          const postBeta = totalUsers - totalConversions + 1;
+
+          // Stack all the analysis data into the rows so it can be inserted all together later
+          analysisRows.push({
+            daysAnalyzed,
+            totalUsers,
+            totalConversions,
+            conversionRate,
+            postAlpha,
+            postBeta,
+            deviceSegment,
+            credIntervalLift: { lower: 0, upper: 0 },
+            experimentId: exp.id,
+            variantId: variant.id,
+            goalId: eg.goalId,
+          });
+        }
       }
     }
   }
@@ -150,10 +169,13 @@ export async function createAnalysisSnapshot() {
   // 6. Use existing probability of best calculation to fill in probability of best and expected loss
   for (const exp of experiments) {
     for (const eg of exp.experimentGoals) {
-      await setProbabilityOfBest({
-        experimentId: exp.id,
-        goalId: eg.goalId,
-      });
+      for (const deviceSegment of ["all", "mobile", "desktop"]) {
+        await setProbabilityOfBest({
+          experimentId: exp.id,
+          goalId: eg.goalId,
+          deviceSegment
+        });
+      }
     }
   }
   return ret;

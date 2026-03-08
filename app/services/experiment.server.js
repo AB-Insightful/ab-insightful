@@ -202,24 +202,24 @@ export async function getVariant(experimentId, name) {
 }
 
 //get the latest analysis row for that variant (conversionRate lives here)
-export async function getAnalysis(experimentId, variantId) {
+export async function getAnalysis(experimentId, variantId, deviceSegment = "all") {
   return db.analysis.findFirst({
-    where: { experimentId, variantId },
+    where: { experimentId, variantId, deviceSegment },
     orderBy: { calculatedWhen: "desc" },
     include: { goal: true },
   });
 }
 
 //convenience: return conversionRate as a float (or null)
-export async function getVariantConversionRate(experimentId, variantId) {
-  const row = await getAnalysis(experimentId, variantId);
+export async function getVariantConversionRate(experimentId, variantId, deviceSegment = "all") {
+  const row = await getAnalysis(experimentId, variantId, deviceSegment);
   if (!row) return null;
   const num = row.conversionRate;
   return num;
 }
 
 // Improvement calculation for an experiment
-export async function getImprovement(experimentId) {
+export async function getImprovement(experimentId, deviceSegment = "all") {
   // get control
   const control = await getVariant(experimentId, "Control");
   if (!control) return null;
@@ -232,14 +232,14 @@ export async function getImprovement(experimentId) {
   if (!variants.length) return null;
 
   // get control conversion rate
-  const controlAnalysis = await getAnalysis(experimentId, control.id);
+  const controlAnalysis = await getAnalysis(experimentId, control.id, deviceSegment);
   const controlRate = controlAnalysis ? controlAnalysis.conversionRate : null;
   if (!(typeof controlRate === "number") || controlRate <= 0) return null;
 
   // find best treatment rate
   let best = null;
   for (const v of variants) {
-    const a = await getAnalysis(experimentId, v.id);
+    const a = await getAnalysis(experimentId, v.id, deviceSegment);
     const rate = a ? a.conversionRate : null;
     if (typeof rate === "number" && (best === null || rate > best)) best = rate;
   }
@@ -281,7 +281,7 @@ export async function getMostRecentExperiment() {
 export async function getNameOfExpGoal(expId) {
   //grabs first analysis tuple that matches experiment id, works because all goals should be the same for 1 experiment
   return db.analysis.findFirst({
-    where: { experimentId: expId },
+    where: { experimentId: expId, deviceSegment: "all" },
     include: { goal: true },
   });
 }
@@ -665,13 +665,14 @@ export async function getExperimentsWithAnalyses() {
   });
 }
 
-export async function getExperimentReportData(experimentId) {
+export async function getExperimentReportData(experimentId, deviceSegment = "all") {
   const experiment = await db.experiment.findUnique({
     where: {
       id: experimentId,
     },
     include: {
       analyses: {
+        where: { deviceSegment },
         include: {
           variant: true,
           goal: true,
@@ -689,14 +690,17 @@ export async function getExperimentReportData(experimentId) {
 export async function updateProbabilityOfBest(experiment) {
   //DRAW_CONSTANT functions as a limit on the amount of computations this does. The more computations the more accurate but also the more heavy load
   const DRAW_CONSTANT = 20000;
+  const segments = ["all", "mobile", "desktop"];
   for (let i = 0; i < experiment.length; i++) {
     const curExp = experiment[i];
-    await setProbabilityOfBest({
-      experimentId: curExp.id,
-      goalId: curExp.goalId,
-      draws: DRAW_CONSTANT,
-      controlVariantId: null,
-    });
+    for (const segment of segments) {
+      await setProbabilityOfBest({
+        experimentId: curExp.id,
+        goalId: curExp.goalId,
+        deviceSegment: segment,
+        draws: DRAW_CONSTANT,
+      });
+    }
   }
 
   //maybe if we wanted this calculated all at once.
@@ -712,6 +716,7 @@ export async function updateProbabilityOfBest(experiment) {
 export async function setProbabilityOfBest({
   experimentId,
   goalId,
+  deviceSegment = "all",
   draws = 1000,
 }) {
   const experiment = await db.experiment.findUnique({
@@ -725,7 +730,7 @@ export async function setProbabilityOfBest({
 
   //loads all analysis rows
   const allAnalysisRows = await db.analysis.findMany({
-    where: { experimentId, goalId },
+    where: { experimentId, goalId, deviceSegment },
     orderBy: { calculatedWhen: "desc" },
   });
   if (!allAnalysisRows.length)
@@ -736,6 +741,7 @@ export async function setProbabilityOfBest({
     where: {
       experimentId,
       goalId,
+      deviceSegment,
       probabilityOfBeingBest: null,
       expectedLoss: null,
     },

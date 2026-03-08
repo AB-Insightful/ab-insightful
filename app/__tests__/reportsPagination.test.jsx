@@ -40,6 +40,10 @@ vi.mock('../components/SessionsCard', () => ({
   default: () => null,
 }));
 
+vi.mock('../components/ConversionsCard', () => ({
+  default: () => null,
+}));
+
 vi.mock('../contexts/DateRangeContext', () => ({
   useDateRange: vi.fn(() => ({ dateRange: null })),
   formatDateForDisplay: vi.fn((d) => d),
@@ -60,6 +64,7 @@ describe('Reports Pagination', () => {
     useLoaderData.mockReturnValue({
       experiments: mockExperiments,
       sessionData: { sessions: [], total: 0 },
+      conversionsData: { sessions: [], total: 0 },
       tutorialData: { viewedReportsPage: true },
     });
   });

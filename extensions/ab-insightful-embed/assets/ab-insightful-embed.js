@@ -1,13 +1,61 @@
 // The script for controlling which experiments to show will live here.
 
-const appConfigBlock = document.getElementById("ab-insightful-config");
-// if app config block not loaded - app will not run
-if (appConfigBlock) {
-  const config = JSON.parse(appConfigBlock.textContent);
-  const appUrl = config.api_url;
-  initializeApp(appUrl);
+const urlParams = new URLSearchParams(window.location.search);
+const isPickerMode = urlParams.get("ab_insightful_picker") === "true";
+
+if (isPickerMode) {
+  initPickerMode(); // initiate custom css on storefront to select sectionID 
 } else {
-  console.warn("API Url not found - AB Testing will not run");
+  // Normal execution
+  const appConfigBlock = document.getElementById("ab-insightful-config");
+  // if app config block not loaded - app will not run
+  if (appConfigBlock) {
+    const config = JSON.parse(appConfigBlock.textContent);
+    const appUrl = config.api_url;
+    initializeApp(appUrl);
+  } else {
+    console.warn("API Url not found - AB Testing will not run");
+  }
+}
+
+function initPickerMode() {
+  const style = document.createElement("style");
+  style.innerHTML = `
+    [id^="shopify-section-"] {
+      transition: all 0.2s ease-in-out;
+    }
+    [id^="shopify-section-"]:hover {
+      outline: 4px dashed #008060 !important;
+      outline-offset: -4px;
+      cursor: crosshair !important;
+      background-color: rgba(0, 128, 96, 0.1) !important;
+      z-index: 99999;
+    }
+  `;
+  document.head.appendChild(style);
+
+  // Listen for clicks on the storefront
+  document.addEventListener("click", function (event) {
+    // Find the closest parent that is a Shopify section
+    const section = event.target.closest('[id^="shopify-section-"]');
+    
+    if (section && window.opener) {
+      event.preventDefault(); // Stop links from navigating away
+      event.stopPropagation();
+      
+      // Send the ID back to the Admin App
+      window.opener.postMessage(
+        { 
+          type: "AB_INSIGHTFUL_SECTION_PICKED", 
+          sectionId: section.id 
+        }, 
+        "*"
+      );
+      
+      // Close the storefront tab
+      window.close();
+    }
+  }, true); // Use capture phase to intercept before other elements
 }
 
 function initializeApp(appUrl) {

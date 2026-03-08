@@ -2,15 +2,51 @@ import { useState, useEffect, useMemo } from "react";
 import PropTypes from "prop-types";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
-export default function ConversionsCard({ conversionsData, sessionData, hasExperiments }) {
+const getShopSlug = (shop) => {
+  if (!shop || typeof shop !== "string") {
+    return "";
+  }
+
+  return shop.replace(".myshopify.com", "").trim();
+};
+
+const buildFullReportQuery = (dateRange) => {
+  const during = dateRange?.start && dateRange?.end ? `${dateRange.start}..${dateRange.end}` : "today";
+
+  return [
+    "FROM sessions",
+    "SHOW sessions, sessions_with_cart_additions, sessions_that_reached_checkout, sessions_that_completed_checkout, conversion_rate",
+    "WHERE human_or_bot_session IN ('human', 'bot')",
+    "TIMESERIES day WITH TOTALS, PERCENT_CHANGE, CURRENCY 'USD'",
+    `DURING ${during}`,
+    "ORDER BY day ASC",
+    "LIMIT 1000",
+    "VISUALIZE conversion_rate TYPE line",
+  ].join(" ");
+};
+
+export default function ConversionsCard({
+  conversionsData,
+  sessionData,
+  hasExperiments,
+  hasAnalysisData,
+  shop,
+  dateRange,
+}) {
   // Recharts requires the window object to calculate dimensions
   // We use this state variable to ensure the chart only renders on the client side
   // to prevent hydration errors in server-side rendering environments
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  const conversionSessions = conversionsData?.sessions || [];
-  const trafficSessions = sessionData?.sessions || [];
+  const conversionSessions = useMemo(
+    () => conversionsData?.sessions || [],
+    [conversionsData],
+  );
+  const trafficSessions = useMemo(
+    () => sessionData?.sessions || [],
+    [sessionData],
+  );
 
   const chartData = useMemo(() => {
     if (!hasExperiments) {
@@ -45,10 +81,54 @@ export default function ConversionsCard({ conversionsData, sessionData, hasExper
   const conversionRate = hasExperiments && totalSessions > 0 ? (totalConversions / totalSessions) * 100 : 0;
 
   const handleFullReport = () => {
-    // Cleaner navigation to the native Shopify Analytics report 
-    // Uses the shopify:// protocol to ensure navigation happens within the Admin Frame
-    window.open('shopify://admin/analytics/reports/conversions_over_time', '_top');
+    const fallbackShop = window?.shopify?.config?.shop;
+    const shopSlug = getShopSlug(shop || fallbackShop);
+
+    if (!shopSlug) {
+      return;
+    }
+
+    const params = new URLSearchParams({
+      ql: buildFullReportQuery(dateRange),
+    });
+
+    const url = `https://admin.shopify.com/store/${shopSlug}/analytics/reports/conversion_rate_over_time?${params.toString()}`;
+    window.open(url, "_top");
   };
+
+  if (!hasAnalysisData) {
+    return (
+      <s-card>
+        <div style={{ padding: "24px" }}>
+          <s-text variant="headingMd" as="h2" style={{ color: "#616161", marginBottom: "4px" }}>Conversion rate</s-text>
+          <div style={{ fontSize: "32px", fontWeight: "600", marginBottom: "20px", color: "#202223" }}>
+            0.00%
+          </div>
+          <s-text tone="subdued">
+            No reporting data is available yet. Once analysis data exists, the conversion chart will appear here.
+          </s-text>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px" }}>
+            <button
+              onClick={handleFullReport}
+              style={{
+                background: "#303030",
+                color: "white",
+                border: "none",
+                padding: "10px 20px",
+                borderRadius: "8px",
+                cursor: "pointer",
+                fontWeight: "500",
+                fontSize: "14px",
+              }}
+            >
+              Full Report
+            </button>
+          </div>
+        </div>
+      </s-card>
+    );
+  }
 
   return (
     <s-card>
@@ -172,4 +252,10 @@ ConversionsCard.propTypes = {
     total: PropTypes.number,
   }),
   hasExperiments: PropTypes.bool,
+  hasAnalysisData: PropTypes.bool,
+  shop: PropTypes.string,
+  dateRange: PropTypes.shape({
+    start: PropTypes.string,
+    end: PropTypes.string,
+  }),
 };

@@ -113,4 +113,10 @@ describe('Reports Pagination', () => {
     expect(screen.getByText('Experiment 1')).toBeInTheDocument();
     expect(screen.queryByText('Experiment 7')).not.toBeInTheDocument();
   });
+
+  it('renders each shown experiment name as a clickable report link', () => {
+    render(<Reports />);
+    const firstExperimentLink = screen.getByRole('link', { name: 'Experiment 1' });
+    expect(firstExperimentLink).toHaveAttribute('href', '/app/reports/1');
+  });
 });

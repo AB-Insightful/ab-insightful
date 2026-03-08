@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { setEmailNotifToggle } from '../services/project.server.js';
+import { sendEmailTopic } from '../services/notifications.server.js';
 
 //mock authenticate before importing action
 vi.mock('../shopify.server', () => ({
@@ -183,3 +185,89 @@ describe('app.settings action', () => {
     });
   });
 });
+
+// ------------------------------------------------------------------
+// email notification toggle
+// ------------------------------------------------------------------
+//shotgun approach since some of these mocks aren't working
+vi.mock('../services/project.server', () => ({
+  setEmailNotifToggle: vi.fn(),
+  getEmailNotifToggle: vi.fn(),
+}));
+vi.mock('../services/project.server.js', () => ({
+  setEmailNotifToggle: vi.fn(),
+  getEmailNotifToggle: vi.fn(),
+}));
+
+vi.mock('../services/notifications.server', () => ({
+  sendEmailTopic: vi.fn(),
+}));
+vi.mock('../services/notifications.server.js', () => ({
+  sendEmailTopic: vi.fn(),
+}));
+
+//fixes mock issues
+beforeEach(() => {
+  vi.clearAllMocks();
+  setEmailNotifToggle.mockReset();
+  sendEmailTopic.mockReset();
+});
+
+it('set_email_notif_false runs toggle update (side effect)', async () => {
+  setEmailNotifToggle.mockResolvedValue({ id: 1, emailNotifEnabled: false });
+
+  const request = makeRequest({ intent: 'set_email_notif_false' });
+  const result = await action({ request });
+
+  expect(setEmailNotifToggle).toHaveBeenCalledTimes(1);
+  expect(setEmailNotifToggle).toHaveBeenCalledWith(false);
+
+  expect(sendEmailTopic).not.toHaveBeenCalled();
+
+  //document current behavior (falls through)
+  expect(result).toEqual({ error: "Unknown intent.", field: null });
+});
+
+it('set_email_notif_true runs toggle update AND sends email (side effects)', async () => {
+  setEmailNotifToggle.mockResolvedValue({ id: 1, emailNotifEnabled: true });
+  sendEmailTopic.mockResolvedValue({ MessageId: 'abc-123' });
+
+  const request = makeRequest({ intent: 'set_email_notif_true' });
+  const result = await action({ request });
+
+  expect(setEmailNotifToggle).toHaveBeenCalledTimes(1);
+  expect(setEmailNotifToggle).toHaveBeenCalledWith(true);
+
+  expect(sendEmailTopic).toHaveBeenCalledTimes(1);
+
+  // document current behavior (falls through)
+  expect(result).toEqual({ error: "Unknown intent.", field: null });
+});
+
+it('set_email_notif_true returns ok:false when setEmailNotifToggle throws and does not send email', async () => {
+  setEmailNotifToggle.mockRejectedValue(new Error('DB fail'));
+  const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  const request = makeRequest({ intent: 'set_email_notif_true' });
+  const result = await action({ request });
+
+  expect(setEmailNotifToggle).toHaveBeenCalledWith(true);
+  expect(result).toEqual({ ok: false, error: "failed to change email toggle" });
+
+  errSpy.mockRestore();
+});
+
+it('set_email_notif_true returns ok:false when sendEmailTopic throws', async () => {
+  setEmailNotifToggle.mockResolvedValue({ id: 1, emailNotifEnabled: true });
+  sendEmailTopic.mockRejectedValue(new Error('SNS fail'));
+  const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  const request = makeRequest({ intent: 'set_email_notif_true' });
+  const result = await action({ request });
+
+  expect(setEmailNotifToggle).toHaveBeenCalledWith(true);
+  expect(result).toEqual({ ok: false, error: "failed to send email" });
+
+  errSpy.mockRestore();
+});
+

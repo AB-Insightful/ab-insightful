@@ -14,8 +14,8 @@ if (typeof window !== "undefined") {
 }
 
 import { authenticate } from "../shopify.server";
-import { useFetcher, redirect, useLoaderData, useRevalidator } from "react-router";
-import { useState, useEffect } from "react";
+import { useFetcher, redirect, useLoaderData, useRevalidator, useSearchParams } from "react-router";
+import { useState, useEffect, useMemo} from "react";
 import db from "../db.server";
 import { ExperimentStatus } from "@prisma/client";
 import { TimeSelect } from "../utils/timeSelect";
@@ -102,6 +102,8 @@ export const loader = async ({ params, request }) => {
   }
 
   return {
+    shop: session.shop, // e.g., "emmanuel-store.myshopify.com"
+    appHandle: process.env.SHOPIFY_APP_HANDLE || "ab-insightful-1",
     experiment: {
       id: experiment.id,
       status: experiment.status,
@@ -527,6 +529,13 @@ export const action = async ({ request, params }) => {
   }
 };
 
+// Statically Building the app's URL
+// Helper to derive store slug (e.g., 'emmanuel-store')
+const getAdminBaseUrl = (shop, handle) => {
+  const slug = shop.replace(".myshopify.com", "");
+  return `https://admin.shopify.com/store/${slug}/apps/${handle}`;
+};
+
 //--------------------------- client side ----------------------------------------
 
 
@@ -535,6 +544,51 @@ export default function EditExperiment() {
   const fetcher = useFetcher();
   const loaderData = useLoaderData();
   const revalidator = useRevalidator();
+
+  const {shop, appHandle, experiment} = loaderData; 
+  const adminBaseUrl = useMemo(() => getAdminBaseUrl(shop, appHandle), [shop, appHandle]);
+  const reportsURL = `${adminBaseUrl}/app/reports/${experiment.id}`;
+
+  // useSearchParams to render the succesful creation of an experiment
+  const [searchParams] = useSearchParams();
+  // Dedicated fetcher for the banner actions
+  const bannerFetcher = useFetcher(); 
+
+  const [showSuccessBanner, setShowSuccessBanner] = useState(
+    searchParams.get("isNewlyCreated") === "true"
+  );
+
+  // Transient cleanup
+  useEffect(() => {
+    if (showSuccessBanner) {
+      // Functional equivalent of "consume and strip"
+      const cleanPath = window.location.pathname;
+      
+      // Official App Bridge 4+ way to replace history without a reload
+      if (window.shopify && window.shopify.navigation) {
+        window.shopify.navigation.navigate(cleanPath, { replace: true });
+      } else {
+        window.history.replaceState(null, "", cleanPath);
+      }
+    }
+  }, []); // Only runs once on mount
+
+  const handleDismissBanner = () => setShowSuccessBanner(false);
+
+ const copyToClipboard = async (text, successMsg) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      window.shopify?.toast?.show(successMsg);
+    } catch (err) {
+      console.error("Failed to copy!", err);
+    }
+  };
+
+  const handleCopyExperimentLink = () => 
+    copyToClipboard(`${adminBaseUrl}/app/experiments/${experiment.id}`, "Experiment link copied!");
+
+  const handleCopyReportsLink = () => 
+    copyToClipboard(reportsURL, "Report link copied!");
 
   // allowable edits
   const status = loaderData?.experiment?.status;
@@ -1002,6 +1056,54 @@ export default function EditExperiment() {
 
   return (
     <s-page heading="Edit Experiment" variant="headingLg">
+      {/* Success Notification UI Component */}
+      { showSuccessBanner && (
+        <s-box paddingBlockend="base">
+          <s-banner
+          title="Experiment created"
+          tone="success"
+          onDismiss={handleDismissBanner}
+          >
+            <s-stack gap="small" direction="block">
+              <s-paragraph> Your experiment has been successfully created! </s-paragraph>
+              <s-stack direction="inline" gap="small">
+                {/*Clipboard logic*/}
+                <s-button variant="secondary" onClick={handleCopyExperimentLink}>
+                  Copy Experiment Link
+                </s-button>
+                <s-button variant="secondary" onClick={handleCopyReportsLink}>
+                  Copy Reports Link
+                </s-button>
+                <s-button variant="secondary" href={reportsURL}>
+                  Navigate to Reports
+                </s-button>
+                {/* Start Experiment */}
+                {(status === ExperimentStatus.draft || status === ExperimentStatus.active || status === ExperimentStatus.paused) && (
+                  <s-button 
+                    variant={status === ExperimentStatus.draft ? "primary" : "secondary"}
+                    disabled={bannerFetcher.state !== "idle"}
+                    onClick={() => {
+                      let intent = "start";
+                      if (status === ExperimentStatus.active) intent = "pause";
+                      if (status === ExperimentStatus.paused) intent = "resume";
+                      bannerFetcher.submit({ intent }, { method: "post" });
+                    }}
+                    >
+                      {bannerFetcher.state === "submitting" 
+                      ? "Updating..." 
+                      : status === ExperimentStatus.draft
+                        ? "Start Experiment"
+                        : status === ExperimentStatus.active
+                          ? "Pause"
+                          : "Resume"
+                        }
+                    </s-button>
+                )}
+              </s-stack>
+            </s-stack>
+          </s-banner>
+        </s-box>
+      )}
       <s-button
         slot="primary-action"
         variant="primary"

@@ -4,6 +4,7 @@ import { formatRuntime } from "../utils/formatRuntime.js";
 import { useDateRange } from "../contexts/DateRangeContext";
 import DateRangePicker from "../components/DateRangePicker";
 import SessionsCard from "../components/SessionsCard.jsx";
+import ConversionCard from "../components/ConversionsCard.jsx";
 import shopify from "../shopify.server";
 import { ExperimentStatus } from "@prisma/client";
 
@@ -15,16 +16,18 @@ export async function loader({ request }) {
 
   //get the list of experiments & return them if there are any
   // Promise.all to fetch both experiments and session data in parallel for efficiency
-  const [{ getExperimentsList1 }, { getSessionReportData }] = await Promise.all(
+  const [{ getExperimentsList1 }, { getSessionReportData }, { getConversionsReportData }] = await Promise.all(
     [
       import("../services/experiment.server"),
       import("../services/analytics.server"),
+      import("../services/conversions.server"),
     ],
   );
 
-  const [experiments, sessionData] = await Promise.all([
+  const [experiments, sessionData, conversionsData] = await Promise.all([
     getExperimentsList1(),
-    getSessionReportData(admin), // Pass the authenticated admin here
+    getSessionReportData(admin),
+    getConversionsReportData(admin),
   ]);
 
   //looks up tutorial data
@@ -35,7 +38,8 @@ export async function loader({ request }) {
   // if either is missing, it defaults to an empty array or object to prevent client-side errors
   return {
     experiments: experiments || [],
-    sessionData: sessionData || { sessions: [], total: 0 }, 
+    sessionData: sessionData || { sessions: [], total: 0 },
+    conversionsData: conversionsData || { sessions: [], total: 0 },
     tutorialData: tutorialInfo
   };
 }
@@ -64,7 +68,7 @@ export async function action ({request})
 }
 export default function Reports() {
   //get list of experiments
-  const { experiments, sessionData, tutorialData } = useLoaderData();
+  const { experiments, sessionData, conversionsData,tutorialData } = useLoaderData();
   const tutorialFetcher = useFetcher(); //performs task for the tutorial popup
   
   const modalRef = useRef(null);
@@ -80,6 +84,9 @@ export default function Reports() {
   );
   const [filteredSessionData, setFilteredSessionData] = useState(
     sessionData || { sessions: [], total: 0 },
+  );
+  const [filteredConversionsData, setFilteredConversionsData] = useState(
+    conversionsData || { sessions: [], total: 0 },
   );
   //pagination elements
   const [currentPage, setCurrentPage] = useState(1);
@@ -182,20 +189,40 @@ export default function Reports() {
     return rows;
   }
 
-  //handle date range change from DateRangePicker component
-  const handleDateRangeChange = (newDateRange) => {
+  const applyDateRange = (range) => {
+    if (!range?.start || !range?.end) {
+      setFilteredSessionData(sessionData || { sessions: [], total: 0 });
+      setFilteredConversionsData(conversionsData || { sessions: [], total: 0 });
+      return;
+    }
 
-    const start = new Date(newDateRange.start + "T00:00:00");
-    const end = new Date(newDateRange.end + "T23:59:59");
+    const start = new Date(range.start + "T00:00:00");
+    const end = new Date(range.end + "T23:59:59");
 
-    const updatedSessions = sessionData.sessions.filter((s) => {
+    const updatedSessions = (sessionData?.sessions || []).filter((s) => {
       const d = new Date(s.date);
       return d >= start && d <= end;
     });
+
+    const updatedConversions = (conversionsData?.sessions || []).filter((s) => {
+      const d = new Date(s.date);
+      return d >= start && d <= end;
+    });
+
     setFilteredSessionData({
       sessions: updatedSessions,
       total: updatedSessions.reduce((acc, curr) => acc + curr.count, 0),
     });
+
+    setFilteredConversionsData({
+      sessions: updatedConversions,
+      total: updatedConversions.reduce((acc, curr) => acc + curr.count, 0),
+    });
+  };
+
+  //handle date range change from DateRangePicker component
+  const handleDateRangeChange = (newDateRange) => {
+    applyDateRange(newDateRange);
   };
 
   //filter experiments when dateRange from context changes or experiments load
@@ -206,21 +233,10 @@ export default function Reports() {
       modalRef.current.showOverlay();
     }
 
-    if (dateRange && experiments && sessionData) {
-
-      const start = new Date(dateRange.start + "T00:00:00");
-      const end = new Date(dateRange.end + "T23:59:59");
-
-      const updatedSession = sessionData.sessions.filter((s) => {
-        const d = new Date(s.date);
-        return d >= start && d <= end;
-      });
-      setFilteredSessionData({
-        sessions: updatedSession,
-        total: updatedSession.reduce((acc, curr) => acc + curr.count, 0),
-      });
+    if (experiments && sessionData && conversionsData) {
+      applyDateRange(dateRange);
     }
-  }, [tutorialData, dateRange, experiments, sessionData]);
+  }, [tutorialData, dateRange, experiments, sessionData, conversionsData]);
 
   return (
     <s-page heading="Reports">
@@ -260,36 +276,11 @@ export default function Reports() {
       <div style={{ margin: "24px 0" }}>
         <s-layout>
           <s-layout-section variant="oneHalf">
-            {/* Placeholder for Conversion Rate Card to match mockup */}
-            <s-card>
-              <div style={{ padding: "16px" }}>
-                <s-text variant="headingMd" as="h2">
-                  Conversion rate
-                </s-text>
-                <div
-                  style={{
-                    fontSize: "28px",
-                    fontWeight: "bold",
-                    margin: "8px 0",
-                  }}
-                >
-                  0.95%
-                </div>
-                {/* Visual placeholder for the conversion chart */}
-                <div
-                  style={{
-                    height: "150px",
-                    background: "#f6f6f7",
-                    borderRadius: "8px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <s-text tone="subdued">Chart Placeholder</s-text>
-                </div>
-              </div>
-            </s-card>
+            <ConversionCard
+              conversionsData={filteredConversionsData}
+              sessionData={filteredSessionData}
+              hasExperiments={allActiveExperiments.length > 0}
+            />
           </s-layout-section>
 
           <s-layout-section variant="oneHalf">

@@ -360,7 +360,23 @@ export default function Settings() {
       >
         <s-stack gap="base">
           <s-paragraph>
-            Here is some tutorial information.
+            This page allows you to customize application behavior and manage your preferences.
+
+Depending on your role, you may be able to:
+
+Update profile information
+
+Configure system preferences
+
+Manage notification settings
+
+Adjust experiment defaults
+
+Configure integrations or API connections
+
+Manage user permissions (admin only)
+
+Changes made here affect how the application functions for you or your organization. Be sure to save your changes before leaving the page.
           </s-paragraph>
         
             <s-button

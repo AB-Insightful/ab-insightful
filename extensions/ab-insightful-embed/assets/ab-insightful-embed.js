@@ -21,41 +21,40 @@ if (isPickerMode) {
 function initPickerMode() {
   const style = document.createElement("style");
   style.innerHTML = `
+    /* Force visibility of all sections during picking */
     [id^="shopify-section-"] {
       transition: all 0.2s ease-in-out;
+      display: block !important; /* Overrides theme-level hiding */
+      min-height: 50px !important; 
+      visibility: visible !important;
     }
     [id^="shopify-section-"]:hover {
       outline: 4px dashed #008060 !important;
       outline-offset: -4px;
       cursor: crosshair !important;
       background-color: rgba(0, 128, 96, 0.1) !important;
-      z-index: 99999;
+      z-index: 999999;
     }
   `;
   document.head.appendChild(style);
 
-  // Listen for clicks on the storefront
   document.addEventListener("click", function (event) {
-    // Find the closest parent that is a Shopify section
     const section = event.target.closest('[id^="shopify-section-"]');
     
     if (section && window.opener) {
-      event.preventDefault(); // Stop links from navigating away
+      event.preventDefault();
       event.stopPropagation();
-      
-      // Send the ID back to the Admin App
       window.opener.postMessage(
         { 
           type: "AB_INSIGHTFUL_SECTION_PICKED", 
           sectionId: section.id 
         }, 
-        "*"
+        "*" 
       );
       
-      // Close the storefront tab
       window.close();
     }
-  }, true); // Use capture phase to intercept before other elements
+  }, true);
 }
 
 function initializeApp(appUrl) {

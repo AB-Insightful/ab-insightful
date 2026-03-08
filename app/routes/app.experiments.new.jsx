@@ -341,8 +341,7 @@ export default function CreateExperiment() {
 
   const handleLaunchPicker = (type, index = null) => {
     pickingTargetRef.current = { type, index };
-    // Opens the live site with the picker parameter
-    window.open(`https://${shopDomain}?ab_insighftul_picker=true`, "_blank");
+    window.open(`https://${shopDomain}?ab_insightful_picker=true`, "_blank");
   };
   
   // Message bridge listener 
@@ -374,8 +373,11 @@ export default function CreateExperiment() {
         // Reset the tracker
         pickingTargetRef.current = { type: null, index: null };
         
-        // Optional: Shopify App Bridge allows for global toast notifications, 
-        // we could trigger a "Section ID Copied!" success toast here.
+        // Shopify App Bridge success toast
+        if (typeof shopify !== "undefined" && shopify.toast) {
+          shopify.toast.show("Section ID copied!");
+        }
+
       }
     };
 
@@ -848,7 +850,7 @@ export default function CreateExperiment() {
           alignSelf: "flex-start",
         }}
       >
-        <s-section heading={name ? name : "no experiment name set"}>
+        <s-section heading={name ? name : "Unnamed Experiment"}>
           <s-stack gap="small">
             <s-badge icon={icon}>{label}</s-badge>
             {variants.map((v, i) => (
@@ -1069,16 +1071,28 @@ export default function CreateExperiment() {
               }}
             />
             {addControlSection && (
-              <s-text-field
-                placeholder="shopify-section-sections--25210972849284__header"
-                value={controlSectionId}
-                label="Control Section ID"
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setControlSectionId(v);
-                }}
-                details="The control section ID that will be replaced by the variant for users who are in the experiment. Must be visible on production site"
-              />
+              <s-stack direction="inline" gap="small" alignItems="end">
+                <div style={{ flex: 1 }}>
+                  <s-text-field
+                    placeholder="shopify-section-sections--25210972849284__header"
+                    value={controlSectionId}
+                    label="Control Section ID"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setControlSectionId(v);
+                    }}
+                    details="The control section ID that will be replaced by the variant for users who are in the experiment. Must be visible on production site."
+                  />
+                </div>
+                <div style={{ paddingBottom: '44px' }}> 
+                  <s-button 
+                    variant="secondary"
+                    onClick={() => handleLaunchPicker("control")}
+                  >
+                    Select Visually
+                  </s-button>
+                </div>
+              </s-stack>
             )}
             <s-text font-weight="heavy">
               Control allocation: {controlAllocation}%. Control allocation is

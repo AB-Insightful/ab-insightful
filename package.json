@@ -35,7 +35,6 @@
     "node": ">=20.10"
   },
   "dependencies": {
-    "@aws-sdk/client-sns": "^3.1004.0",
     "@prisma/client": "^6.18.0",
     "@react-router/dev": "^7.9.3",
     "@react-router/fs-routes": "^7.9.3",

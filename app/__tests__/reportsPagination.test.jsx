@@ -56,7 +56,7 @@ const mockExperiments = Array.from({ length: 8 }, (_, i) => ({
   startDate: '2025-06-01',
   endDate: null,
   endCondition: 'Manual',
-  analyses: [],
+  analyses: [{ id: i + 100, totalConversions: 10, totalUsers: 100 }],
 }));
 
 describe('Reports Pagination', () => {
@@ -66,6 +66,7 @@ describe('Reports Pagination', () => {
       sessionData: { sessions: [], total: 0 },
       conversionsData: { sessions: [], total: 0 },
       tutorialData: { viewedReportsPage: true },
+      shop: 'test-shop.myshopify.com',
     });
   });
 
@@ -118,5 +119,19 @@ describe('Reports Pagination', () => {
     render(<Reports />);
     const firstExperimentLink = screen.getByRole('link', { name: 'Experiment 1' });
     expect(firstExperimentLink).toHaveAttribute('href', '/app/reports/1');
+  });
+
+  it('shows no reporting data state when analysis is missing', () => {
+    useLoaderData.mockReturnValue({
+      experiments: mockExperiments.map((exp) => ({ ...exp, analyses: [] })),
+      sessionData: { sessions: [], total: 0 },
+      conversionsData: { sessions: [], total: 0 },
+      tutorialData: { viewedReportsPage: true },
+      shop: 'test-shop.myshopify.com',
+    });
+
+    render(<Reports />);
+    expect(screen.getAllByText('No reporting data').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Showing 1-6 of 8/)).not.toBeInTheDocument();
   });
 });

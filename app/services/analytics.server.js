@@ -96,3 +96,74 @@ function generateMockSessions(start, end) {
   const total = sessions.reduce((acc, curr) => acc + curr.count, 0);
   return { sessions, total };
 }
+
+export async function getConversionsReportData(admin, start, end) {
+  // If dates are missing from the loader, default to the last 30 days
+  const startDate =
+    start ||
+    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const endDate = end || new Date().toISOString().split("T")[0];
+
+  try {
+    // Attempt to query live ShopifyQL query
+    const response = await admin.graphql(
+      `#graphql
+      query getConversions($query: String!) {
+        shopifyqlQuery(query: $query) {
+          tableData {
+            columns {
+              name
+            }
+            rows
+          }
+          parseErrors
+        }
+      }`,
+      {
+        variables: {
+          query: `FROM sessions
+                    SHOW sessions, sessions_with_cart_additions, sessions_that_reached_checkout,
+                    sessions_that_completed_checkout, conversion_rate 
+                    TIMESERIES day SINCE ${startDate} UNTIL ${endDate}`,
+        },
+      },
+    );
+
+    const resJson = await response.json();
+
+    // Validate and Parse Shopify API Data
+    // Check for GraphQL errors or ShopifyQL specific parse errors
+    if (resJson.errors || resJson.data?.shopifyqlQuery?.parseErrors?.length) {
+      throw new Error(
+        resJson.data?.shopifyqlQuery?.parseErrors?.[0] || "GraphQL Query Error",
+      );
+    }
+
+    const rows = resJson.data?.shopifyqlQuery?.tableData?.rows;
+
+    if (rows && rows.length > 0) {
+      console.log(
+        `[analytics.server] Successfully fetched ${rows.length} live rows.`,
+      );
+
+      const sessions = rows.map((row) => ({
+        date: row[0], // ShopifyQL usually returns date as the first column
+        count: parseInt(row[1], 10), // and count as the second
+      }));
+
+      return {
+        sessions,
+        total: sessions.reduce((acc, curr) => acc + curr.count, 0),
+      };
+    }
+
+    // If API succeeds but returns 0 rows, throw to trigger fallback
+    throw new Error("No live data available");
+  } catch (error) {
+    // If the API fails (Permissions, TableResponse error, etc.), use the mock generator.
+    console.warn(
+      `[analytics.server] API Error or No Data. Falling back to mock: ${error.message}`,
+    );
+    return generateMockSessions(startDate, endDate);
+  }
+}

@@ -116,7 +116,9 @@ describe('Reports Pagination', () => {
 
   it('renders each shown experiment name as a clickable report link', () => {
     render(<Reports />);
-    const firstExperimentLink = screen.getByRole('link', { name: 'Experiment 1' });
+    const firstExperimentText = screen.getByText('Experiment 1');
+    const firstExperimentLink = firstExperimentText.closest('s-link');
+    expect(firstExperimentLink).not.toBeNull();
     expect(firstExperimentLink).toHaveAttribute('href', '/app/reports/1');
   });
 

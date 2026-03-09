@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLoaderData, useFetcher } from "react-router";
 import { formatRuntime } from "../utils/formatRuntime.js";
 import { useDateRange } from "../contexts/DateRangeContext";
@@ -10,7 +10,7 @@ import { ExperimentStatus } from "@prisma/client";
 
 //server side code
 export async function loader({ request }) {
-  const { admin, session } = await shopify.authenticate.admin(request);
+  const { admin } = await shopify.authenticate.admin(request);
 
   // Temporary: run analysis so data is up to date. This will get replaced by cron job.
 
@@ -40,8 +40,7 @@ export async function loader({ request }) {
     experiments: experiments || [],
     sessionData: sessionData || { sessions: [], total: 0 },
     conversionsData: conversionsData || { sessions: [], total: 0 },
-    tutorialData: tutorialInfo,
-    shop: session?.shop || null,
+    tutorialData: tutorialInfo
   };
 }
 
@@ -69,7 +68,7 @@ export async function action ({request})
 }
 export default function Reports() {
   //get list of experiments
-  const { experiments, sessionData, conversionsData, tutorialData, shop } = useLoaderData();
+  const { experiments, sessionData, conversionsData,tutorialData } = useLoaderData();
   const tutorialFetcher = useFetcher(); //performs task for the tutorial popup
   
   const modalRef = useRef(null);
@@ -82,9 +81,6 @@ export default function Reports() {
   //state for all experiments
   const allActiveExperiments = (experiments || []).filter(
     (exp) => exp.status !== ExperimentStatus.archived && exp.status !== ExperimentStatus.draft
-  );
-  const hasAnalysisData = allActiveExperiments.some(
-    (exp) => Array.isArray(exp.analyses) && exp.analyses.length > 0,
   );
   const [filteredSessionData, setFilteredSessionData] = useState(
     sessionData || { sessions: [], total: 0 },
@@ -189,7 +185,7 @@ export default function Reports() {
     return rows;
   }
 
-  const applyDateRange = useCallback((range) => {
+  const applyDateRange = (range) => {
     if (!range?.start || !range?.end) {
       setFilteredSessionData(sessionData || { sessions: [], total: 0 });
       setFilteredConversionsData(conversionsData || { sessions: [], total: 0 });
@@ -218,7 +214,7 @@ export default function Reports() {
       sessions: updatedConversions,
       total: updatedConversions.reduce((acc, curr) => acc + curr.count, 0),
     });
-  }, [sessionData, conversionsData]);
+  };
 
   //handle date range change from DateRangePicker component
   const handleDateRangeChange = (newDateRange) => {
@@ -236,7 +232,7 @@ export default function Reports() {
     if (experiments && sessionData && conversionsData) {
       applyDateRange(dateRange);
     }
-  }, [tutorialData, dateRange, experiments, sessionData, conversionsData, applyDateRange]);
+  }, [tutorialData, dateRange, experiments, sessionData, conversionsData]);
 
   return (
     <s-page heading="Reports">
@@ -253,7 +249,7 @@ export default function Reports() {
           >
           <s-stack gap="base">
             <s-paragraph>
-              Here is some tutorial information.
+              Welcome to the Reports Overview page. This page provides a summary of experiment results and overall performance metrics. You can review aggregated data, compare experiments, filter reports by date or status, and access detailed breakdowns for deeper analysis. Use this page to evaluate outcomes, identify trends, and support data-driven decision-making.
             </s-paragraph>
           
               <s-button
@@ -280,28 +276,12 @@ export default function Reports() {
               conversionsData={filteredConversionsData}
               sessionData={filteredSessionData}
               hasExperiments={allActiveExperiments.length > 0}
-              hasAnalysisData={hasAnalysisData}
-              shop={shop}
-              dateRange={dateRange}
             />
           </s-layout-section>
 
           <s-layout-section variant="oneHalf">
-            {/* Session chart only renders when analysis data exists. */}
-            {hasAnalysisData ? (
-              <SessionsCard sessionData={filteredSessionData} />
-            ) : (
-              <s-card>
-                <div style={{ padding: "24px" }}>
-                  <s-heading>No reporting data</s-heading>
-                  <div style={{ marginTop: "8px" }}>
-                    <s-text tone="subdued">
-                      No analysis data is available for the selected period yet.
-                    </s-text>
-                  </div>
-                </div>
-              </s-card>
-            )}
+            {/* The newly implemented Sessions Card component */}
+            <SessionsCard sessionData={filteredSessionData} />
           </s-layout-section>
         </s-layout>
       </div>
@@ -311,65 +291,54 @@ export default function Reports() {
       </div>
 
       <s-section>
-        {hasAnalysisData ? (
-          <>
-            <s-box
-              background="base"
-              border="base"
-              borderRadius="base"
-              overflow="hidden"
-            >
-              <s-table>
-                <s-table-header-row>
-                  <s-table-header listSlot="primary">
-                    Experiment Name (Click To View Report)
-                  </s-table-header>
-                  <s-table-header listSlot="secondary">Status</s-table-header>
-                  <s-table-header listSlot="labeled">Run Length</s-table-header>
-                  <s-table-header listSlot="labeled" format="numeric">
-                    End Condition
-                  </s-table-header>
-                  <s-table-header listSlot="labeled" format="numeric">
-                    Conversions
-                  </s-table-header>
-                </s-table-header-row>
-                <s-table-body>{renderTableData(paginatedExperiments)}</s-table-body>
-              </s-table>
-            </s-box>
-            <div style={{ margin: "10px 0" }}>
-              <s-paragraph>
-                <s-text>
-                  Showing {startIndex + 1}-{Math.min(startIndex + itemsPerPage, allActiveExperiments.length)} of {allActiveExperiments.length} experiments
-                  {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`}
-                </s-text>
-              </s-paragraph>
-            </div>
+        <s-box
+          background="base"
+          border="base"
+          borderRadius="base"
+          overflow="hidden"
+        >
+          <s-table>
+            <s-table-header-row>
+              <s-table-header listSlot="primary">
+                Experiment Name (Click To View Report)
+              </s-table-header>
+              <s-table-header listSlot="secondary">Status</s-table-header>
+              <s-table-header listSlot="labeled">Run Length</s-table-header>
+              <s-table-header listSlot="labeled" format="numeric">
+                End Condition
+              </s-table-header>
+              <s-table-header listSlot="labeled" format="numeric">
+                Conversions
+              </s-table-header>
+            </s-table-header-row>
+            {/* This uses the destructured filteredExperiments array */}
+            <s-table-body>{renderTableData(paginatedExperiments)}</s-table-body>
+          </s-table>
+        </s-box>
+        {/*pagination controls*/}
+        <>
+          <div style={{ margin: "10px 0" }}>
+            <s-paragraph>
+              <s-text>
+                Showing {startIndex + 1}-{Math.min(startIndex + itemsPerPage, allActiveExperiments.length)} of {allActiveExperiments.length} experiments
+                {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`}
+              </s-text>
+            </s-paragraph>
+          </div>
 
-            <s-button-group>
-              <s-button
-                slot="secondary-actions"
-                onClick={() => setCurrentPage((p) => p - 1)}
-                disabled={currentPage === 1}
-              >Previous</s-button>
-              <s-button
-                slot="secondary-actions"
-                onClick={() => setCurrentPage((p) => p + 1)}
-                disabled={currentPage === totalPages}
-              >Next</s-button>
-            </s-button-group>
-          </>
-        ) : (
-          <s-card>
-            <div style={{ padding: "24px" }}>
-              <s-heading>No reporting data</s-heading>
-              <div style={{ marginTop: "8px" }}>
-                <s-text tone="subdued">
-                  Experiment analysis has not been generated yet, so no report table is available.
-                </s-text>
-              </div>
-            </div>
-          </s-card>
-        )}
+          <s-button-group>
+            <s-button
+              slot="secondary-actions"
+              onClick={() => setCurrentPage(p => p - 1)}
+              disabled={currentPage === 1}
+            >Previous</s-button>
+            <s-button
+              slot="secondary-actions"
+              onClick={() => setCurrentPage(p => p + 1)}
+              disabled={currentPage === totalPages}
+            >Next</s-button>
+          </s-button-group>
+        </>
       </s-section>
     </s-page>
   );

@@ -56,7 +56,7 @@ const mockExperiments = Array.from({ length: 8 }, (_, i) => ({
   startDate: '2025-06-01',
   endDate: null,
   endCondition: 'Manual',
-  analyses: [{ id: i + 100, totalConversions: 10, totalUsers: 100 }],
+  analyses: [],
 }));
 
 describe('Reports Pagination', () => {
@@ -66,7 +66,6 @@ describe('Reports Pagination', () => {
       sessionData: { sessions: [], total: 0 },
       conversionsData: { sessions: [], total: 0 },
       tutorialData: { viewedReportsPage: true },
-      shop: 'test-shop.myshopify.com',
     });
   });
 

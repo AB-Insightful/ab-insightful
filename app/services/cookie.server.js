@@ -42,7 +42,10 @@ export async function updateLatestSession(userdata) {
     where: {
       shopifyCustomerID: userdata.client_id,
     },
-    update: {},
+    update: {
+      latestSession: new Date(userdata.latestSession),
+      deviceType: userdata.deviceType ?? undefined,
+    },
     create: {
       shopifyCustomerID: userdata.client_id,
       latestSession: new Date(userdata.latestSession),

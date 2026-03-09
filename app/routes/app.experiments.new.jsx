@@ -801,26 +801,7 @@ export default function CreateExperiment() {
         size="base"
       >
         <s-stack gap="base">
-          <s-paragraph>
-            Welcome to the Create Experiments Page
-
-This page allows you to design and configure new experiments to test different variations of your online store and optimize for your key goals.
-
-Here you can:
-
-Enter a unique experiment name and description
-
-Select experiment parameters and variables
-
-Define what constitutes a successful outcome for your experiment by choosing a goal
-
-Configure start and end conditions, including specific dates or performance thresholds
-
-Save your experiment as a draft or launch it immediately
-
-Once created, your experiment will appear in the Experiments List page where you can monitor and manage it.
-          </s-paragraph>
-
+          <s-paragraph>Welcome to the Create Experiments page. This page allows you to set up and configure new experiments within the application. You can enter a name and description, define parameters and variables, configure test conditions, and select the appropriate evaluation criteria. Be sure to complete all required fields before saving. Once created, your experiment will appear in the Experiments List page where you can manage and monitor its progress.</s-paragraph>
           <s-button
             variant="primary"
             inLineSize="fill"

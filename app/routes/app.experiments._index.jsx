@@ -635,7 +635,7 @@ export default function Experimentsindex() {
           >
             <s-stack gap="base">
               <s-paragraph>
-                Here is some tutorial information.
+                Welcome to the Experiments List page. This page displays all experiments you have created and allows you to manage them. You can view experiment statuses, search and filter results, edit draft experiments, and start, pause, or archive active ones. Selecting an experiment will open more detailed information, including experiment settings and performance results.
               </s-paragraph>
             
                 <s-button

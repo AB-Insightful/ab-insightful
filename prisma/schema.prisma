@@ -69,6 +69,14 @@ enum ExperimentStatus {
   archived
 }
 
+enum DeviceSegment {
+  all
+  mobile
+  desktop
+  tablet
+  unknown
+}
+
 model Experiment {
   id           Int              @id @default(autoincrement()) @map("experiment_id")
   name         String
@@ -240,17 +248,18 @@ model Conversion {
 
 // This stores the calculated statistical results
 model Analysis {
-  id                     Int      @id @default(autoincrement()) @map("result_id")
-  calculatedWhen         DateTime @default(now()) @map("calculated_when")
-  daysAnalyzed           Int      @map("days_analyzed")
-  totalUsers             Int      @map("total_users")
-  totalConversions       Int      @map("total_conversions")
-  conversionRate         Float    @map("conversion_rate")
-  probabilityOfBeingBest Float?   @map("probability_of_being_best")
-  expectedLoss           Float?   @map("expected_loss")
-  credIntervalLift       Json     @map("cred_interval_lift")
-  postAlpha              Float    @map("post_alpha")
-  postBeta               Float    @map("post_beta")
+  id                     Int            @id @default(autoincrement()) @map("result_id")
+  calculatedWhen         DateTime       @default(now()) @map("calculated_when")
+  daysAnalyzed           Int            @map("days_analyzed")
+  totalUsers             Int            @map("total_users")
+  totalConversions       Int            @map("total_conversions")
+  conversionRate         Float          @map("conversion_rate")
+  probabilityOfBeingBest Float?         @map("probability_of_being_best")
+  expectedLoss           Float?         @map("expected_loss")
+  credIntervalLift       Json           @map("cred_interval_lift")
+  postAlpha              Float          @map("post_alpha")
+  postBeta               Float          @map("post_beta")
+  deviceSegment          DeviceSegment  @default(all) @map("device_segment")
 
   experimentId Int        @map("experiment_id") // Foreign Key
   experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade) // Connects to the Experiment's PK
@@ -261,6 +270,7 @@ model Analysis {
   goalId Int  @map("goal_id")
   goal   Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
 
+  @@index([experimentId, goalId, variantId, deviceSegment, calculatedWhen])
   @@map("Analysis")
 }
 

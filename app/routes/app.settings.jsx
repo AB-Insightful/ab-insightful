@@ -360,23 +360,7 @@ export default function Settings() {
       >
         <s-stack gap="base">
           <s-paragraph>
-            This page allows you to customize application behavior and manage your preferences.
-
-Depending on your role, you may be able to:
-
-Update profile information
-
-Configure system preferences
-
-Manage notification settings
-
-Adjust experiment defaults
-
-Configure integrations or API connections
-
-Manage user permissions (admin only)
-
-Changes made here affect how the application functions for you or your organization. Be sure to save your changes before leaving the page.
+            Welcome to the Settings page. This page allows you to manage your email notifications and other application settings. You can adjust default experiment settings, manage notifications, configure integrations, and control user permissions. Changes made here will affect how the application behaves, so remember to save your updates before leaving the page.
           </s-paragraph>
         
             <s-button

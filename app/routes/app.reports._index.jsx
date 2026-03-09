@@ -251,7 +251,7 @@ export default function Reports() {
           >
           <s-stack gap="base">
             <s-paragraph>
-              Here is some tutorial information.
+              Welcome to the Reports Overview page. This page provides a summary of experiment results and overall performance metrics. You can review aggregated data, compare experiments, filter reports by date or status, and access detailed breakdowns for deeper analysis. Use this page to evaluate outcomes, identify trends, and support data-driven decision-making.
             </s-paragraph>
           
               <s-button

@@ -203,37 +203,61 @@ async function seedAnalysisSeries(prisma, { experimentId, goalId, variantIds, da
   });
 
   const rows = [];
+  const segments = ["all", "mobile", "desktop"];
 
   for (let dayIndex = 1; dayIndex <= days; dayIndex++) {
     const calculatedWhen = addDays(start, dayIndex);
 
     for (const variantId of variantIds) {
       const noise = (rand() - 0.5) * 0.01; // +/- 0.5%
-      const rate = Math.max(0.01, Math.min(0.5, baseRates[variantId] + noise));
-
-      const totalUsers = 250 + Math.floor(rand() * 900) + dayIndex * 10;
-      const totalConversions = Math.max(0, Math.round(totalUsers * rate));
-      const conversionRate = totalConversions / totalUsers;
-
-      const postAlpha = totalConversions + 1;
-      const postBeta = totalUsers - totalConversions + 1;
-
+      const baseRate = Math.max(0.01, Math.min(0.5, baseRates[variantId] + noise));
       const isBestCandidate = variantId === variantIds[variantIds.length - 1];
-      rows.push({
-        calculatedWhen,
-        daysAnalyzed: dayIndex,
-        totalUsers,
-        totalConversions,
-        conversionRate,
-        probabilityOfBeingBest: isBestCandidate ? 0.75 + rand() * 0.2 : 0.05 + rand() * 0.25,
-        expectedLoss: isBestCandidate ? 0.001 + rand() * 0.006 : 0.01 + rand() * 0.03,
-        credIntervalLift: { lower: -0.02, upper: 0.08 },
-        postAlpha,
-        postBeta,
-        experimentId,
-        variantId,
-        goalId,
-      });
+
+      const rawUsers = 250 + Math.floor(rand() * 900) + dayIndex * 10;
+
+      for (const segment of segments) {
+        let segmentUserMultiplier = 1;
+        let segmentRateOffset = 0;
+
+        if (segment === "mobile") {
+          segmentUserMultiplier = 0.45;
+          segmentRateOffset = -0.005;
+        } else if (segment === "desktop") {
+          segmentUserMultiplier = 0.55;
+          segmentRateOffset = 0.004;
+        }
+
+        const totalUsers =
+          segment === "all" ? rawUsers : Math.max(10, Math.round(rawUsers * segmentUserMultiplier));
+
+        const rate = Math.max(
+          0.01,
+          Math.min(0.5, baseRate + segmentRateOffset + (rand() - 0.5) * 0.005)
+        );
+
+        const totalConversions = Math.max(0, Math.round(totalUsers * rate));
+        const conversionRate = totalConversions / totalUsers;
+
+        const postAlpha = totalConversions + 1;
+        const postBeta = totalUsers - totalConversions + 1;
+
+        rows.push({
+          calculatedWhen,
+          daysAnalyzed: dayIndex,
+          totalUsers,
+          totalConversions,
+          conversionRate,
+          probabilityOfBeingBest: isBestCandidate ? 0.75 + rand() * 0.2 : 0.05 + rand() * 0.25,
+          expectedLoss: isBestCandidate ? 0.001 + rand() * 0.006 : 0.01 + rand() * 0.03,
+          credIntervalLift: { lower: -0.02, upper: 0.08 },
+          postAlpha,
+          postBeta,
+          deviceSegment: segment,
+          experimentId,
+          variantId,
+          goalId,
+        });
+      }
     }
   }
 

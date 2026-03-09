@@ -119,4 +119,18 @@ describe('Reports Pagination', () => {
     const firstExperimentLink = screen.getByRole('link', { name: 'Experiment 1' });
     expect(firstExperimentLink).toHaveAttribute('href', '/app/reports/1');
   });
+
+  it('shows N/A for conversions when analysis is missing', () => {
+  useLoaderData.mockReturnValue({
+    experiments: mockExperiments.map((exp) => ({ ...exp, analyses: [] })),
+    sessionData: { sessions: [], total: 0 },
+    conversionsData: { sessions: [], total: 0 },
+    tutorialData: { viewedReportsPage: true },
+    shop: 'test-shop.myshopify.com',
+  });
+
+  render(<Reports />);
+  expect(screen.getAllByText('N/A').length).toBeGreaterThan(0);
+  expect(screen.getByText(/Showing 1-6 of 8/)).toBeInTheDocument();
+});
 });

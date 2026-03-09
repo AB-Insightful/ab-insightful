@@ -183,6 +183,17 @@ export async function getExperimentsList1() {
       status: true,
       startDate: true,
       endDate: true,
+      endCondition: true,
+      analyses: {
+        select: {
+          totalConversions: true,
+          totalUsers: true,
+          calculatedWhen: true,
+        },
+        orderBy: {
+          calculatedWhen: "asc",
+        },
+      },
     },
     orderBy: {
       createdAt: "desc",
@@ -192,6 +203,7 @@ export async function getExperimentsList1() {
   if (experiments) return experiments;
   else return null;
 }
+
 
 // get a variant (by name or id) Example: "Control" or "Variant A"
 export async function getVariant(experimentId, name) {

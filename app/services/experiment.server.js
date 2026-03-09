@@ -183,17 +183,6 @@ export async function getExperimentsList1() {
       status: true,
       startDate: true,
       endDate: true,
-      endCondition: true,
-      analyses: {
-        select: {
-          totalConversions: true,
-          totalUsers: true,
-          calculatedWhen: true,
-        },
-        orderBy: {
-          calculatedWhen: "asc",
-        },
-      },
     },
     orderBy: {
       createdAt: "desc",

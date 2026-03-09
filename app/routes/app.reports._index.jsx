@@ -136,14 +136,12 @@ export default function Reports() {
     return status;
   };
 
-  //render experiment name with link if not active
+  // Render all shown report names as links to the experiment analytics page.
   const renderExperimentName = (experiment) => {
     const name = experiment.name ?? "N/A";
-
-    if (!experiment.status || experiment.status === ExperimentStatus.active) {
-      return name;
-    }
-    return <a href="/404">{name}</a>;
+    return <s-link href={"/app/reports/" + experiment.id}>
+                {name}
+              </s-link>;
   };
 
   //get conversions for experiment

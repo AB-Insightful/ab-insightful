@@ -113,4 +113,26 @@ describe('Reports Pagination', () => {
     expect(screen.getByText('Experiment 1')).toBeInTheDocument();
     expect(screen.queryByText('Experiment 7')).not.toBeInTheDocument();
   });
+
+  it('renders each shown experiment name as a clickable report link', () => {
+    render(<Reports />);
+    const firstExperimentText = screen.getByText('Experiment 1');
+    const firstExperimentLink = firstExperimentText.closest('s-link');
+    expect(firstExperimentLink).not.toBeNull();
+    expect(firstExperimentLink).toHaveAttribute('href', '/app/reports/1');
+  });
+
+  it('shows N/A for conversions when analysis is missing', () => {
+  useLoaderData.mockReturnValue({
+    experiments: mockExperiments.map((exp) => ({ ...exp, analyses: [] })),
+    sessionData: { sessions: [], total: 0 },
+    conversionsData: { sessions: [], total: 0 },
+    tutorialData: { viewedReportsPage: true },
+    shop: 'test-shop.myshopify.com',
+  });
+
+  render(<Reports />);
+  expect(screen.getAllByText('N/A').length).toBeGreaterThan(0);
+  expect(screen.getByText(/Showing 1-6 of 8/)).toBeInTheDocument();
+});
 });

@@ -540,66 +540,6 @@ export default function Index() {
         </s-grid-item>
       </s-grid>
       <s-box></s-box>
-      {/* Begin quick links */}
-      {/*added marginTop modifier to div style to ensure gap between sections */}
-      <div style={{ display: "flex", flexDirection: "column", marginTop: "16px",}}>
-        <s-clickable
-          border="base"
-          padding="base"
-          background="subdued"
-          borderRadius="base"
-          href="/app/experiments"
-          maxInlineSize="650px"
-          maxBlockSize="52px"
-        >
-          <s-heading>View Experiments</s-heading>
-        </s-clickable>
-        <s-clickable
-          border="base"
-          padding="base"
-          background="subdued"
-          borderRadius="base"
-          href="/app/experiments/new"
-          maxInlineSize="650px"
-          maxBlockSize="52px"
-        >
-          <s-heading>Create New Experiment</s-heading>
-        </s-clickable>
-        <s-clickable
-          border="base"
-          padding="base"
-          background="subdued"
-          borderRadius="base"
-          href="/app/reports"
-          maxInlineSize="650px"
-          maxBlockSize="52px"
-        >
-          <s-heading>Reports</s-heading>
-        </s-clickable>
-        <s-clickable
-          border="base"
-          padding="base"
-          background="subdued"
-          borderRadius="base"
-          href="/app/settings"
-          maxInlineSize="650px"
-          maxBlockSize="52px"
-        >
-          <s-heading>Settings</s-heading>
-        </s-clickable>
-        <s-clickable
-          border="base"
-          padding="base"
-          background="subdued"
-          borderRadius="base"
-          href="/app/help"
-          maxInlineSize="650px"
-          maxBlockSize="52px"
-        >
-          <s-heading>Help</s-heading>
-        </s-clickable>
-      </div>
-      {/* End Quick Links */}
     </s-page>
   );
 }

@@ -25,6 +25,7 @@ export default function App() {
         <s-app-nav>
           <s-link href="/app">Home</s-link>
           <s-link href="/app/experiments">Experiments</s-link>
+          <s-link href="/app/experiments/new">Create Experiment</s-link>
           <s-link href="/app/reports"> Reports</s-link>
           <s-link href="/app/help"> Help</s-link>
           <s-link href="/app/settings">Settings</s-link>

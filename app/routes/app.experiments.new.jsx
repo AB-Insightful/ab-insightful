@@ -861,7 +861,7 @@ export default function CreateExperiment() {
                 icon={v.sectionId ? "code" : "alert-circle"}
               >
                 Variant {VARIANT_LABELS[i]}:{" "}
-                {v.sectionId || "Section not selected"}
+                {v.sectionId ? v.sectionId.slice(0, 30) + (v.sectionId.length > 30 ? "..." : "") : "Section not selected"}
               </s-badge>
             ))}
 

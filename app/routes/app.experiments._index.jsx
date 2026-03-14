@@ -5,6 +5,8 @@ import { formatRuntime } from "../utils/formatRuntime.js";
 import { formatImprovement } from "../utils/formatImprovement.js";
 import { ExperimentStatus } from "@prisma/client";
 import { allowedStatusIntents } from "./policies/experimentPolicy";
+import { usePagination } from "../hooks/usePagination";
+import Pagination from "../hooks/Pagination";
 
 // Server side code
 
@@ -14,7 +16,7 @@ export async function loader() {
   const { updateProbabilityOfBest } = await import("../services/experiment.server");  */
   const { getExperimentsList, getImprovement } = await import("../services/experiment.server");
   const experiments = await getExperimentsList();
-
+  
   //import for tutorial data
   const { getTutorialData } = await import ("../services/tutorialData.server");
   const tutorialData = await getTutorialData();
@@ -212,6 +214,14 @@ export default function Experimentsindex() {
   //track active filter selection (all by default)
   const [activeFilter, setActiveFilter] = useState("all");
 
+  const filteredExperiments = (experiments || []).filter((exp) => {
+    if (activeFilter === "all") return true;
+    return exp.status === activeFilter;
+  });
+
+  //pagination elements
+  const { currentPage, setCurrentPage, totalPages, startIndex, paginatedItems: paginatedExperiments } =
+    usePagination(filteredExperiments, 16);
   //check for errors after rename attempt
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.action === "rename_error") {
@@ -334,6 +344,8 @@ export default function Experimentsindex() {
   //TODO: restrict based on experiment goal
   function renderTableData(experiments) {
     const rows = [];
+
+    if (!experiments || experiments.length === 0) return rows;
 
     //retrieves the highest probability of best from the experiment and the winning variant's name
     //PLEASE NOTE: This function does not account for an experiment having multiple entries with different goals. 
@@ -675,15 +687,20 @@ export default function Experimentsindex() {
                 {/*Place Quick Access Button here */}
               </s-table-header-row>
               <s-table-body>
-                {renderTableData(
-                  activeFilter === "all"
-                    ? experiments
-                    : experiments.filter((e) => e.status === activeFilter)
-                )}{" "}
+                {renderTableData(paginatedExperiments)}
                 {/* function call that returns the jsx data for table rows */}
               </s-table-body>
             </s-table>
           </s-box>{" "}
+          {/*pagination controls*/}
+          <Pagination
+            currentPage={currentPage}
+            setCurrentPage={setCurrentPage}
+            totalPages={totalPages}
+            startIndex={startIndex}
+            totalItems={filteredExperiments.length}
+            itemsPerPage={16}
+          />
           {/*end of table section*/}
         </s-section>
       </s-page>

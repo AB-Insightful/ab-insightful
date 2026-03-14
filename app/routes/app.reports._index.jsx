@@ -7,6 +7,8 @@ import SessionsCard from "../components/SessionsCard.jsx";
 import ConversionCard from "../components/ConversionsCard.jsx";
 import shopify from "../shopify.server";
 import { ExperimentStatus } from "@prisma/client";
+import { usePagination } from "../hooks/usePagination";
+import Pagination from "../hooks/Pagination";
 
 //server side code
 export async function loader({ request }) {
@@ -89,11 +91,8 @@ export default function Reports() {
     conversionsData || { sessions: [], total: 0 },
   );
   //pagination elements
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 6;
-  const totalPages = Math.ceil(allActiveExperiments.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedExperiments = allActiveExperiments.slice(startIndex, startIndex + itemsPerPage);
+  const { currentPage, setCurrentPage, totalPages, startIndex, paginatedItems: paginatedExperiments } =
+    usePagination(allActiveExperiments, 6);
  
   //calculate runtime using formatRuntime utility
   const getRuntime = (experiment) => {
@@ -170,6 +169,8 @@ export default function Reports() {
   //function responsible for render of table rows based off db
   function renderTableData(experiments) {
     const rows = [];
+
+    if (!experiments || experiments.length === 0) return rows;
 
     for (let i = 0; i < experiments.length; i++) {
       const curExp = experiments[i];
@@ -318,29 +319,14 @@ export default function Reports() {
           </s-table>
         </s-box>
         {/*pagination controls*/}
-        <>
-          <div style={{ margin: "10px 0" }}>
-            <s-paragraph>
-              <s-text>
-                Showing {startIndex + 1}-{Math.min(startIndex + itemsPerPage, allActiveExperiments.length)} of {allActiveExperiments.length} experiments
-                {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`}
-              </s-text>
-            </s-paragraph>
-          </div>
-
-          <s-button-group>
-            <s-button
-              slot="secondary-actions"
-              onClick={() => setCurrentPage(p => p - 1)}
-              disabled={currentPage === 1}
-            >Previous</s-button>
-            <s-button
-              slot="secondary-actions"
-              onClick={() => setCurrentPage(p => p + 1)}
-              disabled={currentPage === totalPages}
-            >Next</s-button>
-          </s-button-group>
-        </>
+        <Pagination
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+          totalPages={totalPages}
+          startIndex={startIndex}
+          totalItems={allActiveExperiments.length}
+          itemsPerPage={6}
+        />
       </s-section>
     </s-page>
   );

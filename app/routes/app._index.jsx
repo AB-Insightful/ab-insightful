@@ -55,7 +55,8 @@ export const loader = async ({ request }) => {
     tutorialData.generalSettings &&
     tutorialData.createExperiment &&
     tutorialData.viewedListExperiment &&
-    tutorialData.viewedReportsPage
+    tutorialData.viewedReportsPage &&
+    tutorialData.onSiteTracking
   );
 
   tutorialData.webPixelStatus = webPixelRes; //true means exists, false means null

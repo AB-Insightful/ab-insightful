@@ -59,3 +59,15 @@ export async function setCreateExpPage(tutId, inputData) {
         }
     });
 }
+
+export async function getOnSiteTracking(tutId, inputData) {
+    try {
+        return await db.tutorialData.update({
+            where : { id: tutId },
+            data : { onSiteTracking: inputData }
+        });
+    } catch (error) {
+        console.error("Failed to get on site tracking:", error);
+        throw new Error("Database query failed");
+    }
+}

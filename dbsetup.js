@@ -7,9 +7,7 @@ import fs from "node:fs";
 const env = { ...process.env };
 
 // place Sqlite3 database on volume
-const database_url = process.env.DATABASE_URL ?? "file:./dev.sqlite";
-
-const source = path.resolve(database_url.replace("file:./", ""));
+const source = path.resolve(process.env.DATABASE_URL ?? "file:./dev.sqlite");
 const target = "/data/" + path.basename(source);
 if (!fs.existsSync(source) && fs.existsSync("/data"))
   fs.symlinkSync(target, source);

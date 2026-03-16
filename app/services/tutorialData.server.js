@@ -9,8 +9,8 @@ import { Prisma } from "@prisma/client";
 //NOTE: Query Must be changed if we create multiple users as there will be multiple settings per user in design. 
 export async function getTutorialData()
 {
-    if(db.TutorialData) {
-        return db.TutorialData.findFirst(
+    if(db.tutorialData) {
+        return db.tutorialData.findFirst(
         {
             where: {
                 id: 1 //hard coded to 1 since it assumes there will always be a Tutorial Data entry

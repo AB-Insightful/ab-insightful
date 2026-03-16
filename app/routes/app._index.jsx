@@ -130,7 +130,18 @@ export const action = async ({ request }) => {
   if (actionType === "enableTracking") {
     const { registerWebPixel } = await import("../services/extension.server");
     const response = await registerWebPixel({ request });
-    return response.json();
+
+    if (response.ok) {
+      return {
+        success: true,
+        message: data.message ||"Tracking enabled successfully",
+      };
+    } else {
+      return {
+        success: false,
+        message: data.message ||"Tracking could not be enabled",
+      };
+    }
   }
 
   if (actionType === "verifyAppEmbed") {
@@ -145,15 +156,21 @@ export const action = async ({ request }) => {
     if (result.isEnabled){
       const { setOnSiteTracking } = await import("../services/tutorialData.server");
       await setOnSiteTracking(1, true); // sets OnSiteTracking column to true
-      return {success: true, themeName: result.themeName};
+      
+      return {
+        success: true, 
+        message: `Successfully verified on theme: ${result.themeName}`,
+        themeName: result.themeName
+      };
     } else {
       return {
         success: false, 
         themeName: result.themeName,
-        error: "App embed not detected. Did you click 'Save' in the theme editor?",
+        error: `Not found on "${result.themeName}". Did you click 'Save' in the theme editor?`,
       };
     }
   }
+  return { sucess: false, error: "Unknown error occurred" };
 };
 
 export default function Index() {
@@ -186,6 +203,25 @@ export default function Index() {
   const enableTracking = async () => {
     await fetcher.submit({ action: "enableTracking" }, { method: "POST" });
   };
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data) {
+      const { success, message, error } = fetcher.data;
+
+      if (success) {
+        // Show success toast
+        shopify.toast.show(message || "Operation successful", {
+          duration: 3000,
+        });
+      } else {
+        // Show error toast (red)
+        shopify.toast.show(error || message || "An error occurred", {
+          duration: 5000,
+          isError: true,
+        });
+      }
+    }
+  }, [fetcher.state, fetcher.data, shopify]);
 
   // Update status of Setup guide based on responses
   useEffect(() => {
@@ -309,10 +345,12 @@ export default function Index() {
                       </s-paragraph>
                       <s-button 
                         variant={tutorialData.webPixelStatus ? "secondary" : "primary"} 
-                        onClick={enableTracking}
-                        disabled={tutorialData.webPixelStatus === true}
+                        onClick={() => fetcher.submit({ action: "enableTracking" }, { method: "POST" })}
+                        disabled={tutorialData.webPixelStatus === true || fetcher.state !== "idle"}
                       >
-                        {tutorialData.webPixelStatus ? "Tracking Enabled" : "Enable Tracking"}
+                        {fetcher.state === "submitting" && fetcher.formData?.get("action") === "enableTracking" 
+                          ? "Enabling..." 
+                          : tutorialData.webPixelStatus ? "Tracking Enabled" : "Enable Tracking"}
                       </s-button>
                       {trackingStatus && <s-text>{trackingStatus}</s-text>}
                     </s-grid>

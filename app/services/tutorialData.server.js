@@ -60,7 +60,7 @@ export async function setCreateExpPage(tutId, inputData) {
     });
 }
 
-export async function getOnSiteTracking(tutId, inputData) {
+export async function setOnSiteTracking(tutId, inputData) {
     try {
         return await db.tutorialData.update({
             where : { id: tutId },

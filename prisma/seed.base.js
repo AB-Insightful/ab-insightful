@@ -283,18 +283,20 @@ export async function seedBase(prisma) {
 
   // ----- TutorialData -----
   await prisma.tutorialData.upsert({
-    where: { sessionId: session.id },
+    where: { id: 1 }, 
     update: {
-      generalSettings: true,
-      createExperiment: true,
+      sessionId: session.id,
+      generalSettings: false,
+      createExperiment: false,
       viewedListExperiment: false,
       viewedReportsPage: false,
       onSiteTracking: false,
     },
     create: {
+      id: 1,
       sessionId: session.id,
-      generalSettings: true,
-      createExperiment: true,
+      generalSettings: false,
+      createExperiment: false,
       viewedListExperiment: false,
       viewedReportsPage: false,
       onSiteTracking: false,

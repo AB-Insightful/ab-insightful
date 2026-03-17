@@ -102,8 +102,15 @@ export const action = async ({ request }) => {
   }
 
   //add an email to the list
+  //sends subscriber email 
   if (intent === "addEmail") {
+
     const email = (formData.get("email") || "").trim().toLowerCase();
+
+    const {subscribeEmail} = await import ("../services/notifications.server");
+    const emailSubStatus= await subscribeEmail(email);
+    console.log("email subscribed: " + emailSubStatus);
+
 
     //check if empty
     if (!email) return { error: "Email cannot be null", field: "email" };
@@ -129,6 +136,10 @@ export const action = async ({ request }) => {
 
   //delete an email from the list
   if (intent === "deleteEmail") {
+    const email = formData.get("email");
+    const {unsubscribeEmail} = await import ("../services/notifications.server");
+    const unsubStatus = await unsubscribeEmail(email);
+
     const id = parseInt(formData.get("id"), 10);
     await db.contactEmail.delete({ where: { id } });
     return { ok: true };
@@ -171,7 +182,10 @@ export const action = async ({ request }) => {
   }
 
   if (intent === "deleteAll") {
-    
+    //performs notification function to unsubscribe everyone associated with the topic
+    const {unsubscribeAllEmails} = await import ("../services/notifications.server");
+    const res = await unsubscribeAllEmails();
+
     //locate the project
     const project = await db.project.findUnique({
       where: { shop: session.shop },
@@ -330,10 +344,15 @@ export default function Settings() {
 
   //handler functions
   const handleAddEmail = () => {fetcher.submit({ intent: "addEmail", email: emailInput }, { method: "post" });};
-  const handleDeleteEmail = (id) => {fetcher.submit({ intent: "deleteEmail", id: String(id) }, { method: "post" });};
   const handleAddPhone = () => {fetcher.submit({ intent: "addPhone", phone: phoneInput }, { method: "post" });};
-  const handleDeletePhone = (id) => {fetcher.submit({ intent: "deletePhone", id: String(id) }, { method: "post" });};
-  const handleDeleteAllContact = () => {fetcher.submit({ intent: "deleteAll" }, { method: "post" });};   
+  const handleDeletePhone = (id) => {fetcher.submit({ intent: "deletePhone", id: String(id)}, { method: "post" });};
+  const handleDeleteAllContact = () => {fetcher.submit({ intent: "deleteAll" }, { method: "post" });};  
+  
+  const handleDeleteEmail = (id, email) => {
+    fetcher.submit({ intent: "deleteEmail", id: String(id), email }, { method: "post" });
+  
+  };
+
   const handleSaveDefaultGoal = () => {
     if (!hasPendingGoalChanges || isSavingGoal) return;
     goalFetcher.submit(
@@ -414,7 +433,7 @@ export default function Settings() {
                         {contactEmails.map((entry) => (
                           <s-clickable-chip
                             key={entry.id}
-                            onClick={() => handleDeleteEmail(entry.id)}
+                            onClick={() => handleDeleteEmail(entry.id, entry.email)}
                             onMouseEnter={() => setHoveredEmailId(entry.id)}
                             onMouseLeave={() => setHoveredEmailId(null)}
                           >

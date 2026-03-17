@@ -1,11 +1,10 @@
 import { useLoaderData } from "react-router";
-import ReactDOM from "react-dom";
 import Markdown from "marked-react";
 import path from "path";
 import { promises as fs } from "fs";
 
 export const loader = async ({ params }) => {
-  const { filename } = params;
+  const filename = params.article || params.filename;
 
   //path to MDs in app/routes/data/
   const filePath = path.join(
@@ -17,7 +16,7 @@ export const loader = async ({ params }) => {
   );
 
   try {
-    const article = await fs.readFile(filePath);
+    const article = await fs.readFile(filePath, "utf-8");
 
     return { article };
   } catch (error) {

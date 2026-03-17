@@ -1,4 +1,4 @@
-import { ExperimentStatus } from "@prisma/client";
+import { ExperimentStatus } from "./experimentConstants.js";
 
 export function formatRuntime(startDateISO, endDateISO, status) {
     

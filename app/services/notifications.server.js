@@ -61,19 +61,22 @@ export async function sendEmailEnd(experimentId, experimentName, shop)
     }
 
     //fetch analysis for determining winner
-    const { getVariants } = await import("../services/variant.server");
-    const variants = await getVariants(experimentId);
+    const { getVariants } = await import("../services/variant.server"); 
+    const variants = await getVariants(experimentId); //fetch variants for experiment
     const { getAnalysis } = await import("../services/experiment.server");
     
+    //fetch analysis for all experiments (including mobile and desktop)
     const analysisResults = await Promise.all(
         variants.map(async (v) => {
             const a = await getAnalysis(experimentId, v.id, "all");
+            //if no analysis, return null
             if (!a) return null;
+            //return all analysises, and also the variant name
             return { ...a, variantName: v.name };
         })
     );
 
-    // dumps any null data before returning 
+    //drops null entries (if a variant has no analysis it gets excluded)
     const analysis = analysisResults.filter(Boolean);
 
     const winnerSummary = determineWinner(analysis);
@@ -128,23 +131,31 @@ export async function subscribeEmail(email)
 
 //determine the winner of the completed experiment
 export function determineWinner(analysis) {
+    //must have %80 probability of being best
     const PROB_THRESHOLD = 0.8;
+    //must be %1 better than control
     const DELTA_THRESHOLD = 0.01;
 
     //error handling
     if (!analysis || analysis.length === 0) return "Inconclusive";
+    //find control for baseline, if no controll can't make comparison (inconclusive)
     const control = analysis.find(a => a.variantName === "Control");
     if (!control) return "Inconclusive";
 
+
     const winners = analysis.filter(variant => {
         if (variant.variantName === "Control") return false;
+        //how much better variant is than control
         const delta = variant.conversionRate - control.conversionRate;
+        //return variant if it's better than probability threshold and better than control
         return variant.probabilityOfBeingBest >= PROB_THRESHOLD && delta > DELTA_THRESHOLD;
     });
 
+    //if no better variants, inconclusive
     if (winners.length === 0) return "Inconclusive";
 
     //map variant names to [A/B/C/D] labels or "Base case" for Control
+    //first non control gets A, second B, etc
     const VARIANT_LABELS = { "Control": "Base case" };
     const nonControlVariants = analysis
         .filter(a => a.variantName !== "Control")
@@ -154,12 +165,13 @@ export function determineWinner(analysis) {
         VARIANT_LABELS[v.name] = v.label;
     });
 
+    //if one winner, return it directly
     if (winners.length === 1) {
         const label = VARIANT_LABELS[winners[0].variantName] ?? winners[0].variantName;
         return `Variant ${label} has won`;
     }
 
-    //multiple winners — return the one with highest probability
+    //multiple winners - return the one with highest probability
     const topWinner = winners.reduce((best, curr) =>
         curr.probabilityOfBeingBest > best.probabilityOfBeingBest ? curr : best
     );

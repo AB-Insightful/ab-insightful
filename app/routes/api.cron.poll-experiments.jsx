@@ -1,4 +1,5 @@
 import { env } from "node:process";
+import db from "../db.server";
 export async function loader({ request }) {
   if (env.NODE_ENV === "development") {
     console.log("[poll-experiments] received request: ", request);
@@ -67,11 +68,24 @@ export async function loader({ request }) {
       let start_results = [];
       let end_results = [];
       let failures = [];
+      const { sendEmailStart } = await import("../services/notifications.server");
+      const { sendEmailEnd } = await import("../services/notifications.server");
       if (started_experiments.length > 0 ) {
         for (const experiment of started_experiments) {
           console.log(experiment);
           try{
             start_results.push(await startExperiment(experiment.id));
+            
+            //check if starting of experiment notifications is enabled
+            const project = await db.project.findUnique({
+                where: { id: experiment.projectId },
+                select: { enableExperimentStart: true, shop: true }
+            });
+
+            //send the email if enabled
+            if (project?.enableExperimentStart) {
+                await sendEmailStart(experiment.id, experiment.name, project.shop);
+            }
           }catch(e){
             failures.push(e.message);
           }
@@ -81,6 +95,17 @@ export async function loader({ request }) {
         for (const experiment of ended_experiments) {
           try{
             end_results.push(await endExperiment(experiment.id));
+            
+            //check if ending of experiment notifications is enabled
+            const project = await db.project.findUnique({
+                where: { id: experiment.projectId },
+                select: { enableExperimentEnd: true, shop: true }
+            });
+
+            //send the email if enabled
+            if (project?.enableExperimentEnd) {
+                await sendEmailEnd(experiment.id, experiment.name, project.shop);
+            }
           }catch(e){
             failures.push(e.message);
           }
@@ -97,7 +122,7 @@ export async function loader({ request }) {
           {
             status: 200,
             headers: {
-              "Content-Type": "application.json",
+              "Content-Type": "application/json",
             },
           },
         );

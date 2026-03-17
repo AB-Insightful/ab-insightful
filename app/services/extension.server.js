@@ -6,18 +6,29 @@ export async function registerWebPixel({ request }) {
   const { admin, session } = await authenticate.admin(request);
 
   // First check to see if the web pixel is already registered
-  const webPixelId = await getWebPixelId(session);
+  let webPixelId = await getWebPixelId(session);
+  let validId = null;
 
   if (webPixelId) {
-    return new Response(
-      JSON.stringify({
-        message:
-          "App pixel registered successfully. You can mark this step as complete!",
-        action: "enableTracking",
-      }),
-      { status: 200 },
-    );
+	 // validate that this ID still exists for THIS shop
+    validId = await validateWebPixelId(admin, webPixelId);
   }
+
+  // If the ID is valid, we are done
+  if (validId) {
+    return new Response(
+        JSON.stringify({
+          message:
+            "App pixel registered successfully. You can mark this step as complete!",
+          action: "enableTracking",
+        }),
+        { status: 200 },
+      );
+	}	
+
+  // If we reach here, the ID was missing or stale (invalid)
+  await storeWebPixelId(session, null);
+  webPixelId = null;
 
   const settings = {
     accountID: "123",
@@ -28,23 +39,12 @@ export async function registerWebPixel({ request }) {
     `#graphql
         mutation($settings: JSON!) {
         webPixelCreate(webPixel: { settings: $settings }) {
-          userErrors {
-            code
-            field
-            message
-          }
-          webPixel {
-            settings
-            id
-          }
+          userErrors { code field message }
+          webPixel { id }
         }
       }
       `,
-    {
-      variables: {
-        settings: settings,
-      },
-    },
+    { variables: { settings } },
   );
 
   const responseAsJSON = await response.json();
@@ -54,14 +54,10 @@ export async function registerWebPixel({ request }) {
     const isTaken = userErrors.some((e) => e.code === "TAKEN");
 
     if (isTaken) {
-      // Pixel exists on Shopify but the local DB lost the ID — recover it
-      console.log(
-        "Web pixel already exists on Shopify. Recovering existing ID...",
-      );
+      // Pixel exists on Shopify but local DB is empty
       const existingId = await fetchWebPixelIdFromShopify(admin);
       if (existingId) {
         await storeWebPixelId(session, existingId);
-        console.log(`Recovered and stored existing web pixel ID: ${existingId}`);
         return new Response(
           JSON.stringify({
             message:
@@ -72,32 +68,33 @@ export async function registerWebPixel({ request }) {
         );
       }
     }
-
-    console.error(
+	
+	console.error(
       "An error occurred while trying to register the Web Pixel App Extension:",
       userErrors,
     );
+
     return new Response(
-      JSON.stringify({
-        message:
-          "App pixel was unable to register. Please check Shopify Admin -> Settings -> Customer events. If ab-insightful is already registered, mark this item as complete. Otherwise, please try again.",
-        action: "enableTracking",
-      }),
+      JSON.stringify({ 
+		message: 
+			"App pixel was unable to register. Please check Shopify Admin -> Settings -> Customer events. If ab-insightful is already registered, mark this item as complete. Otherwise, please try again.", 
+		action: "enableTracking" }),
       { status: 500 },
     );
   }
 
+  // Store the brand new ID
   const newWebPixelId = responseAsJSON.data?.webPixelCreate?.webPixel?.id;
   await storeWebPixelId(session, newWebPixelId);
   console.log(`Created and stored web pixel with ID: ${newWebPixelId}`);
-
+  
   return new Response(
-    JSON.stringify({
-      message:
-        "App pixel registered successfully. You can mark this step as complete!",
-      action: "enableTracking",
-    }),
-    { status: 200 },
+    JSON.stringify({ 
+		message: 
+		"App pixel registered successfully. You can mark this step as complete!",
+	action: "enableTracking",
+	}),
+	{ status: 200 },
   );
 }
 
@@ -280,4 +277,26 @@ export async function updateAppUrlMetafield({ request }) {
       },
     },
   );
+  // Checks whether a given webPixelId actually exists on THIS shop
+  async function validateWebPixelId(admin, webPixelId) {
+	  if (!webPixelId) return null;
+
+	  try {
+		const response = await admin.graphql(
+		  `#graphql
+			query GetWebPixel($id: ID!) {
+			  webPixel(id: $id) {
+				id
+			  }
+			}
+		  `,
+		  { variables: { id: webPixelId } },
+		);
+
+		const json = await response.json();
+		return json.data?.webPixel?.id ?? null;
+	  } catch (error) {
+		return null;
+	  }
+	}
 }

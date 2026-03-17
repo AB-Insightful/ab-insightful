@@ -29,6 +29,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
   let getCandidatesForScheduledStart;
   let endExperiment;
   let startExperiment;
+  const mockProjectFindUnique = vi.fn();
 
   async function importLoaderWithMocks() {
     vi.resetModules();
@@ -39,19 +40,37 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
     startExperiment = vi.fn();
 
     vi.doMock("../services/experiment.server", () => ({
-      getCandidatesForScheduledEnd,
-      getCandidatesForScheduledStart,
-      endExperiment,
-      startExperiment,
+        getCandidatesForScheduledEnd,
+        getCandidatesForScheduledStart,
+        endExperiment,
+        startExperiment,
     }));
 
-    // import after env + mocks are set
+    // Add this — db is used directly in the cron for project flag gating
+    vi.doMock("../db.server", () => ({
+        default: {
+            project: { findUnique: mockProjectFindUnique },
+        },
+    }));
+
+    // Also mock notifications.server so sendEmail* don't fire for real
+    vi.doMock("../services/notifications.server", () => ({
+        sendEmailStart: vi.fn(),
+        sendEmailEnd: vi.fn(),
+    }));
+
     const mod = await import("../routes/api.cron.poll-experiments.jsx");
     return mod.loader;
   }
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: flag off, so no email sends during cron tests that don't care about it
+    mockProjectFindUnique.mockResolvedValue({
+        enableExperimentStart: false,
+        enableExperimentEnd: false,
+        shop: "test.myshopify.com",
+    });
 
     process.env = { ...originalEnv };
     process.env.NODE_ENV = "production";
@@ -164,8 +183,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
     const response = await loader({ request });
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("Content-Type")).toBe("application.json");
-
+    expect(response.headers.get("Content-Type")).toBe("application/json");
     const body = await readJson(response);
 
     // production code stringifies arrays via template literal: `${started_experiments}`

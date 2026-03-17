@@ -9,6 +9,8 @@
 //   token         — string  —  unique token stored on ContactEmail/ContactPhone record
 //   shop          — string  — "test-store-for-ben.myshopify.com"
 
+//note: based on change in planning (aws has it's own subscribe/unsubscribed), this is likely to not be used
+
 const APP_HANDLE = "ab-insightful-1"; //update if app handle changes
 
 //test-store-for-ben.myshopify.com -> test-store-for-ben

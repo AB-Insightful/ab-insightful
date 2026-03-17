@@ -76,10 +76,20 @@ export const action = async ({ request }) => {
       console.error("Email toggle value change was invalid: ", error)
       return {ok: false, error: "failed to change email toggle"};
     }
-    //function and commands that send email (for testing purposes)
+    //function and commands that send email on experiment start (for testing purposes)
     try {
-      const { sendEmailTopic } = await import ("../services/notifications.server");
-      await sendEmailTopic(); 
+      const { sendEmailStart } = await import ("../services/notifications.server");
+      await sendEmailStart(); 
+    }
+    catch (error) {
+      console.error("Email Notification Toggle Error: ", error);
+      return {ok: false, error: "failed to send email"};
+    } 
+
+    //function and commands that send email on experiment end (for testing purposes)
+    try {
+      const { sendEmailEnd } = await import ("../services/notifications.server");
+      await sendEmailEnd(); 
     }
     catch (error) {
       console.error("Email Notification Toggle Error: ", error);

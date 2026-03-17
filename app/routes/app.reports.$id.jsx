@@ -18,7 +18,7 @@ import {
   ResponsiveContainer,
   ReferenceLine
 } from "recharts";
-import { ExperimentStatus } from "@prisma/client";
+import { ExperimentStatus } from "../utils/experimentConstants.js";
 import { isLockedStatus, allowedStatusIntents } from "./policies/experimentPolicy";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";

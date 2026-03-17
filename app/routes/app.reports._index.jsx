@@ -6,7 +6,7 @@ import DateRangePicker from "../components/DateRangePicker";
 import SessionsCard from "../components/SessionsCard.jsx";
 import ConversionCard from "../components/ConversionsCard.jsx";
 import shopify from "../shopify.server";
-import { ExperimentStatus } from "@prisma/client";
+import { ExperimentStatus } from "../utils/experimentConstants.js";
 import { usePagination } from "../hooks/usePagination";
 import Pagination from "../hooks/Pagination";
 

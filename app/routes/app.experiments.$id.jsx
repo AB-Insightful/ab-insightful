@@ -17,7 +17,7 @@ import { authenticate } from "../shopify.server";
 import { useFetcher, redirect, useLoaderData, useRevalidator, useSearchParams } from "react-router";
 import { useState, useEffect, useMemo} from "react";
 import db from "../db.server";
-import { ExperimentStatus } from "@prisma/client";
+import { ExperimentStatus } from "../utils/experimentConstants.js";
 import { TimeSelect } from "../utils/timeSelect";
 import { validateStartIsInFuture } from "../utils/validateStartIsInFuture";
 import { validateEndIsAfterStart } from "../utils/validateEndIsAfterStart";

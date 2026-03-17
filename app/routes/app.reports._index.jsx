@@ -18,22 +18,24 @@ export async function loader({ request }) {
 
   //get the list of experiments & return them if there are any
   // Promise.all to fetch both experiments and session data in parallel for efficiency
-  const [{ getExperimentsList1 }, { getSessionReportData }, { getConversionsReportData }] = await Promise.all(
-    [
-      import("../services/experiment.server"),
-      import("../services/analytics.server"),
-      import("../services/conversions.server"),
-    ],
-  );
+  const [
+    { experimentListReport },
+    { getSessionReportData },
+    { getConversionsReportData },
+  ] = await Promise.all([
+    import("../services/experiment.server"),
+    import("../services/analytics.server"),
+    import("../services/conversions.server"),
+  ]);
 
   const [experiments, sessionData, conversionsData] = await Promise.all([
-    getExperimentsList1(),
+    experimentListReport(),
     getSessionReportData(admin),
     getConversionsReportData(admin),
   ]);
 
   //looks up tutorial data
-  const { getTutorialData } = await import ("../services/tutorialData.server");
+  const { getTutorialData } = await import("../services/tutorialData.server");
   const tutorialInfo = await getTutorialData();
 
   // loader now returns a structured object containing both experiments and session data
@@ -42,47 +44,49 @@ export async function loader({ request }) {
     experiments: experiments || [],
     sessionData: sessionData || { sessions: [], total: 0 },
     conversionsData: conversionsData || { sessions: [], total: 0 },
-    tutorialData: tutorialInfo
+    tutorialData: tutorialInfo,
   };
 }
 
-
 //client side code (probably -Paul)
 
-export async function action ({request})
-{
+export async function action({ request }) {
   const formData = await request.formData();
   const intent = formData.get("intent");
-  if(intent === "tutorial_viewed")
-  {
+  if (intent === "tutorial_viewed") {
     try {
-        const { setViewedReportsPage } = await import("../services/tutorialData.server");
-        await setViewedReportsPage(1, true); //always sets the item in tutorialdata to true, selects 1st tuple
-        return {ok: true, action: "tutorial_viewed"}; 
-      } catch (error) {
-        console.error("Tutorial Error:", error);
-        return {ok: false, error: "Failed to update viewedListExperiment"}, { status: 500};
-      }
+      const { setViewedReportsPage } = await import(
+        "../services/tutorialData.server"
+      );
+      await setViewedReportsPage(1, true); //always sets the item in tutorialdata to true, selects 1st tuple
+      return { ok: true, action: "tutorial_viewed" };
+    } catch (error) {
+      console.error("Tutorial Error:", error);
+      return (
+        { ok: false, error: "Failed to update viewedListExperiment" },
+        { status: 500 }
+      );
+    }
   }
-  
-  return { ok: false, error: "unknown intent"};
 
+  return { ok: false, error: "unknown intent" };
 }
 export default function Reports() {
   //get list of experiments
-  const { experiments, sessionData, conversionsData,tutorialData } = useLoaderData();
+  const { experiments, sessionData, conversionsData, tutorialData } =
+    useLoaderData();
   const tutorialFetcher = useFetcher(); //performs task for the tutorial popup
-  
-  const modalRef = useRef(null);
-  
 
+  const modalRef = useRef(null);
 
   //get date range from context
   const { dateRange } = useDateRange();
 
   //state for all experiments
   const allActiveExperiments = (experiments || []).filter(
-    (exp) => exp.status !== ExperimentStatus.archived && exp.status !== ExperimentStatus.draft
+    (exp) =>
+      exp.status !== ExperimentStatus.archived &&
+      exp.status !== ExperimentStatus.draft,
   );
   const [filteredSessionData, setFilteredSessionData] = useState(
     sessionData || { sessions: [], total: 0 },
@@ -91,9 +95,14 @@ export default function Reports() {
     conversionsData || { sessions: [], total: 0 },
   );
   //pagination elements
-  const { currentPage, setCurrentPage, totalPages, startIndex, paginatedItems: paginatedExperiments } =
-    usePagination(allActiveExperiments, 6);
- 
+  const {
+    currentPage,
+    setCurrentPage,
+    totalPages,
+    startIndex,
+    paginatedItems: paginatedExperiments,
+  } = usePagination(allActiveExperiments, 6);
+
   //calculate runtime using formatRuntime utility
   const getRuntime = (experiment) => {
     return formatRuntime(
@@ -138,9 +147,7 @@ export default function Reports() {
   // Render all shown report names as links to the experiment analytics page.
   const renderExperimentName = (experiment) => {
     const name = experiment.name ?? "N/A";
-    return <s-link href={"/app/reports/" + experiment.id}>
-                {name}
-              </s-link>;
+    return <s-link href={"/app/reports/" + experiment.id}>{name}</s-link>;
   };
 
   //get conversions for experiment
@@ -226,9 +233,12 @@ export default function Reports() {
 
   //filter experiments when dateRange from context changes or experiments load
   useEffect(() => {
-
-    //tutorial display conditional 
-    if ((tutorialData.viewedReportsPage == false) && modalRef.current && typeof modalRef.current.showOverlay === 'function') {
+    //tutorial display conditional
+    if (
+      tutorialData.viewedReportsPage == false &&
+      modalRef.current &&
+      typeof modalRef.current.showOverlay === "function"
+    ) {
       modalRef.current.showOverlay();
     }
 
@@ -241,35 +251,42 @@ export default function Reports() {
     <s-page heading="Reports">
       {/* date range picker component */}
       <DateRangePicker onDateRangeChange={handleDateRangeChange} />
-      
+
       {/*modal popup for tutorial */}
       <s-modal
-            id="tutorial-modal-report"
-            ref={modalRef}
-            heading="Quick tour"
-            padding="base"
-            size="base"
+        id="tutorial-modal-report"
+        ref={modalRef}
+        heading="Quick tour"
+        padding="base"
+        size="base"
+      >
+        <s-stack gap="base">
+          <s-paragraph>
+            Welcome to the Reports Overview page. This page provides a summary
+            of experiment results and overall performance metrics. You can
+            review aggregated data, compare experiments, filter reports by date
+            or status, and access detailed breakdowns for deeper analysis. Use
+            this page to evaluate outcomes, identify trends, and support
+            data-driven decision-making.
+          </s-paragraph>
+
+          <s-button
+            variant="primary"
+            inLineSize="fill"
+            commandFor="tutorial-modal-report"
+            command="--hide"
+            onClick={() => {
+              tutorialFetcher.submit(
+                { intent: "tutorial_viewed" },
+                { method: "post" },
+              );
+            }}
           >
-          <s-stack gap="base">
-            <s-paragraph>
-              Welcome to the Reports Overview page. This page provides a summary of experiment results and overall performance metrics. You can review aggregated data, compare experiments, filter reports by date or status, and access detailed breakdowns for deeper analysis. Use this page to evaluate outcomes, identify trends, and support data-driven decision-making.
-            </s-paragraph>
-          
-              <s-button
-              variant="primary"
-              inLineSize = "fill"
-              commandFor="tutorial-modal-report"
-              command="--hide"
-              onClick = {() => {
-                tutorialFetcher.submit(
-                  { intent: "tutorial_viewed"},
-                  {method: "post"}
-                )
-              }}
-              > Understood. Do not show this again.
-              </s-button>
-          </s-stack>
-        </s-modal>
+            {" "}
+            Understood. Do not show this again.
+          </s-button>
+        </s-stack>
+      </s-modal>
 
       {/* Analytics Dashboard Grid Section */}
       <div style={{ margin: "24px 0" }}>

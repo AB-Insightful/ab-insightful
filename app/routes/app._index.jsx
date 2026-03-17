@@ -39,7 +39,8 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 // TODO in the /app/services, add a extension.server.js that will do this "register" part.
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
+  const {admin, session } = await authenticate.admin(request);
+  const shop = session.shop.replace(".myshopify.com", "");
   const { updateWebPixel } = await import("../services/extension.server");
   await updateWebPixel({ request });
 
@@ -50,12 +51,13 @@ export const loader = async ({ request }) => {
   
   const tutorialData = await getTutorialData();
   const webPixelRes = await webPixelNotNull();
-  
+
   tutorialData.allSetupDone= (
     tutorialData.generalSettings &&
     tutorialData.createExperiment &&
     tutorialData.viewedListExperiment &&
-    tutorialData.viewedReportsPage
+    tutorialData.viewedReportsPage &&
+    tutorialData.onSiteTracking
   );
 
   tutorialData.webPixelStatus = webPixelRes; //true means exists, false means null
@@ -82,7 +84,8 @@ export const loader = async ({ request }) => {
         analyses: []
       }, 
       tableData: [], 
-      tutorialData: tutorialData
+      tutorialData: tutorialData,
+      shop,
     };
   }
   
@@ -115,11 +118,11 @@ export const loader = async ({ request }) => {
   )).filter(Boolean); // now we are dropping rows that are entirely null
   experimentReportData["expId"] = latestExperiment.id
 
-  return {experiment: experimentReportData, tableData, tutorialData};
+  return {experiment: experimentReportData, tableData, tutorialData, shop};
 }
 
 export const action = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
   const actionType = formData.get("action");
 
@@ -128,8 +131,46 @@ export const action = async ({ request }) => {
     const { registerWebPixel } = await import("../services/extension.server");
     const response = await registerWebPixel({ request });
 
-    return response.json();
+    if (response.ok) {
+      return {
+        success: true,
+        message: data.message ||"Tracking enabled successfully",
+      };
+    } else {
+      return {
+        success: false,
+        message: data.message ||"Tracking could not be enabled",
+      };
+    }
   }
+
+  if (actionType === "verifyAppEmbed") {
+    const { verifyAppEmbed } = await import("../services/appEmbed.server");
+    const result = await verifyAppEmbed(
+      admin, 
+      "shopify://apps/ab-insightful/blocks/ab-insightful-embed/", 
+      session
+    );
+
+    // if the app embed is enabled, set the on site tracking to true
+    if (result.isEnabled){
+      const { setOnSiteTracking } = await import("../services/tutorialData.server");
+      await setOnSiteTracking(1, true); // sets OnSiteTracking column to true
+      
+      return {
+        success: true, 
+        message: `Successfully verified on theme: ${result.themeName}`,
+        themeName: result.themeName
+      };
+    } else {
+      return {
+        success: false, 
+        themeName: result.themeName,
+        error: `Not found on "${result.themeName}". Did you click 'Save' in the theme editor?`,
+      };
+    }
+  }
+  return { sucess: false, error: "Unknown error occurred" };
 };
 
 export default function Index() {
@@ -137,11 +178,14 @@ export default function Index() {
   const shopify = useAppBridge();
 
   //aquire loader data
-  const {experiment, tableData, tutorialData} = useLoaderData()
+  const {experiment, tableData, tutorialData, shop} = useLoaderData()
 
   const { dateRange } = useDateRange();
   //need to check sorting to ensure this is always baseline
   const baselineName = experiment.variants?.[0]?.id;
+  // To show the mandatory setup guide, either the web pixel is not enabled or the app embed is not enabled
+  const showMandatorySetup = !tutorialData.webPixelStatus || !tutorialData.onSiteTracking;
+  const deepLink = `https://admin.shopify.com/store/${shop}/themes/current/editor?context=apps`;
 
   // State for setup guide
   //ties setupGuide to whether webPixelis contained within session (assumes only 1 session)
@@ -159,6 +203,25 @@ export default function Index() {
   const enableTracking = async () => {
     await fetcher.submit({ action: "enableTracking" }, { method: "POST" });
   };
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data) {
+      const { success, message, error } = fetcher.data;
+
+      if (success) {
+        // Show success toast
+        shopify.toast.show(message || "Operation successful", {
+          duration: 3000,
+        });
+      } else {
+        // Show error toast (red)
+        shopify.toast.show(error || message || "An error occurred", {
+          duration: 5000,
+          isError: true,
+        });
+      }
+    }
+  }, [fetcher.state, fetcher.data, shopify]);
 
   // Update status of Setup guide based on responses
   useEffect(() => {
@@ -242,7 +305,7 @@ export default function Index() {
       </s-button>
 
       {/* Begin Setup guide */}
-      {tutorialData.webPixelNotNull && (
+      {showMandatorySetup && (
         <s-section>
           <s-grid gap="small">
             {/* Header */}
@@ -253,14 +316,10 @@ export default function Index() {
                 alignItems="center"
               >
                 <s-heading>Mandatory Setup</s-heading>
-                {/* Critical steps need to come first. Once they are completed, 
-                the user may choose to dismiss the setup guide */}
                 {progress >= 1 && (
                   <s-button
                     accessibilityLabel="Dismiss Guide"
-                    onClick={() =>
-                      setVisible({ ...visible, setupGuide: false })
-                    }
+                    onClick={() => setVisible({ ...visible, setupGuide: false })}
                     variant="tertiary"
                     tone="neutral"
                     icon="x"
@@ -268,61 +327,86 @@ export default function Index() {
                 )}
               </s-grid>
               <s-paragraph>
-                Please complete the following steps to begin using AB
-                Insightful!
+                Please complete the following steps to begin using AB Insightful!
               </s-paragraph>
             </s-grid>
-            {/* Steps Container */}
-            <s-box
-              borderRadius="base"
-              border="base"
-              background="base"
 
-            >
-              {/* Step 1 */}
-              <s-box>
-                <s-grid
-                  gridTemplateColumns="1fr auto"
-                  gap="base"
-                  padding="small"
-                >
-                  
-                </s-grid>
-                <s-box
-                  padding="small"
-                  paddingBlockStart="none"
-                >
-                  <s-box
-                    padding="base"
-                    background="subdued"
-                    borderRadius="base"
-                  >
-                    <s-grid
-                      gridTemplateColumns="1fr auto"
-                      gap="base"
-                      alignItems="center"
-                    >
-                      <s-grid gap="small-200">
-                        <s-paragraph>
-                          Enable on-site tracking so AB Insightful can collect
-                          information about experiment goal completions.
-                        </s-paragraph>
-                        <s-button variant="primary" onClick={enableTracking}>
-                          Enable Tracking
-                        </s-button>
-                        {trackingStatus && <s-text>{trackingStatus}</s-text>}
-                      </s-grid>
+            {/* Steps Container */}
+            <s-box borderRadius="base" border="base" background="base">
+              
+              {/* Step 1: Enable Tracking */}
+              <s-box padding="small">
+                <s-box padding="base" background="subdued" borderRadius="base">
+                  <s-grid gridTemplateColumns="1fr auto" gap="base" alignItems="center">
+                    <s-grid gap="small-200">
+                      <s-heading>Step 1: Enable Tracking</s-heading>
+                      <s-paragraph>
+                        Enable on-site tracking so AB Insightful can collect information about experiment goal completions.
+                      </s-paragraph>
+                      <s-button 
+                        variant={tutorialData.webPixelStatus ? "secondary" : "primary"} 
+                        onClick={() => fetcher.submit({ action: "enableTracking" }, { method: "POST" })}
+                        disabled={tutorialData.webPixelStatus === true || fetcher.state !== "idle"}
+                      >
+                        {fetcher.state === "submitting" && fetcher.formData?.get("action") === "enableTracking" 
+                          ? "Enabling..." 
+                          : tutorialData.webPixelStatus ? "Tracking Enabled" : "Enable Tracking"}
+                      </s-button>
+                      {trackingStatus && <s-text>{trackingStatus}</s-text>}
                     </s-grid>
-                  </s-box>
+
+                    {/* Status Indicator for Step 1 */}
+                    <s-icon
+                      type={tutorialData.webPixelStatus ? 'check-circle-filled' : 'circle'}
+                      tone={tutorialData.webPixelStatus ? 'success' : 'neutral'}
+                      size='base'
+                    />
+                  </s-grid>
                 </s-box>
               </s-box>
-              {/* Step 2 */}
+
               <s-divider />
-              {/* Add additional steps here... */}
+
+              {/* Step 2: Enable App Embed */}
+              <s-box padding="small">
+                <s-box padding="base" background="subdued" borderRadius="base">
+                  <s-grid gridTemplateColumns="1fr auto" gap="base" alignItems="center">
+                    <s-grid gap="small-200">
+                      <s-heading>Step 2: Enable App Embed</s-heading>
+                      <s-paragraph>
+                        The app embed must be enabled in your theme editor for experiments to run.
+                      </s-paragraph>
+                      
+                      <s-stack direction="inline" gap="base">
+                        <s-button variant="primary" href={deepLink} target="_top">
+                          Open Theme Editor
+                        </s-button>
+                        <s-button 
+                          variant="secondary" 
+                          onClick={() => fetcher.submit({ action: "verifyAppEmbed" }, { method: "POST" })}
+                        >
+                          {fetcher.state === "submitting" ? "Verifying..." : "Verify Installation"}
+                        </s-button>
+                      </s-stack>
+
+                      {fetcher.data?.success && (
+                        <s-text tone="success">Verified! Embed is active.</s-text>
+                      )}
+                    </s-grid>
+
+                    {/* Status Indicator for Step 2 */}
+                    <s-icon
+                      type={tutorialData.onSiteTracking ? 'check-circle-filled' : 'circle'}
+                      tone={tutorialData.onSiteTracking ? 'success' : 'neutral'}
+                      size='base'
+                    />
+                  </s-grid>
+                </s-box>
+              </s-box>
+
             </s-box>
           </s-grid>
         </s-section>
-        
       )}
 
       {/*Will render this section depending on if the setup tutorials have all been viewed*/}

@@ -1,12 +1,19 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { vi, describe, it, expect } from 'vitest';
-import { useLoaderData } from 'react-router';
+import { useLoaderData, useFetcher } from 'react-router';
 import Index from '../routes/app._index'; 
 
 // Mock the specific hooks
 vi.mock('react-router', () => ({
   useLoaderData: vi.fn(),
-  useFetcher: () => ({ state: 'idle', data: null, submit: vi.fn() }),
+  useFetcher: vi.fn(),
+}));
+
+// Mock App Bridge so toast/UI components don't crash
+vi.mock('@shopify/app-bridge-react', () => ({
+  useAppBridge: () => ({
+    toast: { show: vi.fn() }
+  }),
 }));
 
 // Mock the DateRangeContext so it doesn't crash
@@ -16,6 +23,12 @@ vi.mock('../contexts/DateRangeContext', () => ({
 }));
 
 describe('Index Component - Happy Path', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    // Default fetcher state so the "Happy Path" doesn't break
+    useFetcher.mockReturnValue({ state: 'idle', data: null, submit: vi.fn() });
+  });
+
   it('renders correctly with experiment data', () => {
     useLoaderData.mockReturnValue({
       experiment: { 
@@ -54,5 +67,55 @@ describe('Index Component - Happy Path', () => {
     // Verify Formatter Integration
     expect(screen.getByText('50/1000')).toBeInTheDocument(); 
     expect(screen.getByText('45.0%')).toBeInTheDocument(); 
+  });
+
+  describe('Index Component - Setup Tutorial Actions', () => {
+    it('calls fetcher.submit when Enable Tracking is clicked', () => {
+      const mockSubmit = vi.fn();
+      useFetcher.mockReturnValue({
+        state: 'idle',
+        data: null,
+        submit: mockSubmit,
+      });
+  
+      useLoaderData.mockReturnValue({
+        experiment: { variants: [] }, 
+        tableData: [],
+        tutorialData: { webPixelStatus: false, onSiteTracking: false }
+      });
+  
+      render(<Index />);
+      
+      const enableButton = screen.getByRole('button', { name: /Enable Tracking/i });
+      fireEvent.click(enableButton);
+  
+      expect(mockSubmit).toHaveBeenCalledWith(
+        { action: "enableTracking" },
+        { method: "POST" }
+      );
+    });
+  
+    it('shows "Enabling..." text when the fetcher is submitting', () => {
+      useFetcher.mockReturnValue({
+        state: 'submitting',
+        formData: new FormData(), // Mocking the submission context
+        submit: vi.fn(),
+      });
+      // Set formData action so the button knows it is the one being submitted
+      useFetcher.mockReturnValue({
+        state: 'submitting',
+        formData: { get: (key) => (key === "action" ? "enableTracking" : null) },
+        submit: vi.fn()
+      });
+  
+      useLoaderData.mockReturnValue({
+        experiment: {variants: []},
+        tableData: [],
+        tutorialData: { webPixelStatus: false, onSiteTracking: false }
+      });
+  
+      render(<Index />);
+      expect(screen.getByText('Enabling...')).toBeInTheDocument();
+    });
   });
 });

@@ -179,22 +179,23 @@ export async function createAnalysisSnapshot() {
     }
   }
 
-  // Evaluation & auto-termination of experiments
+  // 7. Evaluation & auto-termination of experiments
   for (const exp of experiments) {
+    // skip manual termination experiments/missing end condition
     if (!exp.endCondition || exp.endCondition === "manual") continue;
 
     let shouldTerminate = false;
     const now = new Date();
 
     // Evaluate end date termination criteria
-    if (terminationCriteria.endCondition === "endDate" && terminationCriteria.endDate) {
-      if (now >= new Date(terminationCriteria.endDate)) {
+    if (exp.endCondition === "endDate" && exp.endDate) {
+      if (now >= new Date(exp.endDate)) {
         shouldTerminate = true;
       }
     }
 
     // Evaluate probability to be best termination criteria
-    if (terminationCriteria.endCondition === "stableSuccessProbability") {
+    if (exp.endCondition === "stableSuccessProbability") {
       const latestResult = await db.analysis.findFirst({
         where: {
           experimentId: exp.id,
@@ -205,7 +206,7 @@ export async function createAnalysisSnapshot() {
 
       if (latestResult && latestResult.probabilityOfBeingBest != null) {
         const currentActual = latestResult.probabilityOfBeingBest * 100;
-        const targetThreshold = terminationCriteria.probabilityToBeBest || 80;
+        const targetThreshold = exp.probabilityToBeBest || 80;
 
         if (currentActual >= targetThreshold) {
           shouldTerminate = true;
@@ -217,7 +218,7 @@ export async function createAnalysisSnapshot() {
       const { endExperiment } = await import("./experiment.server");
       await endExperiment(exp.id);
 
-      console.info(`[Auto-terimination] Experiment ${exp.id} closed via ${terminationCriteria.endCondition}.`);
+      console.info(`[Auto-termination] Experiment ${exp.id} closed via ${exp.endCondition}.`);
     }
   }
 

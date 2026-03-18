@@ -217,8 +217,6 @@ export async function createAnalysisSnapshot() {
     if (shouldTerminate) {
       const { endExperiment } = await import("./experiment.server");
       await endExperiment(exp.id);
-
-      console.info(`[Auto-termination] Experiment ${exp.id} closed via ${exp.endCondition}.`);
     }
   }
 

@@ -178,5 +178,48 @@ export async function createAnalysisSnapshot() {
       }
     }
   }
+
+  // Evaluation & auto-termination of experiments
+  for (const exp of experiments) {
+    if (!exp.endCondition || exp.endCondition === "manual") continue;
+
+    let shouldTerminate = false;
+    const now = new Date();
+
+    // Evaluate end date termination criteria
+    if (terminationCriteria.endCondition === "endDate" && terminationCriteria.endDate) {
+      if (now >= new Date(terminationCriteria.endDate)) {
+        shouldTerminate = true;
+      }
+    }
+
+    // Evaluate probability to be best termination criteria
+    if (terminationCriteria.endCondition === "stableSuccessProbability") {
+      const latestResult = await db.analysis.findFirst({
+        where: {
+          experimentId: exp.id,
+          deviceSegment: "all",
+        },
+        orderBy: { calculatedWhen: "desc" },
+      });
+
+      if (latestResult && latestResult.probabilityOfBeingBest != null) {
+        const currentActual = latestResult.probabilityOfBeingBest * 100;
+        const targetThreshold = terminationCriteria.probabilityToBeBest || 80;
+
+        if (currentActual >= targetThreshold) {
+          shouldTerminate = true;
+        }
+      }
+    }
+    
+    if (shouldTerminate) {
+      const { endExperiment } = await import("./experiment.server");
+      await endExperiment(exp.id);
+
+      console.info(`[Auto-terimination] Experiment ${exp.id} closed via ${terminationCriteria.endCondition}.`);
+    }
+  }
+
   return ret;
 }

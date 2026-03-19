@@ -271,6 +271,9 @@ describe("isExperimentActive", () => {
     };
 
     expect(isExperimentActive(experiment, "2026-03-05T00:00:00.000Z")).toBe(true);
+  });
+});
+
 describe("experimentListReport", () => {
   test("success: returns experiments with report fields ordered by createdAt desc", async () => {
     const mockExperiments = [

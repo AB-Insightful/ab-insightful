@@ -8,6 +8,7 @@ import { ExperimentStatus } from "@prisma/client";
 // Accepts an array of treatment variant objects, each with { sectionId, trafficAllocation }.
 // A Control variant is always created automatically with the remaining traffic.
 // Variant names are auto-generated: "Control", "Variant A", "Variant B", "Variant C", ...
+// experimentData may include optional maxUsers (integer); when present, overrides account default.
 export async function createExperiment(
   experimentData,
   { controlSectionId = "", variants = [] } = {},

@@ -832,7 +832,7 @@ export default function CreateExperiment() {
         Discard
       </s-button>
       <s-button slot="secondary-actions" href="/app/experiments">
-        Back to Experiment List
+        Experiments
       </s-button>
       {(errors.form || errors.goal) && (
         <s-box padding="base">

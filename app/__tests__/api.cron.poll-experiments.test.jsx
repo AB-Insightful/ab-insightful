@@ -27,6 +27,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
   // service fns (recreated/mocked per test after vi.resetModules)
   let getCandidatesForScheduledEnd;
   let getCandidatesForScheduledStart;
+  let getCandidatesForStableSuccessEnd;
   let endExperiment;
   let startExperiment;
   const mockProjectFindUnique = vi.fn();
@@ -36,12 +37,14 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
 
     getCandidatesForScheduledEnd = vi.fn();
     getCandidatesForScheduledStart = vi.fn();
+    getCandidatesForStableSuccessEnd = vi.fn();
     endExperiment = vi.fn();
     startExperiment = vi.fn();
 
     vi.doMock("../services/experiment.server", () => ({
         getCandidatesForScheduledEnd,
         getCandidatesForScheduledStart,
+        getCandidatesForStableSuccessEnd,
         endExperiment,
         startExperiment,
     }));
@@ -140,6 +143,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
 
     getCandidatesForScheduledEnd.mockResolvedValue([]);
     getCandidatesForScheduledStart.mockResolvedValue([]);
+    getCandidatesForStableSuccessEnd.mockResolvedValue([]);
 
     const request = makeRequest("GET", {
       "Cron-Secret": "test-secret",
@@ -171,6 +175,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
 
     getCandidatesForScheduledStart.mockResolvedValue(started);
     getCandidatesForScheduledEnd.mockResolvedValue(ended);
+    getCandidatesForStableSuccessEnd.mockResolvedValue([]);
 
     startExperiment.mockResolvedValue(undefined);
     endExperiment.mockResolvedValue(undefined);
@@ -212,6 +217,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
 
     getCandidatesForScheduledEnd.mockResolvedValue([]);
     getCandidatesForScheduledStart.mockResolvedValue([]);
+    getCandidatesForStableSuccessEnd.mockResolvedValue([]);
 
     const request = makeRequest("GET", {
       "Cron-Secret": "secret",
@@ -239,5 +245,29 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
 
     expect(response.status).toBe(405);
     expect(await response.text()).toBe("");
+  });
+
+  test("GET: success (stable winner present) terminates experiment and returns 200", async () => {
+    const loader = await importLoaderWithMocks();
+
+    const stableWinners = [{ id: 301, name: "Stable Winner", projectId: 1 }];
+    
+    getCandidatesForScheduledStart.mockResolvedValue([]);
+    getCandidatesForScheduledEnd.mockResolvedValue([]);
+    getCandidatesForStableSuccessEnd.mockResolvedValue(stableWinners); // MOCK THE WINNER
+
+    endExperiment.mockResolvedValue({ id: 301 });
+
+    const request = makeRequest("GET", {
+        "Cron-Secret": "test-secret",
+        Origin: "cron.process.ab-insightful.internal",
+    });
+
+    const response = await loader({ request });
+    const body = await readJson(response);
+
+    expect(endExperiment).toHaveBeenCalledWith(301);
+    expect(body.ok).toBe(true);
+    expect(body.ended_experiments).toBe("[object Object]");
   });
 });

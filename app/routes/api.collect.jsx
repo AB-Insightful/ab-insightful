@@ -32,11 +32,25 @@ export const action = async ({ request }) => {
   const data = await request.json();
   console.log("Event happened:", data);
 
-  // Don't await - need to return as possible // [ryan] I am assuming so we can service other events asap
-  // but how do i surface the errors?
-  handleCollectedEvent(data);
+  let result;
+  try {
+    result = await handleCollectedEvent(data);
+  } catch (err) {
+    console.error("[api.collect] handleCollectedEvent error:", err);
+    return Response.json(
+      { error: "Event processing failed" },
+      {
+        status: 500,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+        },
+      },
+    );
+  }
 
-  return Response.json(null, {
+  return Response.json(result ?? null, {
     status: 200,
     headers: {
       "Access-Control-Allow-Origin": "*",

@@ -7,6 +7,7 @@ import { ExperimentStatus } from "../utils/experimentConstants.js";
 import { allowedStatusIntents } from "./policies/experimentPolicy";
 import { usePagination } from "../hooks/usePagination";
 import Pagination from "../hooks/Pagination";
+import db from "../db.server";
 
 // Server side code
 
@@ -21,12 +22,22 @@ export async function loader() {
   const { getTutorialData } = await import ("../services/tutorialData.server");
   const tutorialData = await getTutorialData();
 
-  // compute improvements on the server
+  // compute improvements, user counts, and effective max on the server
   const enriched = await Promise.all(
-    experiments.map(async (e) => ({
-      ...e,
-      improvement: await getImprovement(e.id),
-    })),
+    experiments.map(async (e) => {
+      const [improvement, userCount] = await Promise.all([
+        getImprovement(e.id),
+        db.allocation.count({ where: { experimentId: e.id } }),
+      ]);
+      const effectiveMax =
+        e.maxUsers ?? e.project?.maxUsersPerExperiment ?? 10000;
+      return {
+        ...e,
+        improvement,
+        userCount,
+        effectiveMax,
+      };
+    }),
   );
 
   return {experiments: enriched, tutorialData }; // resolved data only
@@ -458,6 +469,9 @@ export default function Experimentsindex() {
           {/* displays N/A when data is null */}
           <s-table-cell>{renderStatus(curExp.status)}</s-table-cell>
           <s-table-cell> {runtime} </s-table-cell>
+          <s-table-cell>
+            {(curExp.userCount ?? 0).toLocaleString()} / {(curExp.effectiveMax ?? 10000).toLocaleString()}
+          </s-table-cell>
           <s-table-cell>N/A</s-table-cell>
           {/* Improvement Cell */}
           <s-table-cell>{formatImprovement(improvement)}</s-table-cell>
@@ -680,6 +694,7 @@ export default function Experimentsindex() {
                 <s-table-header listslot="primary">Name</s-table-header>
                 <s-table-header listSlot="secondary">Status</s-table-header>
                 <s-table-header listSlot="labeled">Runtime</s-table-header>
+                <s-table-header listSlot="labeled" format="numeric">Users</s-table-header>
                 <s-table-header listSlot="labeled" format="numeric">Goal Completion Rate</s-table-header>
                 <s-table-header listSlot="labeled" format="numeric">Improvement (%)</s-table-header>
                 <s-table-header listSlot="labeled" format="numeric">Probability to be the best</s-table-header>

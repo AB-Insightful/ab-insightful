@@ -145,4 +145,14 @@ describe("createExperiment", () => {
     expect(data.description).toBe("D");
     expect(data.endCondition).toBe("manual");
   });
+
+  it("stores maxUsers when provided (per-experiment override)", async () => {
+    await createExperiment(
+      { name: "With max", description: "desc", maxUsers: 5000 },
+      { variants: [{ sectionId: "a", trafficAllocation: 0.5 }] },
+    );
+
+    const data = db.experiment.create.mock.calls[0][0].data;
+    expect(data.maxUsers).toBe(5000);
+  });
 });

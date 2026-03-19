@@ -5,17 +5,6 @@ import { Prisma } from "@prisma/client";
 import db from "../db.server";
 import { action } from "../routes/api.collect.jsx";
 
-async function waitFor(fn, { timeoutMs = 2000, intervalMs = 50 } = {}) {
-  const start = Date.now();
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const val = await fn();
-    if (val) return val;
-    if (Date.now() - start > timeoutMs) return null;
-    await new Promise((r) => setTimeout(r, intervalMs));
-  }
-}
-
 describe("api.collect route integration", () => {
   beforeEach(async () => {
     await db.allocation.deleteMany();
@@ -98,32 +87,23 @@ describe("api.collect route integration", () => {
     expect(response.status).toBe(200);
 
     const body = await response.json();
-    expect(body).toBeNull();
+    expect(body).toBeTruthy();
+    expect(body.result).toBeTruthy();
 
-    const user = await waitFor(
-        () =>
-            db.user.findUnique({
-            where: { shopifyCustomerID: "route-test-user" },
-            }),
-        { timeoutMs: 2000, intervalMs: 50 },
-        );
-
-        expect(user).toBeTruthy();
+    const user = await db.user.findUnique({
+      where: { shopifyCustomerID: "route-test-user" },
+    });
+    expect(user).toBeTruthy();
     expect(user.id).toBe("route-test-user");
 
-    const allocation = await waitFor(
-    () =>
-        db.allocation.findUnique({
-        where: {
-            userId_experimentId: {
-            userId: "route-test-user",
-            experimentId: 8882,
-            },
+    const allocation = await db.allocation.findUnique({
+      where: {
+        userId_experimentId: {
+          userId: "route-test-user",
+          experimentId: 8882,
         },
-        }),
-    { timeoutMs: 2000, intervalMs: 50 },
-    );
-
+      },
+    });
     expect(allocation).toBeTruthy();
     expect(allocation.variantId).toBe(8883);
     expect(allocation.deviceType).toBe("mobile");

@@ -21,6 +21,7 @@ import { ExperimentStatus } from "../utils/experimentConstants.js";
 import { TimeSelect } from "../utils/timeSelect";
 import { validateStartIsInFuture } from "../utils/validateStartIsInFuture";
 import { validateEndIsAfterStart } from "../utils/validateEndIsAfterStart";
+import { validateMaxUsers } from "../utils/validateMaxUsers";
 import { localDateTimeToISOString } from "../utils/localDateTimeToISOString";
 
 // Server side code
@@ -71,6 +72,9 @@ export const action = async ({ request }) => {
     ).trim();
     const durationStr = (formData.get("duration") || "").trim();
     const timeUnitValue = (formData.get("timeUnit") || "").trim();
+
+    const useAccountDefaultMaxUsers = formData.get("useAccountDefaultMaxUsers") === "true";
+    const maxUsersStr = (formData.get("maxUsers") || "").trim();
 
     // Date/Time Fields (accepts both client-side UTC strings or separate date/time fields)
     const startDateUTC = (formData.get("startDateUTC") || "").trim();
@@ -182,6 +186,9 @@ export const action = async ({ request }) => {
       }
     }
 
+    const maxUsersError = validateMaxUsers(useAccountDefaultMaxUsers, maxUsersStr);
+    if (maxUsersError) errors.maxUsers = maxUsersError;
+
     if (Object.keys(errors).length) return { errors };
 
     // Find or create a parent Project for this shop
@@ -265,6 +272,10 @@ export const action = async ({ request }) => {
       });
     }
 
+    if (!useAccountDefaultMaxUsers && maxUsersStr) {
+      experimentData.maxUsers = Number(maxUsersStr);
+    }
+
     const treatmentVariants = variantInputs.map((v) => ({
       sectionId: (v.sectionId || "").trim(),
       trafficAllocation: (v.trafficAllocation || 0) / 100.0,
@@ -287,7 +298,7 @@ export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
   const project = await db.project.findUnique({
     where: { shop: session.shop },
-    select: { defaultGoal: true },
+    select: { defaultGoal: true, maxUsersPerExperiment: true },
   });
 
   //looks up tutorial data
@@ -296,6 +307,7 @@ export const loader = async ({ request }) => {
 
   return {
     defaultGoal: project?.defaultGoal ?? "completedCheckout",
+    maxUsersPerExperiment: project?.maxUsersPerExperiment ?? 10000,
     tutorialData: tutorialInfo,
     shopDomain: session.shop, // provides shop domain for sectionId Picker Mode
   };
@@ -306,7 +318,7 @@ export const loader = async ({ request }) => {
 export default function CreateExperiment() {
   //fetcher stores the data in the fields into a form that can be retrieved
   const fetcher = useFetcher();
-  const { defaultGoal, tutorialData, shopDomain } = useLoaderData();
+  const { defaultGoal, maxUsersPerExperiment, tutorialData, shopDomain } = useLoaderData();
   const tutorialFetcher = useFetcher();
   const modalRef = useRef(null);
 
@@ -332,6 +344,9 @@ export default function CreateExperiment() {
   const [endCondition, setEndCondition] = useState("manual");
   const [goalSelected, setGoalSelected] = useState(defaultGoal);
   const [customerSegment, setCustomerSegment] = useState("allSegments");
+  const [useAccountDefaultMaxUsers, setUseAccountDefaultMaxUsers] = useState(true);
+  const [maxUsers, setMaxUsers] = useState("");
+  const [maxUsersError, setMaxUsersError] = useState("");
   const [startDate, setStartDate] = useState("");
   const [startDateError, setStartDateError] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -454,6 +469,8 @@ export default function CreateExperiment() {
     !!errors.duration ||
     !!timeUnitError ||
     !!errors.timeUnit ||
+    !!maxUsersError ||
+    !!errors.maxUsers ||
     !!startDateError ||
     !!errors.startDate ||
     !!startTimeError ||
@@ -475,23 +492,24 @@ export default function CreateExperiment() {
       ? localDateTimeToISOString(endDate, effectiveEndTime)
       : "";
 
-    const experimentData = {
-      name: name,
-      description: description,
-      controlSectionId: controlSectionId,
-      variantsJSON: JSON.stringify(variants),
-      goal: goalSelected,
-      endCondition: endCondition,
-      startDateUTC: startDateUTC,
-      endDateUTC: endDateUTC,
-      endDate: endDate,
-      probabilityToBeBest: probabilityToBeBest,
-      duration: duration,
-      timeUnit: timeUnit,
-    };
+    const formData = new FormData();
+    formData.set("name", name);
+    formData.set("description", description);
+    formData.set("controlSectionId", controlSectionId);
+    formData.set("variantsJSON", JSON.stringify(variants));
+    formData.set("goal", goalSelected);
+    formData.set("endCondition", endCondition);
+    formData.set("startDateUTC", startDateUTC);
+    formData.set("endDateUTC", endDateUTC);
+    formData.set("endDate", endDate);
+    formData.set("probabilityToBeBest", probabilityToBeBest);
+    formData.set("duration", duration);
+    formData.set("timeUnit", timeUnit);
+    formData.set("useAccountDefaultMaxUsers", String(useAccountDefaultMaxUsers));
+    formData.set("maxUsers", useAccountDefaultMaxUsers ? "" : String(maxUsers));
 
     try {
-      await fetcher.submit(experimentData, { method: "POST" });
+      await fetcher.submit(formData, { method: "POST" });
     } catch (error) {
       console.error("Error during fetcher.submit", error);
     }
@@ -745,6 +763,9 @@ export default function CreateExperiment() {
     setControlSectionId("");
     setGoalSelected(defaultGoal);
     setCustomerSegment("allSegments");
+    setUseAccountDefaultMaxUsers(true);
+    setMaxUsers("");
+    setMaxUsersError("");
     setEndCondition("manual");
     setStartDate("");
     setStartTime("12:00");
@@ -1112,6 +1133,52 @@ export default function CreateExperiment() {
               <s-option value="desktopVisitors">Desktop Visitors</s-option>
               <s-option value="mobileVisitors">Mobile Visitors</s-option>
             </s-select>
+
+            <s-checkbox
+              label="Use account default max users"
+              checked={useAccountDefaultMaxUsers}
+              onChange={() => {
+                setUseAccountDefaultMaxUsers(!useAccountDefaultMaxUsers);
+                if (useAccountDefaultMaxUsers) {
+                  setMaxUsers(String(maxUsersPerExperiment ?? 10000));
+                } else {
+                  setMaxUsers("");
+                  setMaxUsersError("");
+                }
+              }}
+              details={`When enabled, uses the account default (${(maxUsersPerExperiment ?? 10000).toLocaleString()} users). Uncheck to set a custom max for this experiment.`}
+            />
+            {!useAccountDefaultMaxUsers && (
+              <s-number-field
+                label="Max users"
+                value={maxUsers}
+                inputMode="numeric"
+                min={1}
+                max={1000000}
+                step={1}
+                error={maxUsersError || errors.maxUsers}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setMaxUsers(v);
+                  const num = Number(v);
+                  if (v === "" || v === null || v === undefined) {
+                    setMaxUsersError("Max users is required when not using account default");
+                  } else if (!Number.isInteger(num) || num < 1) {
+                    setMaxUsersError("Must be at least 1");
+                  } else if (num > 1000000) {
+                    setMaxUsersError("Must be at most 1,000,000");
+                  } else {
+                    setMaxUsersError("");
+                  }
+                }}
+                onBlur={() => {
+                  if (!useAccountDefaultMaxUsers && !maxUsers.trim()) {
+                    setMaxUsersError("Max users is required when not using account default");
+                  }
+                }}
+                details="Maximum number of users to include in this experiment. Leave account default checked to use your account setting."
+              />
+            )}
           </s-stack>
         </s-form>
       </s-section>

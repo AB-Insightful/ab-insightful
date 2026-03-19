@@ -11,10 +11,11 @@ export async function seedBase(prisma) {
   // ----- Project -----
   const project = await prisma.project.upsert({
     where: { shop: 'dev-example.myshopify.com' },
-    update: { name: 'Dev Example Project' },
+    update: { name: 'Dev Example Project', maxUsersPerExperiment: 10000 },
     create: {
       shop: 'dev-example.myshopify.com',
       name: 'Dev Example Project',
+      maxUsersPerExperiment: 10000,
     },
   });
 

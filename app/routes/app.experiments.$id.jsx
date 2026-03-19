@@ -21,6 +21,7 @@ import { ExperimentStatus } from "../utils/experimentConstants.js";
 import { TimeSelect } from "../utils/timeSelect";
 import { validateStartIsInFuture } from "../utils/validateStartIsInFuture";
 import { validateEndIsAfterStart } from "../utils/validateEndIsAfterStart";
+import { validateMaxUsers } from "../utils/validateMaxUsers";
 import { localDateTimeToISOString } from "../utils/localDateTimeToISOString";
 import { canRenameExperiment, isLockedStatus, canEditStructure, canEditSchedule, allowedStatusIntents, } from "./policies/experimentPolicy";
 
@@ -45,12 +46,23 @@ export const loader = async ({ params, request }) => {
         },
       },
       variants: true,
+      project: {
+        select: { maxUsersPerExperiment: true },
+      },
     },
   });
 
   if (!experiment) {
     throw new Response("Experiment not found", { status: 404 });
   }
+
+  const userCount = await db.allocation.count({
+    where: { experimentId },
+  });
+  const effectiveMax =
+    experiment.maxUsers ??
+    experiment.project?.maxUsersPerExperiment ??
+    10000;
 
   // Convert dates to YYYY-MM-DD format and extract times
   const formatDate = (date) => {
@@ -120,6 +132,10 @@ export const loader = async ({ params, request }) => {
       probabilityToBeBest: experiment.probabilityToBeBest,
       duration: experiment.duration,
       timeUnit: experiment.timeUnit,
+      maxUsers: experiment.maxUsers,
+      maxUsersPerExperiment: experiment.project?.maxUsersPerExperiment ?? 10000,
+      userCount,
+      effectiveMax,
     },
   };
 };
@@ -266,6 +282,9 @@ export const action = async ({ request, params }) => {
   const durationStr = (formData.get("duration") || "").trim();
   const timeUnitValue = (formData.get("timeUnit") || "").trim();
 
+  const useAccountDefaultMaxUsers = formData.get("useAccountDefaultMaxUsers") === "true";
+  const maxUsersStr = (formData.get("maxUsers") || "").trim();
+
   let variantInputs;
   try {
     variantInputs = JSON.parse(formData.get("variantsJSON") || "[]");
@@ -392,6 +411,9 @@ export const action = async ({ request, params }) => {
     }
   }
 
+  const maxUsersError = validateMaxUsers(useAccountDefaultMaxUsers, maxUsersStr);
+  if (maxUsersError) errors.maxUsers = maxUsersError;
+
   if (Object.keys(errors).length) return { errors };
 
   /* ====================================================================================================
@@ -431,6 +453,12 @@ export const action = async ({ request, params }) => {
       updateData.probabilityToBeBest = null;
       updateData.duration = null;
       updateData.timeUnit = null;
+    }
+
+    if (useAccountDefaultMaxUsers) {
+      updateData.maxUsers = null;
+    } else if (maxUsersStr) {
+      updateData.maxUsers = Number(maxUsersStr);
     }
   }
 
@@ -630,6 +658,9 @@ export default function EditExperiment() {
   const [endCondition, setEndCondition] = useState("manual");
   const [goalSelected, setGoalSelected] = useState("completedCheckout");
   const [customerSegment, setCustomerSegment] = useState("allSegments");
+  const [useAccountDefaultMaxUsers, setUseAccountDefaultMaxUsers] = useState(true);
+  const [maxUsers, setMaxUsers] = useState("");
+  const [maxUsersError, setMaxUsersError] = useState("");
   const [startDate, setStartDate] = useState("");
   const [startDateError, setStartDateError] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -712,6 +743,14 @@ export default function EditExperiment() {
       setDuration(exp.duration || "");
       setTimeUnit(exp.timeUnit || "days");
 
+      if (exp.maxUsers != null) {
+        setUseAccountDefaultMaxUsers(false);
+        setMaxUsers(String(exp.maxUsers));
+      } else {
+        setUseAccountDefaultMaxUsers(true);
+        setMaxUsers("");
+      }
+
       if (exp.variants && exp.variants.length > 0) {
         setVariants(exp.variants);
         setVariantSectionErrors(exp.variants.map(() => null));
@@ -749,6 +788,8 @@ export default function EditExperiment() {
       !!errors.duration ||
       !!timeUnitError ||
       !!errors.timeUnit ||
+      !!maxUsersError ||
+      !!errors.maxUsers ||
       (canEditStartDateTime && (!!startDateError || !!errors.startDate || !!startTimeError)) ||
       !!emptyStartDateError ||
       (canEditEndCondition && (!!endDateError || !!errors.endDate || !!endTimeError || !!emptyEndDateError))
@@ -758,34 +799,41 @@ export default function EditExperiment() {
   const isSubmitting = fetcher.state === "submitting";
 
   const handleExperimentEdit = async () => {
-    const experimentData = renameOnlyMode ? { name: name } : (() => {
+    if (renameOnlyMode) {
+      try {
+        await fetcher.submit({ name: name }, { method: "POST" });
+      } catch (error) {
+        console.error("Error during fetcher.submit", error);
+      }
+      return;
+    }
 
-      const startDateUTC = startDate
-        ? localDateTimeToISOString(startDate, startTime)
-        : "";
-      const effectiveEndTime = endDate && !endTime ? "23:59" : endTime;
-      const endDateUTC = endDate
-        ? localDateTimeToISOString(endDate, effectiveEndTime)
-        : "";
+    const startDateUTC = startDate
+      ? localDateTimeToISOString(startDate, startTime)
+      : "";
+    const effectiveEndTime = endDate && !endTime ? "23:59" : endTime;
+    const endDateUTC = endDate
+      ? localDateTimeToISOString(endDate, effectiveEndTime)
+      : "";
 
-      return {
-        name: name,
-        description: description,
-        controlSectionId: controlSectionId,
-        variantsJSON: JSON.stringify(variants),
-        goal: goalSelected,
-        endCondition: endCondition,
-        startDateUTC: startDateUTC,
-        endDateUTC: endDateUTC,
-        endDate: endDate,
-        probabilityToBeBest: probabilityToBeBest,
-        duration: duration,
-        timeUnit: timeUnit,
-      };
-    })();
+    const formData = new FormData();
+    formData.set("name", name);
+    formData.set("description", description);
+    formData.set("controlSectionId", controlSectionId);
+    formData.set("variantsJSON", JSON.stringify(variants));
+    formData.set("goal", goalSelected);
+    formData.set("endCondition", endCondition);
+    formData.set("startDateUTC", startDateUTC);
+    formData.set("endDateUTC", endDateUTC);
+    formData.set("endDate", endDate);
+    formData.set("probabilityToBeBest", probabilityToBeBest);
+    formData.set("duration", duration);
+    formData.set("timeUnit", timeUnit);
+    formData.set("useAccountDefaultMaxUsers", String(useAccountDefaultMaxUsers));
+    formData.set("maxUsers", useAccountDefaultMaxUsers ? "" : String(maxUsers));
 
     try {
-      await fetcher.submit(experimentData, { method: "POST" });
+      await fetcher.submit(formData, { method: "POST" });
     } catch (error) {
       console.error("Error during fetcher.submit", error);
     }
@@ -1163,6 +1211,9 @@ export default function EditExperiment() {
             ))}
             <s-text>• {controlAllocation}% Control</s-text>
             <s-text>
+              • Users: {(experiment?.userCount ?? 0).toLocaleString()} / {(experiment?.effectiveMax ?? 10000).toLocaleString()}
+            </s-text>
+            <s-text>
               • Active from{" "}
               {startDate
                 ? new Date(`${startDate}T00:00:00`).toDateString(undefined, {
@@ -1471,6 +1522,54 @@ export default function EditExperiment() {
               <s-option value="desktopVisitors">Desktop Visitors</s-option>
               <s-option value="mobileVisitors">Mobile Visitors</s-option>
             </s-select>
+
+            <s-checkbox
+              label="Use account default max users"
+              checked={useAccountDefaultMaxUsers}
+              disabled={isLocked || !editSchedule}
+              onChange={() => {
+                setUseAccountDefaultMaxUsers(!useAccountDefaultMaxUsers);
+                if (useAccountDefaultMaxUsers) {
+                  setMaxUsers(String(experiment.maxUsersPerExperiment ?? 10000));
+                } else {
+                  setMaxUsers("");
+                  setMaxUsersError("");
+                }
+              }}
+              details={`When enabled, uses the account default (${(experiment.maxUsersPerExperiment ?? 10000).toLocaleString()} users). Uncheck to set a custom max for this experiment.`}
+            />
+            {!useAccountDefaultMaxUsers && (
+              <s-number-field
+                label="Max users"
+                value={maxUsers}
+                inputMode="numeric"
+                min={1}
+                max={1000000}
+                step={1}
+                disabled={isLocked || !editSchedule}
+                error={maxUsersError || errors.maxUsers}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setMaxUsers(v);
+                  const num = Number(v);
+                  if (v === "" || v === null || v === undefined) {
+                    setMaxUsersError("Max users is required when not using account default");
+                  } else if (!Number.isInteger(num) || num < 1) {
+                    setMaxUsersError("Must be at least 1");
+                  } else if (num > 1000000) {
+                    setMaxUsersError("Must be at most 1,000,000");
+                  } else {
+                    setMaxUsersError("");
+                  }
+                }}
+                onBlur={() => {
+                  if (!useAccountDefaultMaxUsers && !maxUsers.trim()) {
+                    setMaxUsersError("Max users is required when not using account default");
+                  }
+                }}
+                details="Maximum number of users to include in this experiment. Leave account default checked to use your account setting."
+              />
+            )}
           </s-stack>
         </s-form>
       </s-section>

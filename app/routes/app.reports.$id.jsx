@@ -113,6 +113,18 @@ export async function loader({ params, request }) {
     throw new Response("Experiment not found", {status: 404 });
   }
 
+  const experimentWithProject = await db.experiment.findUnique({
+    where: { id: experimentId },
+    include: { project: { select: { maxUsersPerExperiment: true } } },
+  });
+  const effectiveMax =
+    experimentWithProject?.maxUsers ??
+    experimentWithProject?.project?.maxUsersPerExperiment ??
+    10000;
+  const userCount = await db.allocation.count({
+    where: { experimentId },
+  });
+
   const {getImprovement} = await import("../services/experiment.server");
   const improvementPercent = await getImprovement(experimentId, deviceSegment);
 
@@ -155,7 +167,9 @@ export async function loader({ params, request }) {
   return { experiment:{ 
     ...experimentReportData,
     status: experimentInfo.status,
-    startDate: experimentInfo.startDate
+    startDate: experimentInfo.startDate,
+    userCount,
+    effectiveMax,
   },
   analysis,
   deviceSegment,
@@ -464,6 +478,9 @@ export default function Report() {
                 <s-badge icon="target">
                   {experiment.experimentGoals?.[0]?.goal?.name || "Primary Goal"}
                 </s-badge>
+                <s-text type="generic">
+                  Users: {(experiment.userCount ?? 0).toLocaleString()} / {(experiment.effectiveMax ?? 10000).toLocaleString()}
+                </s-text>
                 <s-text type="generic">Section ID: {experiment.sectionId}</s-text>
                 <s-text type="generic">
                   Started: {experiment.startDate ? new Date(experiment.startDate).toLocaleDateString() : 'Not yet started'}

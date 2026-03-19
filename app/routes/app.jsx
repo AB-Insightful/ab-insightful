@@ -3,7 +3,6 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
 import { DateRangeProvider } from "../contexts/DateRangeContext";
-import { useState, useEffect } from "react";
 
 
 export const loader = async ({ request }) => {
@@ -15,28 +14,25 @@ export const loader = async ({ request }) => {
 
 export default function App() {
   const { apiKey } = useLoaderData();
-  const [host, setHost] = useState("");
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setHost(params.get("host") || "");
-  }, []);
-
-  const navHref = (path) => host ? `${path}?host=${host}` : path;
 
   return (
-    <AppProvider embedded={true} apiKey={apiKey}>
+    <AppProvider 
+      embedded ={true}
+      apiKey={apiKey}
+    >
+      {/*wrapped the date range provider context around the entire app navigation, may have more precise solution later */}
       <DateRangeProvider>
         <s-app-nav>
-          <s-link href={navHref("/app")}>Home</s-link>
-          <s-link href={navHref("/app/experiments")}>Experiments</s-link>
-          <s-link href={navHref("/app/experiments/new")}>Create Experiment</s-link>
-          <s-link href={navHref("/app/reports")}>Reports</s-link>
-          <s-link href={navHref("/app/help")}>Help</s-link>
-          <s-link href={navHref("/app/settings")}>Settings</s-link>
+          <s-link href="/app">Home</s-link>
+          <s-link href="/app/experiments">Experiments</s-link>
+          <s-link href="/app/experiments/new">Create Experiment</s-link>
+          <s-link href="/app/reports"> Reports</s-link>
+          <s-link href="/app/help"> Help</s-link>
+          <s-link href="/app/settings">Settings</s-link>
         </s-app-nav>
-        <Outlet />
+      <Outlet />
       </DateRangeProvider>
+
     </AppProvider>
   );
 }

@@ -21,6 +21,7 @@ import { ExperimentStatus } from "../utils/experimentConstants.js";
 import { TimeSelect } from "../utils/timeSelect";
 import { validateStartIsInFuture } from "../utils/validateStartIsInFuture";
 import { validateEndIsAfterStart } from "../utils/validateEndIsAfterStart";
+import { validateMaxUsers } from "../utils/validateMaxUsers";
 import { localDateTimeToISOString } from "../utils/localDateTimeToISOString";
 
 // Server side code
@@ -185,21 +186,8 @@ export const action = async ({ request }) => {
       }
     }
 
-    // Validate maxUsers when custom (not using account default)
-    if (!useAccountDefaultMaxUsers) {
-      if (!maxUsersStr) {
-        errors.maxUsers = "Max users is required when not using account default";
-      } else {
-        const parsed = Number(maxUsersStr);
-        if (!Number.isInteger(parsed)) {
-          errors.maxUsers = "Max users must be a whole number";
-        } else if (parsed < 1) {
-          errors.maxUsers = "Max users must be at least 1";
-        } else if (parsed > 1_000_000) {
-          errors.maxUsers = "Max users must be at most 1,000,000";
-        }
-      }
-    }
+    const maxUsersError = validateMaxUsers(useAccountDefaultMaxUsers, maxUsersStr);
+    if (maxUsersError) errors.maxUsers = maxUsersError;
 
     if (Object.keys(errors).length) return { errors };
 

@@ -28,7 +28,9 @@ export async function createExperiment(
     );
   }
 
-  if (Math.abs(treatmentAllocation + Math.max(0, controlAllocation) - 1.0) > 0.01) {
+  if (
+    Math.abs(treatmentAllocation + Math.max(0, controlAllocation) - 1.0) > 0.01
+  ) {
     throw new Error(
       `Traffic allocations must sum to ~1.0 (got ${(treatmentAllocation + controlAllocation).toFixed(4)})`,
     );
@@ -175,7 +177,7 @@ export async function getExperimentsList() {
 }
 
 //get the experiment list, additionally analyses for conversion rate
-export async function getExperimentsList1() {
+export async function experimentListReport() {
   const experiments = await db.experiment.findMany({
     select: {
       id: true,
@@ -204,7 +206,6 @@ export async function getExperimentsList1() {
   else return null;
 }
 
-
 // get a variant (by name or id) Example: "Control" or "Variant A"
 export async function getVariant(experimentId, name) {
   return db.variant.findFirst({
@@ -214,7 +215,11 @@ export async function getVariant(experimentId, name) {
 }
 
 //get the latest analysis row for that variant (conversionRate lives here)
-export async function getAnalysis(experimentId, variantId, deviceSegment = "all") {
+export async function getAnalysis(
+  experimentId,
+  variantId,
+  deviceSegment = "all",
+) {
   return db.analysis.findFirst({
     where: { experimentId, variantId, deviceSegment },
     orderBy: { calculatedWhen: "desc" },
@@ -223,7 +228,11 @@ export async function getAnalysis(experimentId, variantId, deviceSegment = "all"
 }
 
 //convenience: return conversionRate as a float (or null)
-export async function getVariantConversionRate(experimentId, variantId, deviceSegment = "all") {
+export async function getVariantConversionRate(
+  experimentId,
+  variantId,
+  deviceSegment = "all",
+) {
   const row = await getAnalysis(experimentId, variantId, deviceSegment);
   if (!row) return null;
   const num = row.conversionRate;
@@ -244,7 +253,11 @@ export async function getImprovement(experimentId, deviceSegment = "all") {
   if (!variants.length) return null;
 
   // get control conversion rate
-  const controlAnalysis = await getAnalysis(experimentId, control.id, deviceSegment);
+  const controlAnalysis = await getAnalysis(
+    experimentId,
+    control.id,
+    deviceSegment,
+  );
   const controlRate = controlAnalysis ? controlAnalysis.conversionRate : null;
   if (!(typeof controlRate === "number") || controlRate <= 0) return null;
 
@@ -677,7 +690,10 @@ export async function getExperimentsWithAnalyses() {
   });
 }
 
-export async function getExperimentReportData(experimentId, deviceSegment = "all") {
+export async function getExperimentReportData(
+  experimentId,
+  deviceSegment = "all",
+) {
   const experiment = await db.experiment.findUnique({
     where: {
       id: experimentId,
@@ -872,7 +888,6 @@ export async function setProbabilityOfBest({
 
 // Function to get experiments list.
 // This is used for the "Experiments List" page
-
 
 // Function to check if experiment is still active
 export function isExperimentActive(experiment, timeCheck = new Date()) {

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import db from "../db.server";
 import {
+  experimentListReport,
   getCandidatesForScheduledEnd,
   getCandidatesForScheduledStart,
   getExperimentReportData,
@@ -270,5 +271,57 @@ describe("isExperimentActive", () => {
     };
 
     expect(isExperimentActive(experiment, "2026-03-05T00:00:00.000Z")).toBe(true);
+describe("experimentListReport", () => {
+  test("success: returns experiments with report fields ordered by createdAt desc", async () => {
+    const mockExperiments = [
+      {
+        id: 1,
+        name: "Test Experiment",
+        status: "active",
+        startDate: new Date("2026-01-01"),
+        endDate: null,
+        endCondition: "Manual",
+        analyses: [
+          {
+            totalConversions: 50,
+            totalUsers: 500,
+            calculatedWhen: new Date("2026-01-15"),
+          },
+        ],
+      },
+    ];
+    db.experiment.findMany.mockResolvedValueOnce(mockExperiments);
+
+    const result = await experimentListReport();
+
+    expect(db.experiment.findMany).toHaveBeenCalledTimes(1);
+    const arg = db.experiment.findMany.mock.calls[0][0];
+    expect(arg.select).toMatchObject({
+      id: true,
+      name: true,
+      status: true,
+      startDate: true,
+      endDate: true,
+      endCondition: true,
+    });
+    expect(arg.select.analyses).toBeDefined();
+    expect(arg.orderBy).toEqual({ createdAt: "desc" });
+    expect(result).toEqual(mockExperiments);
+  });
+
+  test("returns null when no experiments found", async () => {
+    db.experiment.findMany.mockResolvedValueOnce(null);
+
+    const result = await experimentListReport();
+
+    expect(result).toBeNull();
+  });
+
+  test("returns empty array when experiments is empty", async () => {
+    db.experiment.findMany.mockResolvedValueOnce([]);
+
+    const result = await experimentListReport();
+
+    expect(result).toEqual([]);
   });
 });

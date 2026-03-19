@@ -903,6 +903,8 @@ async function handleExperiment_IncludeEvent(payload) {
     );
     return null;
   }
+
+  // Create/update user first so it exists even when variant is not found
   const user = await db.user.upsert({
     where: {
       shopifyCustomerID: payload.client_id,
@@ -917,7 +919,6 @@ async function handleExperiment_IncludeEvent(payload) {
   });
 
   // Then, tie that user to the experiment
-  // First, get the variant ID from the variant name
   const variant = await getVariant(payload.experiment_id, payload.variant);
 
   if (!variant) {
@@ -930,26 +931,74 @@ async function handleExperiment_IncludeEvent(payload) {
     return;
   }
 
-  // Now create or update the allocation
-  // TODO seems like there needs to be more error handling with this result variable here.
-  const result = await db.allocation.upsert({
-    where: {
-      userId_experimentId: {
-        userId: user.id,
-        experimentId: payload.experiment_id,
-      },
-    },
-    create: {
-      userId: user.id,
-      experimentId: payload.experiment_id,
-      variantId: variant.id,
-      deviceType: payload.device_type ?? payload.deviceType ?? null,
-    },
-    update: {
-      variantId: variant.id,
-      deviceType: payload.device_type ?? payload.deviceType ?? null,
+  const experimentId =
+    typeof payload.experiment_id === "string"
+      ? parseInt(payload.experiment_id, 10)
+      : payload.experiment_id;
+  const deviceType = payload.device_type ?? payload.deviceType ?? null;
+
+  // Resolve effective max: experiment override when set, otherwise project default
+  const experiment = await db.experiment.findUnique({
+    where: { id: experimentId },
+    include: {
+      project: { select: { maxUsersPerExperiment: true } },
     },
   });
+  const effectiveMax =
+    experiment?.maxUsers ??
+    experiment?.project?.maxUsersPerExperiment ??
+    10000;
+
+  // Run allocation logic in a transaction to serialize count+create and avoid races.
+  const result = await db.$transaction(async (tx) => {
+    const existingAllocation = await tx.allocation.findUnique({
+      where: {
+        userId_experimentId: {
+          userId: user.id,
+          experimentId,
+        },
+      },
+    });
+
+    if (existingAllocation) {
+      return tx.allocation.update({
+        where: {
+          userId_experimentId: {
+            userId: user.id,
+            experimentId,
+          },
+        },
+        data: {
+          variantId: variant.id,
+          deviceType,
+        },
+      });
+    }
+
+    const count = await tx.allocation.count({
+      where: { experimentId },
+    });
+    if (count >= effectiveMax) {
+      return null;
+    }
+
+    return tx.allocation.create({
+      data: {
+        userId: user.id,
+        experimentId,
+        variantId: variant.id,
+        deviceType,
+      },
+    });
+  });
+
+  if (!result) {
+    console.log(
+      "[handle experiment include] max users reached, not creating allocation",
+    );
+    return { limitReached: true };
+  }
+
   if (!result) {
     console.log(
       "[handle experiment include] an error occurred while publishing the allocation",
@@ -961,7 +1010,7 @@ async function handleExperiment_IncludeEvent(payload) {
       result,
     );
   }
-  return { result: result }; // should probably return the result to the client in the body of the response.
+  return { result }; // should probably return the result to the client in the body of the response.
 }
 
 async function persistConversion(payload, Goal_Type) {

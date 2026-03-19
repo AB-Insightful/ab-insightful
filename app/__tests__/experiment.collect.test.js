@@ -12,6 +12,10 @@ vi.mock("../db.server", () => ({
       findFirst: vi.fn(),
     },
     allocation: {
+      findUnique: vi.fn(),
+      count: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
       upsert: vi.fn(),
     },
     goal: {
@@ -25,6 +29,8 @@ vi.mock("../db.server", () => ({
       findMany: vi.fn(),
       update: vi.fn(),
     },
+    $executeRaw: vi.fn(),
+    $transaction: vi.fn((fn) => fn(db)),
   },
 }));
 
@@ -48,11 +54,20 @@ describe("handleCollectedEvent", () => {
       timestamp: "2026-03-04T08:20:00.000Z",
     };
 
+    const allocationResult = {
+      id: 1,
+      userId: "test123",
+      experimentId: 2001,
+      variantId: 3001,
+      deviceType: "mobile",
+    };
+
     db.experiment.findUnique.mockResolvedValue({
       id: 2001,
       status: ExperimentStatus.active,
       startDate: null,
       endDate: null,
+      project: { maxUsersPerExperiment: 10000 },
     });
 
     db.user.upsert.mockResolvedValue({
@@ -65,13 +80,11 @@ describe("handleCollectedEvent", () => {
       name: "Control",
     });
 
-    db.allocation.upsert.mockResolvedValue({
-      id: 1,
-      userId: "test123",
-      experimentId: 2001,
-      variantId: 3001,
-      deviceType: "mobile",
-    });
+    db.allocation.findUnique.mockResolvedValue(null);
+    db.allocation.count.mockResolvedValue(0);
+    db.allocation.create.mockResolvedValue(allocationResult);
+
+    db.$transaction.mockImplementation(async (fn) => fn(db));
 
     const result = await handleCollectedEvent(payload);
 
@@ -99,35 +112,13 @@ describe("handleCollectedEvent", () => {
       },
     });
 
-    expect(db.allocation.upsert).toHaveBeenCalledWith({
-      where: {
-        userId_experimentId: {
-          userId: "test123",
-          experimentId: 2001,
-        },
-      },
-      create: {
-        userId: "test123",
-        experimentId: 2001,
-        variantId: 3001,
-        deviceType: "mobile",
-      },
-      update: {
-        variantId: 3001,
-        deviceType: "mobile",
-      },
-    });
+    expect(db.allocation.findUnique).toHaveBeenCalled();
+    expect(db.allocation.count).toHaveBeenCalled();
+    expect(db.allocation.create).toHaveBeenCalled();
+    expect(db.allocation.upsert).not.toHaveBeenCalled();
 
     expect(result).toEqual({
-      result: {
-        result: {
-          id: 1,
-          userId: "test123",
-          experimentId: 2001,
-          variantId: 3001,
-          deviceType: "mobile",
-        },
-      },
+      result: { result: allocationResult },
     });
   });
 

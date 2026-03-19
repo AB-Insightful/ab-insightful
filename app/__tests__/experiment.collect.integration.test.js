@@ -16,7 +16,7 @@ describe("handleCollectedEvent integration", () => {
     await db.variant.deleteMany({
       where: {
         experimentId: {
-          in: [9992, 9995],
+          in: [9992, 9995, 9997],
         },
       },
     });
@@ -24,7 +24,7 @@ describe("handleCollectedEvent integration", () => {
     await db.experiment.deleteMany({
       where: {
         id: {
-          in: [9992, 9995],
+          in: [9992, 9995, 9997],
         },
       },
     });
@@ -91,6 +91,34 @@ describe("handleCollectedEvent integration", () => {
               id: 9996,
               name: "Variant A",
               trafficAllocation: new Prisma.Decimal(1),
+            },
+          ],
+        },
+      },
+    });
+
+    // max-users experiment: maxUsers=2, has Control + Variant A
+    await db.experiment.create({
+      data: {
+        id: 9997,
+        name: "Max Users Test Experiment",
+        description: "Testing max users enforcement",
+        status: "active",
+        trafficSplit: new Prisma.Decimal(0.5),
+        sectionId: "section-max",
+        projectId: 9991,
+        maxUsers: 2,
+        variants: {
+          create: [
+            {
+              id: 9998,
+              name: "Control",
+              trafficAllocation: new Prisma.Decimal(0.5),
+            },
+            {
+              id: 9999,
+              name: "Variant A",
+              trafficAllocation: new Prisma.Decimal(0.5),
             },
           ],
         },
@@ -176,5 +204,148 @@ describe("handleCollectedEvent integration", () => {
     });
 
     expect(allocation).toBeNull();
+  });
+
+  it("does not create new allocation when experiment is at max users", async () => {
+    // Allocate 2 users (maxUsers=2 for experiment 9997)
+    await handleCollectedEvent({
+      event_type: "experiment_include",
+      client_id: "max-user-1",
+      experiment_id: 9997,
+      experimentId: 9997,
+      variant: "Control",
+      device_type: "mobile",
+      timestamp: "2026-03-04T08:30:00.000Z",
+    });
+    await handleCollectedEvent({
+      event_type: "experiment_include",
+      client_id: "max-user-2",
+      experiment_id: 9997,
+      experimentId: 9997,
+      variant: "Variant A",
+      device_type: "desktop",
+      timestamp: "2026-03-04T08:31:00.000Z",
+    });
+
+    const countBefore = await db.allocation.count({
+      where: { experimentId: 9997 },
+    });
+    expect(countBefore).toBe(2);
+
+    // 3rd user should hit limit
+    const result = await handleCollectedEvent({
+      event_type: "experiment_include",
+      client_id: "max-user-3",
+      experiment_id: 9997,
+      experimentId: 9997,
+      variant: "Control",
+      device_type: "mobile",
+      timestamp: "2026-03-04T08:32:00.000Z",
+    });
+
+    expect(result?.result?.limitReached).toBe(true);
+
+    const countAfter = await db.allocation.count({
+      where: { experimentId: 9997 },
+    });
+    expect(countAfter).toBe(2);
+
+    const allocation3 = await db.allocation.findFirst({
+      where: {
+        userId: "max-user-3",
+        experimentId: 9997,
+      },
+    });
+    expect(allocation3).toBeNull();
+  });
+
+  it("allows existing users to update (e.g. variant change) when at max", async () => {
+    // Allocate 2 users (maxUsers=2)
+    await handleCollectedEvent({
+      event_type: "experiment_include",
+      client_id: "existing-update-1",
+      experiment_id: 9997,
+      experimentId: 9997,
+      variant: "Control",
+      device_type: "mobile",
+      timestamp: "2026-03-04T08:40:00.000Z",
+    });
+    await handleCollectedEvent({
+      event_type: "experiment_include",
+      client_id: "existing-update-2",
+      experiment_id: 9997,
+      experimentId: 9997,
+      variant: "Variant A",
+      device_type: "desktop",
+      timestamp: "2026-03-04T08:41:00.000Z",
+    });
+
+    // Existing user 1 sends another event with different variant - should update
+    const result = await handleCollectedEvent({
+      event_type: "experiment_include",
+      client_id: "existing-update-1",
+      experiment_id: 9997,
+      experimentId: 9997,
+      variant: "Variant A",
+      device_type: "desktop",
+      timestamp: "2026-03-04T08:42:00.000Z",
+    });
+
+    expect(result?.result?.limitReached).toBeUndefined();
+    expect(result?.result?.result).toBeTruthy();
+
+    const allocation = await db.allocation.findUnique({
+      where: {
+        userId_experimentId: {
+          userId: "existing-update-1",
+          experimentId: 9997,
+        },
+      },
+    });
+    expect(allocation).toBeTruthy();
+    expect(allocation.variantId).toBe(9999);
+    expect(allocation.deviceType).toBe("desktop");
+  });
+
+  it("uses experiment maxUsers override over project default", async () => {
+    // Experiment 9997 has maxUsers: 2 (override). Project 9991 has default 10000.
+    // First user gets allocation
+    await handleCollectedEvent({
+      event_type: "experiment_include",
+      client_id: "override-user-1",
+      experiment_id: 9997,
+      experimentId: 9997,
+      variant: "Control",
+      device_type: "mobile",
+      timestamp: "2026-03-04T08:50:00.000Z",
+    });
+    // Second user gets allocation
+    await handleCollectedEvent({
+      event_type: "experiment_include",
+      client_id: "override-user-2",
+      experiment_id: 9997,
+      experimentId: 9997,
+      variant: "Control",
+      device_type: "mobile",
+      timestamp: "2026-03-04T08:51:00.000Z",
+    });
+
+    const count = await db.allocation.count({
+      where: { experimentId: 9997 },
+    });
+    expect(count).toBe(2);
+
+    // Third user should be rejected (experiment maxUsers=2, not project 10000)
+    const result = await handleCollectedEvent({
+      event_type: "experiment_include",
+      client_id: "override-user-3",
+      experiment_id: 9997,
+      experimentId: 9997,
+      variant: "Control",
+      device_type: "mobile",
+      timestamp: "2026-03-04T08:52:00.000Z",
+    });
+
+    expect(result?.result?.limitReached).toBe(true);
   });
 });

@@ -34,7 +34,9 @@ export const action = async ({ request }) => {
 
   // Don't await - need to return as possible // [ryan] I am assuming so we can service other events asap
   // but how do i surface the errors?
-  handleCollectedEvent(data);
+  Promise.resolve(handleCollectedEvent(data)).catch((err) =>
+    console.error("[api.collect] handleCollectedEvent error:", err),
+  );
 
   return Response.json(null, {
     status: 200,

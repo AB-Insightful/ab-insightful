@@ -178,5 +178,47 @@ export async function createAnalysisSnapshot() {
       }
     }
   }
+
+  // 7. Evaluation & auto-termination of experiments
+  for (const exp of experiments) {
+    // skip manual termination experiments/missing end condition
+    if (!exp.endCondition || exp.endCondition === "manual") continue;
+
+    let shouldTerminate = false;
+    const now = new Date();
+
+    // Evaluate end date termination criteria
+    if (exp.endCondition === "endDate" && exp.endDate) {
+      if (now >= new Date(exp.endDate)) {
+        shouldTerminate = true;
+      }
+    }
+
+    // Evaluate probability to be best termination criteria
+    if (exp.endCondition === "stableSuccessProbability") {
+      const latestResult = await db.analysis.findFirst({
+        where: {
+          experimentId: exp.id,
+          deviceSegment: "all",
+        },
+        orderBy: { calculatedWhen: "desc" },
+      });
+
+      if (latestResult && latestResult.probabilityOfBeingBest != null) {
+        const currentActual = latestResult.probabilityOfBeingBest * 100;
+        const targetThreshold = exp.probabilityToBeBest || 80;
+
+        if (currentActual >= targetThreshold) {
+          shouldTerminate = true;
+        }
+      }
+    }
+    
+    if (shouldTerminate) {
+      const { endExperiment } = await import("./experiment.server");
+      await endExperiment(exp.id);
+    }
+  }
+
   return ret;
 }

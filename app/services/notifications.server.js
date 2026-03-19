@@ -1,6 +1,6 @@
 //import two message cases
-import { formatExperimentCompleted } from '../routes/messages/experimentCompleted';
-import { formatExperimentStarted } from '../routes/messages/experimentStarted';
+import { formatExperimentCompleted } from "../routes/messages/experimentCompleted";
+import { formatExperimentStarted } from "../routes/messages/experimentStarted";
 
 // This file focuses on functions tied to the Amazon SNS
 import { SNSClient, PublishCommand, SubscribeCommand, ListSubscriptionsByTopicCommand, UnsubscribeCommand } from "@aws-sdk/client-sns";
@@ -233,6 +233,8 @@ export async function unsubscribeAll() {
   }
 
   return { ok: true, removed: arnsToRemove.length };
+}
+
 //determine the winner of the completed experiment
 export function determineWinner(analysis) {
     //must have %80 probability of being best

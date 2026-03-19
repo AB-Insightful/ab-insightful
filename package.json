@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "react-router build",
-    "dev": "npm run seed:dev && shopify app dev",
+    "dev": "shopify app dev",
     "config:link": "shopify app config link",
     "generate": "shopify app generate",
     "deploy": "shopify app deploy",
@@ -18,12 +18,24 @@
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
     "typecheck": "react-router typegen && tsc --noEmit",
+
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "test:integration": "npm run seed:test && vitest run --config vitest.integration.config.js --coverage",
+
     "seed:dev": "node prisma/seed.js --environment=dev",
     "seed:test": "node prisma/seed.js --environment=test",
-    "seed:demo": "node prisma/seed.js --environment=demo"
+    "seed:demo": "node prisma/seed.js --environment=demo",
+
+    "db:dev": "node scripts/switch-db.js --environment=dev",
+    "db:test": "node scripts/switch-db.js --environment=test",
+    "db:prod": "node scripts/switch-db.js --environment=prod",
+    "db:switch": "node scripts/switch-db.js",
+    "db:migrate": "prisma migrate deploy",
+
+    "launch:dev": "npm run db:dev && shopify app dev",
+    "launch:test": "npm run db:test && shopify app dev",
+    "launch:prod": "npm run db:prod  && shopify app dev"
   },
   "prisma": {
     "seed:dev": "node prisma/seed.js --environment=dev",

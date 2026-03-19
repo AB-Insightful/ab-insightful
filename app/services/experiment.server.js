@@ -169,6 +169,9 @@ export async function getExperimentsList() {
           variant: true, //this gets us the variant name (e.g., "Control", "Variant A")
         },
       },
+      project: {
+        select: { maxUsersPerExperiment: true },
+      },
     },
   });
 

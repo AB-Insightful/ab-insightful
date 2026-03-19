@@ -55,6 +55,14 @@ export const loader = async ({ params, request }) => {
     throw new Response("Experiment not found", { status: 404 });
   }
 
+  const userCount = await db.allocation.count({
+    where: { experimentId },
+  });
+  const effectiveMax =
+    experiment.maxUsers ??
+    experiment.project?.maxUsersPerExperiment ??
+    10000;
+
   // Convert dates to YYYY-MM-DD format and extract times
   const formatDate = (date) => {
     if (!date) return "";
@@ -125,6 +133,8 @@ export const loader = async ({ params, request }) => {
       timeUnit: experiment.timeUnit,
       maxUsers: experiment.maxUsers,
       maxUsersPerExperiment: experiment.project?.maxUsersPerExperiment ?? 10000,
+      userCount,
+      effectiveMax,
     },
   };
 };
@@ -1212,6 +1222,9 @@ export default function EditExperiment() {
               </s-text>
             ))}
             <s-text>• {controlAllocation}% Control</s-text>
+            <s-text>
+              • Users: {(experiment?.userCount ?? 0).toLocaleString()} / {(experiment?.effectiveMax ?? 10000).toLocaleString()}
+            </s-text>
             <s-text>
               • Active from{" "}
               {startDate

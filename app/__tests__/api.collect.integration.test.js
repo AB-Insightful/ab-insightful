@@ -4,7 +4,6 @@ import { beforeEach, afterAll, describe, expect, it } from "vitest";
 import { Prisma } from "@prisma/client";
 import db from "../db.server";
 import { action } from "../routes/api.collect.jsx";
-import { handleCollectedEvent } from "../services/experiment.server";
 
 describe("api.collect route integration", () => {
   beforeEach(async () => {
@@ -88,10 +87,8 @@ describe("api.collect route integration", () => {
     expect(response.status).toBe(200);
 
     const body = await response.json();
-    expect(body).toBeNull();
-
-    // API uses fire-and-forget; run handleCollectedEvent directly to verify pipeline
-    await handleCollectedEvent(payload);
+    expect(body).toBeTruthy();
+    expect(body.result).toBeTruthy();
 
     const user = await db.user.findUnique({
       where: { shopifyCustomerID: "route-test-user" },

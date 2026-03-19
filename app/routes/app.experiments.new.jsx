@@ -17,7 +17,7 @@ import { authenticate } from "../shopify.server";
 import { useFetcher, redirect, useLoaderData } from "react-router";
 import { useState, useEffect, useRef } from "react";
 import db from "../db.server";
-import { ExperimentStatus } from "@prisma/client";
+import { ExperimentStatus } from "../utils/experimentConstants.js";
 import { TimeSelect } from "../utils/timeSelect";
 import { validateStartIsInFuture } from "../utils/validateStartIsInFuture";
 import { validateEndIsAfterStart } from "../utils/validateEndIsAfterStart";
@@ -52,7 +52,7 @@ export const action = async ({ request }) => {
     const description = (formData.get("description") || "").trim();
     const controlSectionId = (formData.get("controlSectionId") || "").trim();
     const goalValue = (formData.get("goal") || "").trim();
-    const endCondition = (formData.get("endCondition") || "").trim();
+    const endCondition = (formData.get("endCondition") || "manual").trim();
 
     let variantInputs;
     try {
@@ -1143,6 +1143,7 @@ export default function CreateExperiment() {
       {/*Active dates/end conditions portion of code */}
       <s-section heading="Active Dates">
         <s-form>
+        <input type="hidden" name="endCondition" value={endCondition} />
           <s-stack direction="block" gap="base">
             <s-stack direction="inline" gap="base">
               <s-box flex="1" minInlineSize="220px" inlineSize="stretch">

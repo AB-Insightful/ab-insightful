@@ -27,7 +27,7 @@ export async function getSessionReportData(admin, start, end) {
       }`,
       {
         variables: {
-          query: `SHOW sessions BY day SINCE ${startDate} UNTIL ${endDate}`,
+          query: `SHOW sessions SINCE ${startDate} UNTIL ${endDate} TIMESERIES day`,
         },
       },
     );
@@ -121,10 +121,9 @@ export async function getConversionsReportData(admin, start, end) {
       }`,
       {
         variables: {
-          query: `FROM sessions
-                    SHOW sessions, sessions_with_cart_additions, sessions_that_reached_checkout,
-                    sessions_that_completed_checkout, conversion_rate 
-                    BY day SINCE ${startDate} UNTIL ${endDate}`,
+          query: `FROM sessions SHOW sessions, sessions_with_cart_additions, sessions_that_reached_checkout, 
+          sessions_that_completed_checkout, conversion_rate 
+          SINCE ${startDate} UNTIL ${endDate} TIMESERIES day`,
         },
       },
     );

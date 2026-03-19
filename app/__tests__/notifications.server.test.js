@@ -43,7 +43,7 @@ vi.mock("@aws-sdk/client-sns", () => {
   return { SNSClient, PublishCommand, SubscribeCommand, UnsubscribeCommand, ListSubscriptionsByTopicCommand };
 });
 
-let sendEmailTopic;
+let sendEmailStart;
 let subscribeEmail;
 let unsubscribeEmail;
 let unsubscribeAll
@@ -51,7 +51,7 @@ let unsubscribeAll
 //needs these imports regularly
 beforeAll(async () => {
   const mod = await import("../services/notifications.server.js");
-  sendEmailTopic = mod.sendEmailTopic;
+  sendEmailStart = mod.sendEmailStart;
   subscribeEmail = mod.subscribeEmail;
   unsubscribeEmail = mod.unsubscribeEmail;
   unsubscribeAll = mod.unsubscribeAll;
@@ -71,11 +71,11 @@ describe("SNS functions", () => {
   });
 
   //tests for static message. Will need to change later once this is more dynamic
-  it("sendEmailTopic sends PublishCommand with expected payload", async () => {
+it("sendEmailStart sends PublishCommand with expected payload", async () => {
     const fakeResponse = { MessageId: "abc-123" };
     sendMock.mockResolvedValue(fakeResponse);
 
-    const result = await sendEmailTopic();
+    const result = await sendEmailStart(1, "My Experiment", "test.myshopify.com");
     expect(result).toEqual(fakeResponse);
 
     expect(sendMock).toHaveBeenCalledTimes(1);
@@ -83,11 +83,11 @@ describe("SNS functions", () => {
 
     expect(sentCommand.__type).toBe("PublishCommand");
     expect(sentCommand.input).toEqual({
-      TopicArn: process.env.AWS_TOPIC,
-      Message: "Hello from my Shopify app!",
-      Subject: "test-1-notification",
+        TopicArn: process.env.AWS_TOPIC,
+        Subject: `Experiment "My Experiment" has started`,
+        Message: expect.stringContaining("My Experiment"),
     });
-  });
+});
 
   //simple test for subscribing. Will be utilized more for future sprints. 
   it("subscribeEmail sends SubscribeCommand with expected email", async () => {
@@ -110,7 +110,7 @@ describe("SNS functions", () => {
 
   it("propagates errors from AWS send()", async () => {
     sendMock.mockRejectedValue(new Error("AWS is down"));
-    await expect(sendEmailTopic()).rejects.toThrow("AWS is down");
+    await expect(sendEmailStart(1, "My Experiment", "test.myshopify.com")).rejects.toThrow("AWS is down");
   });
 
   //unsubscribe test

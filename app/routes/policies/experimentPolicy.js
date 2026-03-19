@@ -1,4 +1,4 @@
-import { ExperimentStatus } from "@prisma/client";
+import { ExperimentStatus } from "../../utils/experimentConstants.js";
 
 // Always allow renaming of experiments
 export function canRenameExperiment(_status) {

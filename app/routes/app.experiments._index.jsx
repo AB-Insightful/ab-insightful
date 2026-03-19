@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 //import Decimal from 'decimal.js';
 import { formatRuntime } from "../utils/formatRuntime.js";
 import { formatImprovement } from "../utils/formatImprovement.js";
-import { ExperimentStatus } from "@prisma/client";
+import { ExperimentStatus } from "../utils/experimentConstants.js";
 import { allowedStatusIntents } from "./policies/experimentPolicy";
 import { usePagination } from "../hooks/usePagination";
 import Pagination from "../hooks/Pagination";

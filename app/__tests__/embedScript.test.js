@@ -227,3 +227,83 @@ describe("initPickerMode (Storefront Side)", () => {
     expect(window.close).toHaveBeenCalled();
   });
 });
+
+describe("experiment_include payload device_type", () => {
+  const EMBED_SCRIPT_PATH = "../../extensions/ab-insightful-embed/assets/ab-insightful-embed.js";
+
+  async function loadEmbedAndCaptureIncludePayload(userAgent) {
+    vi.resetModules();
+
+    Object.defineProperty(window.navigator, "userAgent", {
+      value: userAgent,
+      configurable: true,
+    });
+
+    document.cookie = "ab-assignments=; path=/; max-age=0";
+    document.cookie = "_shopify_y=test-user-123; path=/";
+
+    document.body.innerHTML = `
+      <script id="ab-insightful-config" type="application/json">{"api_url":"https://example.test"}</script>
+      <div id="shopify-section-test"></div>
+    `;
+
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        json: async () => [
+          {
+            id: 1001,
+            variants: [
+              {
+                id: 2001,
+                name: "Control",
+                sectionId: "shopify-section-test",
+                trafficAllocation: 1,
+                isControl: true,
+              },
+            ],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({}),
+      });
+
+    await import(`${EMBED_SCRIPT_PATH}?t=${Date.now()}`);
+
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const includeCall = global.fetch.mock.calls[1];
+    expect(includeCall).toBeTruthy();
+
+    const [, options] = includeCall;
+    return JSON.parse(options.body);
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+  });
+
+  it("sends mobile device_type when user agent is mobile", async () => {
+    const payload = await loadEmbedAndCaptureIncludePayload(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
+    );
+
+    expect(payload.event_type).toBe("experiment_include");
+    expect(payload.device_type).toBe("mobile");
+  });
+
+  it("sends desktop device_type when user agent is desktop", async () => {
+    const payload = await loadEmbedAndCaptureIncludePayload(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    );
+
+    expect(payload.event_type).toBe("experiment_include");
+    expect(payload.device_type).toBe("desktop");
+  });
+});

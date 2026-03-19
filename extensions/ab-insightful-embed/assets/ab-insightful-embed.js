@@ -58,13 +58,15 @@ function initPickerMode() {
 }
 
 function initializeApp(appUrl) {
+  const deviceType = detectDeviceType();
+
   fetch(`${appUrl}/api/experiments`, { method: "GET" })
     .then((res) => res.json())
     .then((experiments) => {
       const assignments = migrateOldCookies(getAssignments(), experiments);
 
       experiments.forEach((experiment) => {
-        processExperiment(experiment, assignments, appUrl);
+        processExperiment(experiment, assignments, appUrl, deviceType);
       });
 
       saveAssignments(assignments);
@@ -74,7 +76,7 @@ function initializeApp(appUrl) {
     });
 }
 
-function processExperiment(experiment, assignments, appUrl) {
+function processExperiment(experiment, assignments, appUrl, deviceType) {
   // Only relevant if at least one variant section exists on this page
   const variantsOnPage = experiment.variants.filter(
     (v) => v.sectionId && document.getElementById(v.sectionId),
@@ -114,7 +116,13 @@ function processExperiment(experiment, assignments, appUrl) {
 
   if (isNew) {
     const userId = getCookie("_shopify_y");
-    submitExperimentUser(userId, experiment.id, assignedVariant.name, appUrl);
+    submitExperimentUser(
+      userId,
+      experiment.id,
+      assignedVariant.name,
+      appUrl,
+      deviceType,
+    );
   }
 }
 
@@ -198,12 +206,27 @@ function getCookie(name) {
   return null;
 }
 
-async function submitExperimentUser(userId, experimentId, variantName, appUrl) {
+function detectDeviceType() {
+  const ua = navigator.userAgent || "";
+
+  if (/ipad|tablet/i.test(ua)) return "tablet";
+  if (/mobi|android|iphone|ipod/i.test(ua)) return "mobile";
+  return "desktop";
+}
+
+async function submitExperimentUser(
+  userId,
+  experimentId,
+  variantName,
+  appUrl,
+  deviceType,
+) {
   const payload = {
     event_type: "experiment_include",
     client_id: userId,
     experiment_id: experimentId,
     variant: variantName,
+    device_type: deviceType,
     timestamp: new Date().toISOString(),
   };
 

@@ -114,14 +114,10 @@ export async function unsubscribeEmail(email) {
 }// end unsubscribeEmail
 
 
-export async function unsubscribeAllEmails() {
-   const sns = new SNSClient({ region: process.env.AWS_REGION });
+export async function unsubscribeAll() {
+  const sns = new SNSClient({ region: process.env.AWS_REGION });
   const topicArn = process.env.AWS_TOPIC;
-
-  if (!topicArn) {
-    throw new Error("Missing TEST_ARN environment variable");
-  }
-
+  
   let nextToken = undefined;
   const arnsToRemove = [];
 
@@ -135,14 +131,12 @@ export async function unsubscribeAllEmails() {
 
     for (const sub of response.Subscriptions || []) {
       if (
-        sub.Protocol === "email" &&
         sub.SubscriptionArn &&
-        sub.SubscriptionArn !== "PendingConfirmation"
+        sub.SubscriptionArn !== "PendingConfirmation" //avoids aws throwing an error, means the email has not accepted subscription
       ) {
         arnsToRemove.push(sub.SubscriptionArn);
       }
     }
-
     nextToken = response.NextToken;
   } while (nextToken);
 

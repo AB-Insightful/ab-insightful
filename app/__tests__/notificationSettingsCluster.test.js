@@ -204,6 +204,9 @@ vi.mock('../services/notifications.server', () => ({
 }));
 vi.mock('../services/notifications.server.js', () => ({
   sendEmailTopic: vi.fn(),
+  subscribeEmail: vi.fn(),
+  unsubscribeEmail: vi.fn(),
+  unsubscribeAll: vi.fn(),
 }));
 
 //fixes mock issues

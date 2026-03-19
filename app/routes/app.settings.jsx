@@ -183,8 +183,8 @@ export const action = async ({ request }) => {
 
   if (intent === "deleteAll") {
     //performs notification function to unsubscribe everyone associated with the topic
-    const {unsubscribeAllEmails} = await import ("../services/notifications.server");
-    const res = await unsubscribeAllEmails();
+    const {unsubscribeAll} = await import ("../services/notifications.server");
+    const res = await unsubscribeAll();
 
     //locate the project
     const project = await db.project.findUnique({

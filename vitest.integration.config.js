@@ -5,9 +5,8 @@ export default defineConfig({
     environment: "node",
     globals: true,
     include: [
-      "app/__tests__/experiment.collect.integration.test.js",
-      "app/__tests__/api.collect.integration.test.js",
-      "app/__tests__/api.collect.route.test.js",
+      "app/__tests__/integration/**/*.integration.test.js",
+      "app/__tests__/integration/**/*.route.test.js",
     ],
     exclude: ["node_modules", "dist"],
     setupFiles: [],

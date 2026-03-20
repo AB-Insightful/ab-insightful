@@ -319,6 +319,10 @@ vi.mock('../services/notifications.server', () => ({
     sendEmailEnd: vi.fn(),
 }));
 vi.mock('../services/notifications.server.js', () => ({
+  sendEmailTopic: vi.fn(),
+  subscribeEmail: vi.fn(),
+  unsubscribeEmail: vi.fn(),
+  unsubscribeAll: vi.fn(),
     sendEmailStart: vi.fn(),
     sendEmailEnd: vi.fn(),
 }));

@@ -426,6 +426,7 @@ export default function Report() {
   const heading = experiment?.name ? `Report - ${experiment.name}` : "Report";
   return (
     <s-page heading={heading}>
+      <s-link slot="breadcrumb-actions" href="/app/experiments">Experiments</s-link>
       {/* Action button */}
       <s-button 
         slot="primary-action" 

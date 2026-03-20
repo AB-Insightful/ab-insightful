@@ -1056,6 +1056,7 @@ export default function EditExperiment() {
 
   return (
     <s-page heading="Edit Experiment" variant="headingLg">
+      <s-link slot="breadcrumb-actions" href={`/app/reports/${experiment.id}`}>Report View</s-link>
       {/* Success Notification UI Component */}
       { showSuccessBanner && (
         <s-box paddingBlockend="base">

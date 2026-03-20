@@ -132,6 +132,8 @@ export async function getCandidatesForScheduledEnd() {
 // Returns experiments that have a variant with a 3-day SMA >= 80%
 // and a conversion rate strictly greater than the control's conversion rate
 export async function getCandidatesForStableSuccessEnd() {
+  const MIN_USERS_THRESHOLD = 100;
+
   const activeExps = await db.experiment.findMany({
     where: {
       status: ExperimentStatus.active,
@@ -170,7 +172,10 @@ export async function getCandidatesForStableSuccessEnd() {
 
       // Minimum 3 days of historical analysis data
       if (variantHistory.length < 3 || controlHistory.length < 3) continue;
-
+      
+      const totalUsersSoFar = variantHistory[0].totalUsers + controlHistory[0].totalUsers;
+      
+      if (totalUsersSoFar < MIN_USERS_THRESHOLD) continue;
       // SMA Calculation: Smoothing out the "Daily Noise"
       const avgProb = variantHistory.reduce((sum, singleDay) => sum + (singleDay.probabilityOfBeingBest || 0), 0) / 3;
 

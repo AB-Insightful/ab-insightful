@@ -507,5 +507,148 @@ export async function seedDemo(prisma) {
     console.log(`Seeded analysis rows exp ${t.experimentId}: ${rows}`);
   }
 
+  const functionalExperiments = [
+    {
+      id: 2001,
+      name: "FUNC - Collecting Data State",
+      description: "Verify UI stays in 'Collecting Data' with only 1 snapshot.",
+      status: ExperimentStatus.active,
+      trafficSplit: "1.0",
+      sectionId: "sec-collect",
+      startDate: addDays(today, -10),
+      projectId: project.id,
+    },
+    {
+      id: 2002,
+      name: "FUNC - Keep Testing State",
+      description: "Verify UI says 'Keep Testing' when SMA is below 80%.",
+      status: ExperimentStatus.active,
+      trafficSplit: "1.0",
+      sectionId: "sec-test",
+      startDate: addDays(today, -10),
+      projectId: project.id,
+    },
+    {
+      id: 2003,
+      name: "FUNC - Single Winner State",
+      description: "Verify UI says 'Deployable!' when SMA is 95%.",
+      status: ExperimentStatus.active,
+      trafficSplit: "1.0",
+      sectionId: "sec-winner",
+      startDate: addDays(today, -10),
+      projectId: project.id,
+    },
+    {
+      id: 2004,
+      name: "FUNC - Multiple Winners State",
+      description: "Verify comma-separated list rendering for multiple winners.",
+      status: ExperimentStatus.active,
+      trafficSplit: "1.0",
+      sectionId: "sec-multi",
+      startDate: addDays(today, -10),
+      projectId: project.id,
+    },
+  ];
+
+  for (const exp of functionalExperiments) {
+    await ensureExperiment(prisma, exp);
+  }
+
+  // Define variants for the functional tests
+  const funcVariantMap = {
+    2001: [
+      { id: 3001, name: "Control", trafficAllocation: 0.5 },
+      { id: 3002, name: "Variant A", trafficAllocation: 0.5 },
+    ],
+    2002: [
+      { id: 3003, name: "Control", trafficAllocation: 0.5 },
+      { id: 3004, name: "Variant A", trafficAllocation: 0.5 },
+    ],
+    2003: [
+      { id: 3005, name: "Control", trafficAllocation: 0.5 },
+      { id: 3006, name: "Variant A", trafficAllocation: 0.5 },
+    ],
+    2004: [
+      { id: 3007, name: "Control", trafficAllocation: 0.34 },
+      { id: 3008, name: "Variant A", trafficAllocation: 0.33 },
+      { id: 3009, name: "Variant B", trafficAllocation: 0.33 },
+    ],
+  };
+
+  for (const exp of functionalExperiments) {
+    await ensureVariants(prisma, exp.id, funcVariantMap[exp.id]);
+    // Link to primary goal
+    await ensureExperimentGoals(prisma, exp.id, [{ goalId: completedCheckout.id, role: "primary" }]);
+  }
+
+  // Manually seed the Analysis rows for the functional tests
+  const funcAnalysisRows = [
+    // 2001: Only ONE snapshot
+    { 
+      experimentId: 2001, variantId: 3001, goalId: completedCheckout.id, 
+      calculatedWhen: today, probabilityOfBeingBest: 0.5, conversionRate: 0.1, 
+      deviceSegment: "all", totalUsers: 100, totalConversions: 10,
+      daysAnalyzed: 10, credIntervalLift: { lower: -0.01, upper: 0.01 },
+      postAlpha: 11, postBeta: 91 // Added mandatory fields
+    },
+    
+    // 2002: 3 snapshots (SMA ~50%)
+    ...[0, 1, 2].map(d => ({ 
+      experimentId: 2002, variantId: 3004, goalId: completedCheckout.id, 
+      calculatedWhen: addDays(today, -d), probabilityOfBeingBest: 0.5, conversionRate: 0.11, 
+      deviceSegment: "all", totalUsers: 500, totalConversions: 55,
+      daysAnalyzed: 10 - d, credIntervalLift: { lower: -0.02, upper: 0.04 },
+      postAlpha: 56, postBeta: 446
+    })),
+    ...[0, 1, 2].map(d => ({ 
+      experimentId: 2002, variantId: 3003, goalId: completedCheckout.id, 
+      calculatedWhen: addDays(today, -d), probabilityOfBeingBest: 0.5, conversionRate: 0.10, 
+      deviceSegment: "all", totalUsers: 500, totalConversions: 50,
+      daysAnalyzed: 10 - d, credIntervalLift: { lower: 0, upper: 0 },
+      postAlpha: 51, postBeta: 451
+    })),
+
+    // 2003: 3 snapshots (SMA ~95%)
+    ...[0, 1, 2].map(d => ({ 
+      experimentId: 2003, variantId: 3006, goalId: completedCheckout.id, 
+      calculatedWhen: addDays(today, -d), probabilityOfBeingBest: 0.95, conversionRate: 0.18, 
+      deviceSegment: "all", totalUsers: 500, totalConversions: 90,
+      daysAnalyzed: 10 - d, credIntervalLift: { lower: 0.05, upper: 0.12 },
+      postAlpha: 91, postBeta: 411
+    })),
+    ...[0, 1, 2].map(d => ({ 
+      experimentId: 2003, variantId: 3005, goalId: completedCheckout.id, 
+      calculatedWhen: addDays(today, -d), probabilityOfBeingBest: 0.05, conversionRate: 0.05, 
+      deviceSegment: "all", totalUsers: 500, totalConversions: 25,
+      daysAnalyzed: 10 - d, credIntervalLift: { lower: 0, upper: 0 },
+      postAlpha: 26, postBeta: 476
+    })),
+
+    // 2004: Multiple winners
+    ...[0, 1, 2].map(d => ({ 
+      experimentId: 2004, variantId: 3008, goalId: completedCheckout.id, 
+      calculatedWhen: addDays(today, -d), probabilityOfBeingBest: 0.90, conversionRate: 0.20, 
+      deviceSegment: "all", totalUsers: 500, totalConversions: 100,
+      daysAnalyzed: 10 - d, credIntervalLift: { lower: 0.06, upper: 0.15 },
+      postAlpha: 101, postBeta: 401
+    })),
+    ...[0, 1, 2].map(d => ({ 
+      experimentId: 2004, variantId: 3009, goalId: completedCheckout.id, 
+      calculatedWhen: addDays(today, -d), probabilityOfBeingBest: 0.85, conversionRate: 0.19, 
+      deviceSegment: "all", totalUsers: 500, totalConversions: 95,
+      daysAnalyzed: 10 - d, credIntervalLift: { lower: 0.04, upper: 0.11 },
+      postAlpha: 96, postBeta: 406
+    })),
+    ...[0, 1, 2].map(d => ({ 
+      experimentId: 2004, variantId: 3007, goalId: completedCheckout.id, 
+      calculatedWhen: addDays(today, -d), probabilityOfBeingBest: 0.02, conversionRate: 0.04, 
+      deviceSegment: "all", totalUsers: 500, totalConversions: 20,
+      daysAnalyzed: 10 - d, credIntervalLift: { lower: 0, upper: 0 },
+      postAlpha: 21, postBeta: 481
+    })),
+  ];
+
+  await prisma.analysis.createMany({ data: funcAnalysisRows });
+
   console.log("Demo seed completed successfully.");
 }

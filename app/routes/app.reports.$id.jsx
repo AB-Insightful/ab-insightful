@@ -284,16 +284,24 @@ export default function Report() {
   
       return avgProb >= 0.8 && isBetterThanControl;
     });
-  
-    // Actionable Recommendations
-    if (currentSMAWinners.length > 0) {
-      const winnerNames = currentSMAWinners.map(w => w.name).join(", ");
-      return {
-        status: 'success', // This triggers the green "Deployable!" tone
-        title: "Deployable!",
-        message: `${winnerNames} ${currentSMAWinners.length > 1 ? 'are' : 'is'} outperforming the control with sustained stability.`
-      };
-    }
+    // Handle the Winner State (Deployable!)
+  if (currentSMAWinners.length > 0) {
+    const names = currentSMAWinners.map(v => v.name);
+    
+    const formatter = new Intl.ListFormat('en', { 
+      style: 'long', 
+      type: 'conjunction' 
+    });
+    
+    const formattedNames = formatter.format(names);
+    const verb = currentSMAWinners.length === 1 ? "is" : "are";
+
+    return {
+      status: 'success', // Polaris Green tone
+      title: "Deployable!",
+      message: `${formattedNames} ${verb} outperforming the control with sustained stability.`
+    };
+  }
   
     if (experiment.status === 'active') {
       return { 

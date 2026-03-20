@@ -154,7 +154,7 @@ describe("Report - recommendation logic", () => {
 
     const { container } = render(<Report />);
     expect(getBannerHeading(container)).toBe("Deployable!");
-    expect(screen.getByText(/Variant A, Variant B are outperforming the control/)).toBeTruthy();
+    expect(screen.getByText(/Variant A and Variant B are outperforming the control/)).toBeTruthy();
   });
 
   // Test 4: shows 'Keep Testing' when no variant hits the 80% SMA threshold

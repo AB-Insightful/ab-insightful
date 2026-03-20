@@ -531,37 +531,45 @@ export default function Index() {
         </div>
       <s-section heading="Probability To Be The Best">
               {isClient ? (
-                <ResponsiveContainer width="100%" height={400}>
-                  <LineChart data={filteredPData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis
-                      width={80}
-                      tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
-                      label={{
-                        value: "Probability to be the best (%)",
-                        angle: -90,
-                        position: "insideLeft",
-                        style: { textAnchor: "middle" },
-                      }}
-                    />
-                    <Tooltip />
-                    <Legend />
-                    {experiment.variants.map((v, index) => {
-                      const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
-                      return (
-                        <Line
-                          key={v.id}
-                          type="monotone"
-                          dataKey={v.name}
-                          stroke={colors[index % colors.length]}
-                          activeDot={{ r: 8 }}
-                          dot={false}
+                  filteredPData.length === 0 ? (
+                    <s-box padding="extraLarge" borderRadius="base" background="subdued">
+                      <s-stack direction="block" gap="small" alignItems="center">
+                        <s-text color="subdued">No data available for the selected date range.</s-text>
+                      </s-stack>
+                    </s-box>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={400}>
+                      <LineChart data={filteredPData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis
+                          width={80}
+                          tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
+                          label={{
+                            value: "Probability to be the best (%)",
+                            angle: -90,
+                            position: "insideLeft",
+                            style: { textAnchor: "middle" },
+                          }}
                         />
-                      );
-                    })}
-                  </LineChart>
-                </ResponsiveContainer>
+                        <Tooltip />
+                        <Legend />
+                        {experiment.variants.map((v, index) => {
+                          const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
+                          return (
+                            <Line
+                              key={v.id}
+                              type="monotone"
+                              dataKey={v.name}
+                              stroke={colors[index % colors.length]}
+                              activeDot={{ r: 8 }}
+                              dot={false}
+                            />
+                          );
+                        })}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  )
               ) : (
                 <div style={{ width: 700, height: 400 }}>Loading chart...</div>
               )}

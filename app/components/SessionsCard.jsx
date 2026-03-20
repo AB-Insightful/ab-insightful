@@ -37,7 +37,12 @@ export default function SessionsCard({ sessionData }) {
         }}>
           <div style={{ height: "250px", width: "100%" , minHeight: "250px", position: "relative"}}>
             {isClient ? (
-              <ResponsiveContainer width="100%" height="100%" minWidth="0px">
+                sessions.length === 0 ? (
+                  <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <s-text color="subdued">No session data to display yet.</s-text>
+                  </div>
+                ) : (
+                <ResponsiveContainer width="100%" height="100%" minWidth="0px">
                 <AreaChart data={sessions} debounce={50} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorSessions" x1="0" y1="0" x2="0" y2="1">
@@ -87,6 +92,7 @@ export default function SessionsCard({ sessionData }) {
                   />
                 </AreaChart>
               </ResponsiveContainer>
+              )
             ) : (
               <div style={{ textAlign: "center", paddingTop: "100px" }}>
                 <s-text tone="subdued">Loading chart data...</s-text>

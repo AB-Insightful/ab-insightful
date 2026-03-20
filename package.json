@@ -18,21 +18,17 @@
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
     "typecheck": "react-router typegen && tsc --noEmit",
-
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "test:integration": "npm run seed:test && vitest run --config vitest.integration.config.js --coverage",
-
     "seed:dev": "node prisma/seed.js --environment=dev",
     "seed:test": "node prisma/seed.js --environment=test",
     "seed:demo": "node prisma/seed.js --environment=demo",
-
     "db:dev": "node scripts/switch-db.js --environment=dev",
     "db:test": "node scripts/switch-db.js --environment=test",
     "db:prod": "node scripts/switch-db.js --environment=prod",
     "db:switch": "node scripts/switch-db.js",
     "db:migrate": "prisma migrate deploy",
-
     "launch:dev": "npm run db:dev && shopify app dev",
     "launch:test": "npm run db:test && shopify app dev",
     "launch:prod": "npm run db:prod  && shopify app dev"
@@ -65,6 +61,7 @@
     "marked-react": "^4.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
     "react-router": "^7.9.3",
     "recharts": "^3.7.0",
     "vite-tsconfig-paths": "^5.1.4"

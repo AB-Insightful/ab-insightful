@@ -712,6 +712,11 @@ export async function getExperimentReportData(
         orderBy: { calculatedWhen: "desc" }, // newest analyses first
       },
       variants: true,
+      experimentGoals: {
+        include: {
+          goal: true,
+        },
+      },
     },
   });
   return experiment;

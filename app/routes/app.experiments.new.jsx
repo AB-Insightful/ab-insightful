@@ -813,6 +813,7 @@ export default function CreateExperiment() {
 
   return (
     <s-page heading="Create Experiment" variant="headingLg">
+      <s-link slot="breadcrumb-actions" href="/app/experiments">Experiments</s-link>
       {/*modal popup for tutorial */}
       <s-modal
         id="tutorial-modal-create-exp"
@@ -851,9 +852,6 @@ export default function CreateExperiment() {
       </s-button>
       <s-button slot="secondary-actions" onClick={handleDiscard}>
         Discard
-      </s-button>
-      <s-button slot="secondary-actions" href="/app/experiments">
-        Back to Experiment List
       </s-button>
       {(errors.form || errors.goal) && (
         <s-box padding="base">

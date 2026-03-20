@@ -673,7 +673,14 @@ export default function Report() {
           <ResponsiveContainer width="100%" height={400}>
             <LineChart data={filteredPData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
+              <XAxis dataKey="name"
+                minTickGap={30}
+                tick={{ fontSize: 12 }}
+                tickFormatter={(tick) =>{
+                  const date = new Date(tick);
+                  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                }}
+               />
               <YAxis
                 width={80}
                 tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
@@ -717,7 +724,14 @@ export default function Report() {
           <ResponsiveContainer width="100%" height={400}>
             <LineChart data={filteredELData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
+              <XAxis dataKey="name"
+                minTickGap={30}
+                tick={{ fontSize: 12 }}
+                tickFormatter={(tick) =>{
+                  const date = new Date(tick);
+                  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                }}
+               />
               <YAxis
                 width={80}
                 tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}

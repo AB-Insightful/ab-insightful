@@ -83,6 +83,38 @@ function processExperiment(experiment, assignments, appUrl, deviceType) {
   );
   if (variantsOnPage.length === 0) return;
 
+  // ── Device audience gate ──────────────────────────────────────────────────
+  // If an experiment is configured to target a specific device type (mobile or
+  // desktop), visitors arriving on the wrong device must never be assigned to
+  // a variant or counted as experiment participants.
+  //
+  // How it works:
+  //   1. Default to "all" when the field is absent — this keeps experiments
+  //      that were created before device gating was added working as before.
+  //   2. If the visitor's device doesn't match the experiment's target, remove
+  //      any stale cookie assignment so they can receive a clean assignment
+  //      if they ever visit on an eligible device later.
+  //   3. Restore the control section to visible and hide every other variant
+  //      section, leaving the page identical to an un-modified storefront.
+  //   4. Return early — the variant assignment, show/hide logic, and the
+  //      submitExperimentUser allocation call below are all skipped.
+  const expSegment = experiment.deviceSegment ?? "all"; // null-safe: legacy records won't have this field
+  if (expSegment !== "all" && expSegment !== deviceType) {
+    // Remove any previous assignment for this experiment from the visitor's
+    // cookie. Without this, a mobile user who first loaded the page while
+    // on WiFi (detected as desktop) would remain locked to a desktop variant.
+    delete assignments[String(experiment.id)];
+    const controlVariant = experiment.variants.find((v) => v.isControl);
+    experiment.variants.forEach((v) => {
+      if (!v.sectionId) return; // variant has no dedicated section element
+      const el = document.getElementById(v.sectionId);
+      if (!el) return; // section element is not present on this page
+      // Show the control section; hide every non-control variant section.
+      el.style.display = controlVariant && v.id === controlVariant.id ? "" : "none";
+    });
+    return; // stop — no assignment written, no allocation call sent to the server
+  }
+
   const expKey = String(experiment.id);
   let assignedVariant = null;
   let isNew = false;

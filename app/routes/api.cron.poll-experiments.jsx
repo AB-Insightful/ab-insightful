@@ -35,18 +35,23 @@ export async function loader({ request }) {
     }
 
     // poll for experiments
-    const { getCandidatesForScheduledEnd } = await import(
-      "../services/experiment.server"
-    );
-    const { getCandidatesForScheduledStart } = await import(
-      "../services/experiment.server"
-    );
-    const { endExperiment } = await import("../services/experiment.server");
-    const { startExperiment } = await import("../services/experiment.server");
+    const {
+      getCandidatesForScheduledEnd,
+      getCandidatesForScheduledStart,
+      getCandidatesForStableSuccessEnd,
+      endExperiment,
+      startExperiment,
+    } = await import("../services/experiment.server");
+    
     const ended_experiments = await getCandidatesForScheduledEnd();
     const started_experiments = await getCandidatesForScheduledStart();
-    console.log(started_experiments, ended_experiments);
-    if (ended_experiments.length === 0 && started_experiments.length === 0) {
+    const stable_success_experiments = await getCandidatesForStableSuccessEnd();
+
+    // combine the ended experiments and the stable success experiments
+    const all_ended_experiments = [...ended_experiments, ...stable_success_experiments];
+
+    console.log("[Poll-Experiments] Started: ",started_experiments, "Scheduled Ends: ", ended_experiments, "Stable Success Ends: ", stable_success_experiments);
+    if (all_ended_experiments.length === 0 && started_experiments.length === 0 ) {
       // refactor opp: can remove this if statement and just return the else response, but do i want the distinct messaging?
       try {
         return new Response(
@@ -87,12 +92,12 @@ export async function loader({ request }) {
                 await sendEmailStart(experiment.id, experiment.name, project.shop);
             }
           }catch(e){
-            failures.push(e.message);
+            failures.push(`Start Experiment Failure: [${experiment.id}]: ${e.message}`);
           }
         }
       }
-      if (ended_experiments.length > 0) {
-        for (const experiment of ended_experiments) {
+      if (all_ended_experiments.length > 0) {
+        for (const experiment of all_ended_experiments) {
           try{
             end_results.push(await endExperiment(experiment.id));
             
@@ -107,7 +112,7 @@ export async function loader({ request }) {
                 await sendEmailEnd(experiment.id, experiment.name, project.shop);
             }
           }catch(e){
-            failures.push(e.message);
+            failures.push(`End Experiment Failure: [${experiment.id}]: ${e.message}`);
           }
         }
       }
@@ -116,7 +121,7 @@ export async function loader({ request }) {
           JSON.stringify({
             ok: true,
             started_experiments: started_experiments.length === 0 ? "None" : `${started_experiments}`,
-            ended_experiments: ended_experiments.length === 0 ? "None" : `${ended_experiments}`,
+            ended_experiments: all_ended_experiments.length === 0 ? "None" : `${all_ended_experiments}`,
             failures: failures 
           }),
           {

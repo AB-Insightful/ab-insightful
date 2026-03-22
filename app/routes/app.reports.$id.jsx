@@ -1,6 +1,6 @@
 // Report page for an individual experiment
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import {
   useDateRange,
@@ -191,25 +191,24 @@ export default function Report() {
 
   const statusIntents = allowedStatusIntents(status);
   const isArchived = status === ExperimentStatus.archived;
+  const lastProcessedJson = useRef(null);
 
   useEffect(() => {
-    if (fetcher.state !== "idle") return;
-    if (!fetcher.data?.ok) return;
+    const currentDataString = JSON.stringify(fetcher.data);
+    
+    // Only run if the data is new, exists, and the fetcher is finished
+    if (
+      fetcher.state === "idle" && 
+      fetcher.data?.ok && 
+      lastProcessedJson.current !== currentDataString
+    ) {
+      lastProcessedJson.current = currentDataString;
 
-    //if deleting a draft reroute
-    if (fetcher.data.action === "deleteExperiment") {
-      window.location.href = "/app/experiments";
-      return;
-    }
+      if (fetcher.data.action === "deleteExperiment") {
+        window.location.href = "/app/experiments";
+        return;
+      }
 
-    const refreshActions = [
-      ExperimentStatus.active,
-      ExperimentStatus.paused,
-      ExperimentStatus.completed,
-      ExperimentStatus.archived,
-    ];
-
-    if (refreshActions.includes(fetcher.data.action)) {
       revalidator.revalidate();
     }
   }, [fetcher.state, fetcher.data, revalidator]);
@@ -233,73 +232,88 @@ export default function Report() {
   }
   // Building the recommendation payload
   const recommendation = useMemo(() => {
-  const isCurrentlyActive = experiment.status === 'active';
-  const isCompleted = experiment.status === 'completed' || experiment.status === 'paused';
+    if (experiment.status === 'draft') {
+      return { status: 'default', title: "Not Started", message: "This experiment is not yet collecting data." };
+    }
   
-  const PROB_THRESHOLD = 0.8;
-  const DELTA_THRESHOLD = 0.01;
-  const control = analysis.find(a => a.variantName === "Control");
+    // Check if experiment is < 3 days old
+    const startDate = new Date(experiment.startDate);
+    const daysRunning = Math.floor((new Date() - startDate) / (1000 * 60 * 60 * 24)); // calculate the number of days the experiment has been running
+  
+    if (daysRunning < 3) { // if the experiment is less than 3 days old, return a message saying we need at least 3 days of data
+      return {
+        status: 'default',
+        title: "Collecting Data",
+        message: "We need at least 3 days of stable data to generate a reliable recommendation."
+      };
+    }
+  
+    // Calculate Current SMA Winners
+    const controlSnapshot = analysis.find(a => a.variantName === "Control");
+    const controlId = experiment.variants.find(v => v.name === "Control")?.id;
 
-  if (!control){
+    const controlHistory = experiment.analyses
+    .filter(a => a.variantId === controlId)
+    .sort((a, b) => new Date(b.calculatedWhen) - new Date(a.calculatedWhen))
+    .slice(0, 3);
+
+    if (!controlSnapshot || controlHistory.length < 3) {
+      return {
+        status: 'default',
+        title: "Collecting Data",
+        message: "Waiting for sufficient baseline (Control) data to stabilize."
+      };
+    }
+    // This returns our winners
+    // filter the variants to only include the variants that have a 3-day SMA >= 80% and are currently better than the control
+    const currentSMAWinners = experiment.variants.filter(v => {
+      if (v.name === "Control") return false;
+  
+      // Get the 3 most recent snapshots for THIS specific variant
+      const variantHistory = experiment.analyses
+        .filter(a => a.variantId === v.id)
+        .sort((a, b) => new Date(b.calculatedWhen) - new Date(a.calculatedWhen))
+        .slice(0, 3);
+  
+      if (variantHistory.length < 3) return false;
+  
+      // Calculate SMA
+      const avgProb = variantHistory.reduce((sum, a) => sum + (a.probabilityOfBeingBest || 0), 0) / 3;
+      
+      const isBetterThanControl = variantHistory[0].conversionRate > controlSnapshot.conversionRate;
+  
+      return avgProb >= 0.8 && isBetterThanControl;
+    });
+    // Handle the Winner State (Deployable!)
+  if (currentSMAWinners.length > 0) {
+    const names = currentSMAWinners.map(v => v.name);
+    
+    const formatter = new Intl.ListFormat('en', { 
+      style: 'long', 
+      type: 'conjunction' 
+    });
+    
+    const formattedNames = formatter.format(names);
+    const verb = currentSMAWinners.length === 1 ? "is" : "are";
+
     return {
-      status: 'default',
-      title: "Collecting Data",
-      message: "We need more visitors to generate a report."
+      status: 'success', // Polaris Green tone
+      title: "Deployable!",
+      message: `${formattedNames} ${verb} outperforming the control with sustained stability.`
     };
   }
   
-  /* Searches for variants in the experiment which 
-  *  currently have a PoB >= 80% */ 
-  const currentWinners = analysis.filter(variant => {
-    if (variant.variantName === "Control") return false;
-    const delta = variant.conversionRate - control.conversionRate;
-    return variant.probabilityOfBeingBest >= PROB_THRESHOLD && delta > DELTA_THRESHOLD;
-  });
-
-  /* Scans entire history of the experiment to find
-  *  if at any point any of the variants reached >= 80% PoB */  
-  const historicalWinners = experiment.analyses.filter(a => 
-    a.variant.name !== 'Control' && 
-    a.probabilityOfBeingBest >= PROB_THRESHOLD
-  );
-
-  // Currently Winning state
-  if (currentWinners.length > 0) {
-    const formatter = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' });
-    const winnerNames = formatter.format(currentWinners.map(w => w.variantName));
-    const isPlural = currentWinners.length > 1;
-
-    return { 
-      status: 'winner',
-      title: isPlural ? "Multiple Variants are Deployable!" : "Deployable!",
-      message: `${winnerNames} ${isPlural ? "are" : "is"} winning!`, 
-    };
-  }
-
-  // Peaked previously but needs more stability state
-  if (historicalWinners.length > 0 && isCurrentlyActive) {
-    const uniquePeakedNames = [...new Set(historicalWinners.map(hw => hw.variant.name))];
-    return { 
-      status: 'keep_testing', 
-      title: "Continue Testing", 
-      message: `${uniquePeakedNames.join(", ")} hit 80% previously. Keep running for stability.`, 
-    };
-  }
+    if (experiment.status === 'active') {
+      return { 
+        status: 'info', 
+        title: "Keep Testing", 
+        message: "Data is accumulating, but no variant has reached the 80% stability threshold yet." 
+      };
+    }
   
-  // Active but no winner yet state
-  if (isCurrentlyActive) {
-    return { status: 'keep_testing', title: "Continue Testing", message: "No clear winner yet." }
-  }
-
-  // Experiment ended with no winner state
-  if (isCompleted) {
-    return { status: 'inconclusive', title: "Inconclusive", message: "No clear winner was found." };
-  }
-   // Experiment is not active state
-   return { status: 'default', title: "Draft", message: "Experiment is not active." };
-   }, [analysis, experiment.status, experiment.analyses]);
+    return { status: 'default', title: "Inconclusive", message: "The experiment ended without a clear, stable winner." };
+  }, [experiment, analysis]);
   // Map status to Polaris tones
-
   const mapTone = (status) => {
     switch (status) {
       case 'winner': return 'success';
@@ -672,26 +686,46 @@ export default function Report() {
       </s-section>
       <s-section heading="Probability To Be The Best">
         {isClient ? (
-            filteredPData.length === 0 ? (
-              <s-box padding="extraLarge" borderRadius="base" background="subdued">
-                <s-stack direction="block" gap="small" alignItems="center">
-                  <s-text color="subdued">No data available for the selected date range.</s-text>
-                </s-stack>
-              </s-box>
-            ) : (
-            <ResponsiveContainer width="100%" height={400}>
-              <LineChart data={filteredPData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis
-                  width={80}
-                  tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
-                  label={{
-                    value: "Probability to be the best (%)",
-                    angle: -90,
-                    position: "insideLeft",
-                    style: { textAnchor: "middle" },
-                  }}
+          <ResponsiveContainer width="100%" height={400}>
+            <LineChart data={filteredPData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name"
+                minTickGap={30}
+                tick={{ fontSize: 12 }}
+                tickFormatter={(tick) =>{
+                  const date = new Date(tick);
+                  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                }}
+               />
+              <YAxis
+                width={80}
+                tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
+                label={{
+                  value: "Probability to be the best (%)",
+                  angle: -90,
+                  position: "insideLeft",
+                  style: { textAnchor: "middle" },
+                }}
+              />
+              <Tooltip formatter={(value) => `${(value * 100).toFixed(2)}%`} />
+              <Legend />
+              <ReferenceLine
+              y={0.8}
+              stroke="#2c2d2c"
+              strokeDasharray="5.5"
+              />
+              {/* Dynamically renders all variants */}
+              { experiment.variants.map((v, index) => {
+                // Array of colors to distinguis variants
+                const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
+                return(
+                  <Line
+                  key={v.id}
+                  type="monotone"
+                  dataKey={v.name}
+                  stroke={colors[index % colors.length]}
+                  activeDot={{ r: 8 }}
+                  dot={false}
                 />
                 <Tooltip formatter={(value) => `${(value * 100).toFixed(2)}%`} />
                 <Legend />
@@ -724,26 +758,41 @@ export default function Report() {
       </s-section>
       <s-section heading="Expected Loss">
         {isClient ? (
-            filteredELData.length === 0 ? (
-              <s-box padding="extraLarge" borderRadius="base" background="subdued">
-                <s-stack direction="block" gap="small" alignItems="center">
-                  <s-text color="subdued">No data available for the selected date range.</s-text>
-                </s-stack>
-              </s-box>
-            ) : (
-            <ResponsiveContainer width="100%" height={400}>
-              <LineChart data={filteredELData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis
-                  width={80}
-                  tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
-                  label={{
-                    value: "Expected Loss (%)",
-                    angle: -90,
-                    position: "insideLeft",
-                    style: { textAnchor: "middle" },
-                  }}
+          <ResponsiveContainer width="100%" height={400}>
+            <LineChart data={filteredELData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name"
+                minTickGap={30}
+                tick={{ fontSize: 12 }}
+                tickFormatter={(tick) =>{
+                  const date = new Date(tick);
+                  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                }}
+               />
+              <YAxis
+                width={80}
+                tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
+                label={{
+                  value: "Expected Loss (%)",
+                  angle: -90,
+                  position: "insideLeft",
+                  style: { textAnchor: "middle" },
+                }}
+              />
+              <Tooltip formatter={(value) => `${(value * 100).toFixed(2)}%`} />
+              <Legend />
+              {/* Dynamically renders all variants */}
+              { experiment.variants.map((v, index) => {
+                // Array of colors to distinguis variants
+                const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
+                return(
+                  <Line
+                  key={v.id}
+                  type="monotone"
+                  dataKey={v.name}
+                  stroke={colors[index % colors.length]}
+                  activeDot={{ r: 8 }}
+                  dot={false}
                 />
                 <Tooltip formatter={(value) => `${(value * 100).toFixed(2)}%`} />
                 <Legend />

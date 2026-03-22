@@ -57,11 +57,15 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-// helper: find an s-link by visible text and read href off the custom element
+// helper: find breadcrumb s-link by visible text (ignore duplicate labels elsewhere on the page)
 function expectBreadcrumb(label, href) {
-  const crumb = screen.getByText(label);
-  expect(crumb).toBeInTheDocument();
-  expect(crumb.closest("s-link") ?? crumb).toHaveAttribute("href", href);
+  const matches = screen.getAllByText(label);
+  const crumb = matches.find(
+    (node) =>
+      node.closest("s-link")?.getAttribute("slot") === "breadcrumb-actions",
+  );
+  expect(crumb, `Expected breadcrumb link "${label}"`).toBeTruthy();
+  expect(crumb.closest("s-link")).toHaveAttribute("href", href);
 }
 
 describe("breadcrumb links", () => {

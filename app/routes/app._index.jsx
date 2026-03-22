@@ -302,13 +302,13 @@ export default function Index() {
         variant="primary"
         href="/app/experiments/new"
       >
-        New Experiment
+        Create Experiment
       </s-button>
       <s-button slot="secondary-actions" href="/app/reports">
         Reports
       </s-button>
       <s-button slot="secondary-actions" href="/app/experiments">
-        Manage Experiments
+        Experiments
       </s-button>
 
       {/* Begin Setup guide */}
@@ -493,7 +493,7 @@ export default function Index() {
                 icon="view"
                 variant="secondary"
               >
-                Manage Experiments
+                Experiments
               </s-button>
             </s-stack>
 

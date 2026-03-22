@@ -853,6 +853,9 @@ export default function CreateExperiment() {
       <s-button slot="secondary-actions" onClick={handleDiscard}>
         Discard
       </s-button>
+      <s-button slot="secondary-actions" href="/app/experiments">
+        Experiments
+      </s-button>
       {(errors.form || errors.goal) && (
         <s-box padding="base">
           <s-banner title="There was an error" tone="critical">

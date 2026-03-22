@@ -302,13 +302,13 @@ export default function Index() {
         variant="primary"
         href="/app/experiments/new"
       >
-        New Experiment
+        Create Experiment
       </s-button>
       <s-button slot="secondary-actions" href="/app/reports">
         Reports
       </s-button>
       <s-button slot="secondary-actions" href="/app/experiments">
-        Manage Experiments
+        Experiments
       </s-button>
 
       {/* Begin Setup guide */}
@@ -493,7 +493,7 @@ export default function Index() {
                 icon="view"
                 variant="secondary"
               >
-                Manage Experiments
+                Experiments
               </s-button>
             </s-stack>
 
@@ -572,10 +572,24 @@ export default function Index() {
                           activeDot={{ r: 8 }}
                           dot={false}
                         />
-                      );
-                    })}
-                  </LineChart>
-                </ResponsiveContainer>
+                        <Tooltip />
+                        <Legend />
+                        {experiment.variants.map((v, index) => {
+                          const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
+                          return (
+                            <Line
+                              key={v.id}
+                              type="monotone"
+                              dataKey={v.name}
+                              stroke={colors[index % colors.length]}
+                              activeDot={{ r: 8 }}
+                              dot={false}
+                            />
+                          );
+                        })}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  )
               ) : (
                 <div style={{ width: 700, height: 400 }}>Loading chart...</div>
               )}

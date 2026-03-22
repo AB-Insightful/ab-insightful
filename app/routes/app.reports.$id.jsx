@@ -657,24 +657,32 @@ export default function Report() {
       <s-section> {/* Variant Success Rate [might be broken - Paul]*/}
       <s-heading>Variant Success Rate</s-heading>
         {/* Table Section of experiment list page */}
-        <s-box  background="base"
-                border="base"
-                borderRadius="base"
-                overflow="hidden"> {/*box used to provide a curved edge table */}
-          <s-table>
-            <s-table-header-row>
-              <s-table-header listslot='primary'>Variant Name</s-table-header>
-              <s-table-header listSlot="secondary">Goal Completion Rate</s-table-header>
-              <s-table-header listSlot="labeled">Improvement %</s-table-header>
-              <s-table-header listSlot="labeled" format="numeric">Probability to be Best</s-table-header>
-              <s-table-header listSlot="labeled" format="numeric">Expected Loss</s-table-header>
-              <s-table-header listSlot="labeled" >Goal Completion / Visitor</s-table-header>
-            </s-table-header-row>
-              <s-table-body>
-                {renderTableData()}
-              </s-table-body>
-            </s-table>
-        </s-box> {/*end of table section*/}
+          {safeAnalysis.length === 0 ? (
+            <s-box padding="extraLarge" borderRadius="base" background="subdued">
+              <s-stack direction="block" gap="small" alignItems="center">
+                <s-text color="subdued">No analysis data yet. Start the experiment to begin collecting results.</s-text>
+              </s-stack>
+            </s-box>
+          ) : (
+            <s-box  background="base"
+                    border="base"
+                    borderRadius="base"
+                    overflow="hidden">
+              <s-table>
+                <s-table-header-row>
+                  <s-table-header listslot='primary'>Variant Name</s-table-header>
+                  <s-table-header listSlot="secondary">Goal Completion Rate</s-table-header>
+                  <s-table-header listSlot="labeled">Improvement %</s-table-header>
+                  <s-table-header listSlot="labeled" format="numeric">Probability to be Best</s-table-header>
+                  <s-table-header listSlot="labeled" format="numeric">Expected Loss</s-table-header>
+                  <s-table-header listSlot="labeled" >Goal Completion / Visitor</s-table-header>
+                </s-table-header-row>
+                <s-table-body>
+                  {renderTableData()}
+                </s-table-body>
+              </s-table>
+            </s-box>
+          )}
       </s-section>
       <s-section heading="Probability To Be The Best">
         {isClient ? (
@@ -719,10 +727,31 @@ export default function Report() {
                   activeDot={{ r: 8 }}
                   dot={false}
                 />
-              );
-              })}
-            </LineChart>
-          </ResponsiveContainer>
+                <Tooltip formatter={(value) => `${(value * 100).toFixed(2)}%`} />
+                <Legend />
+                <ReferenceLine
+                y={0.8}
+                stroke="#2c2d2c"
+                strokeDasharray="5.5"
+                />
+                {/* Dynamically renders all variants */}
+                { experiment.variants.map((v, index) => {
+                  // Array of colors to distinguis variants
+                  const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
+                  return(
+                    <Line
+                    key={v.id}
+                    type="monotone"
+                    dataKey={v.name}
+                    stroke={colors[index % colors.length]}
+                    activeDot={{ r: 8 }}
+                    dot={false}
+                  />
+                );
+                })}
+              </LineChart>
+            </ResponsiveContainer>
+            )
         ) : (
           <div style={{ width: 700, height: 400 }}>Loading chart...</div>
         )}
@@ -765,10 +794,26 @@ export default function Report() {
                   activeDot={{ r: 8 }}
                   dot={false}
                 />
-              );
-              })}
-            </LineChart>
-          </ResponsiveContainer>
+                <Tooltip formatter={(value) => `${(value * 100).toFixed(2)}%`} />
+                <Legend />
+                {/* Dynamically renders all variants */}
+                { experiment.variants.map((v, index) => {
+                  // Array of colors to distinguis variants
+                  const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
+                  return(
+                    <Line
+                    key={v.id}
+                    type="monotone"
+                    dataKey={v.name}
+                    stroke={colors[index % colors.length]}
+                    activeDot={{ r: 8 }}
+                    dot={false}
+                  />
+                );
+                })}
+              </LineChart>
+            </ResponsiveContainer>
+            )
         ) : (
           <div style={{ width: 700, height: 400 }}>Loading chart...</div>
         )}

@@ -2,7 +2,7 @@ import { env } from "node:process";
 import db from "../db.server";
 export async function loader({ request }) {
   if (env.NODE_ENV === "development") {
-    console.log("[poll-experiments] received request: ", request);
+    console.log("[api/cron/poll-experiments] received request: ", request);
   }
   if (request.method === "OPTIONS") {
     return new Response(null, {

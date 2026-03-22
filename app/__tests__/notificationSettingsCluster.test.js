@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { setEmailNotifToggle } from '../services/project.server.js';
-import { sendEmailStart } from '../services/notifications.server.js';
+import { sendEmailStart, sendEmailEnd, sendSMSStart, sendSMSEnd } from '../services/notifications.server.js';
 
 //mock authenticate before importing action
 vi.mock('../shopify.server', () => ({
@@ -305,26 +305,22 @@ describe('app.settings action', () => {
 // email notification toggle
 // ------------------------------------------------------------------
 //shotgun approach since some of these mocks aren't working
-vi.mock('../services/project.server', () => ({
-  setEmailNotifToggle: vi.fn(),
-  getEmailNotifToggle: vi.fn(),
-}));
+
 vi.mock('../services/project.server.js', () => ({
   setEmailNotifToggle: vi.fn(),
   getEmailNotifToggle: vi.fn(),
 }));
 
-vi.mock('../services/notifications.server', () => ({
-    sendEmailStart: vi.fn(),
-    sendEmailEnd: vi.fn(),
-}));
-vi.mock('../services/notifications.server.js', () => ({
-  sendEmailTopic: vi.fn(),
+
+vi.mock("../services/notifications.server.js", () => ({
   subscribeEmail: vi.fn(),
   unsubscribeEmail: vi.fn(),
+  subscribePhoneNum: vi.fn(),
+  unsubscribePhoneNum: vi.fn(),
   unsubscribeAll: vi.fn(),
-    sendEmailStart: vi.fn(),
-    sendEmailEnd: vi.fn(),
+  unsubscribeAllPhoneNums: vi.fn(),
+  sendEmailStart: vi.fn(),
+  sendEmailEnd: vi.fn(),
 }));
 
 //fixes mock issues
@@ -332,6 +328,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   setEmailNotifToggle.mockReset();
   sendEmailStart.mockReset();
+  sendEmailStart.mockReset();
+  sendEmailEnd.mockReset();
 });
 
 it('set_email_notif_false runs toggle update (side effect)', async () => {

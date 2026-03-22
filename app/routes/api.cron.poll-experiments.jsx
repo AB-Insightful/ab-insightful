@@ -68,7 +68,7 @@ export async function loader({ request }) {
       let start_results = [];
       let end_results = [];
       let failures = [];
-      const { sendEmailStart } = await import("../services/notifications.server");
+      const { sendEmailStart, sendSMSEnd, sendSMSStart } = await import("../services/notifications.server");
       const { sendEmailEnd } = await import("../services/notifications.server");
       if (started_experiments.length > 0 ) {
         for (const experiment of started_experiments) {
@@ -79,12 +79,16 @@ export async function loader({ request }) {
             //check if starting of experiment notifications is enabled
             const project = await db.project.findUnique({
                 where: { id: experiment.projectId },
-                select: { enableExperimentStart: true, shop: true }
+                select: { enableExperimentStart: true, emailNotifEnabled: true, smsNotifEnabled: true,  shop: true }
             });
 
-            //send the email if enabled
-            if (project?.enableExperimentStart) {
+            //send the email and sms if enabled
+            if (project?.enableExperimentStart && project?.emailNotifEnabled) {
                 await sendEmailStart(experiment.id, experiment.name, project.shop);
+            }
+            if (project?.enableExperimentStart && project?.smsNotifEnabled)
+            {
+              await sendSMSStart(experiment.id, experiment.name, project.shop);
             }
           }catch(e){
             failures.push(e.message);
@@ -99,12 +103,16 @@ export async function loader({ request }) {
             //check if ending of experiment notifications is enabled
             const project = await db.project.findUnique({
                 where: { id: experiment.projectId },
-                select: { enableExperimentEnd: true, shop: true }
+                select: { enableExperimentEnd: true,  emailNotifEnabled: true, smsNotifEnabled: true,  shop: true }
             });
 
-            //send the email if enabled
-            if (project?.enableExperimentEnd) {
+            //send the email and sms once experiment completes if enabled in settings
+            if (project?.enableExperimentEnd && project?.emailNotifEnabled) {
                 await sendEmailEnd(experiment.id, experiment.name, project.shop);
+            }
+            if (project?.enableExperimentEnt && project?.smsNotifEnabled)
+            {
+              await sendSMSEnd(experiment.id, experiment.name, project.shop);
             }
           }catch(e){
             failures.push(e.message);

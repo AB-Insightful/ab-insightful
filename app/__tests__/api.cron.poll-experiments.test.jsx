@@ -222,7 +222,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
 
     expect(response.status).toBe(200);
     expect(console.log).toHaveBeenCalledWith(
-      "[poll-experiments] received request: ",
+      "[api/cron/poll-experiments] received request: ",
       request,
     );
   });

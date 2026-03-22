@@ -8,6 +8,7 @@ import { ExperimentStatus } from "@prisma/client";
 // Accepts an array of treatment variant objects, each with { sectionId, trafficAllocation }.
 // A Control variant is always created automatically with the remaining traffic.
 // Variant names are auto-generated: "Control", "Variant A", "Variant B", "Variant C", ...
+// experimentData may include optional maxUsers (integer); when present, overrides account default.
 export async function createExperiment(
   experimentData,
   { controlSectionId = "", variants = [] } = {},
@@ -28,7 +29,9 @@ export async function createExperiment(
     );
   }
 
-  if (Math.abs(treatmentAllocation + Math.max(0, controlAllocation) - 1.0) > 0.01) {
+  if (
+    Math.abs(treatmentAllocation + Math.max(0, controlAllocation) - 1.0) > 0.01
+  ) {
     throw new Error(
       `Traffic allocations must sum to ~1.0 (got ${(treatmentAllocation + controlAllocation).toFixed(4)})`,
     );
@@ -168,6 +171,9 @@ export async function getExperimentsList() {
           variant: true, //this gets us the variant name (e.g., "Control", "Variant A")
         },
       },
+      project: {
+        select: { maxUsersPerExperiment: true },
+      },
     },
   });
 
@@ -175,7 +181,7 @@ export async function getExperimentsList() {
 }
 
 //get the experiment list, additionally analyses for conversion rate
-export async function getExperimentsList1() {
+export async function experimentListReport() {
   const experiments = await db.experiment.findMany({
     select: {
       id: true,
@@ -204,7 +210,6 @@ export async function getExperimentsList1() {
   else return null;
 }
 
-
 // get a variant (by name or id) Example: "Control" or "Variant A"
 export async function getVariant(experimentId, name) {
   return db.variant.findFirst({
@@ -214,7 +219,11 @@ export async function getVariant(experimentId, name) {
 }
 
 //get the latest analysis row for that variant (conversionRate lives here)
-export async function getAnalysis(experimentId, variantId, deviceSegment = "all") {
+export async function getAnalysis(
+  experimentId,
+  variantId,
+  deviceSegment = "all",
+) {
   return db.analysis.findFirst({
     where: { experimentId, variantId, deviceSegment },
     orderBy: { calculatedWhen: "desc" },
@@ -223,7 +232,11 @@ export async function getAnalysis(experimentId, variantId, deviceSegment = "all"
 }
 
 //convenience: return conversionRate as a float (or null)
-export async function getVariantConversionRate(experimentId, variantId, deviceSegment = "all") {
+export async function getVariantConversionRate(
+  experimentId,
+  variantId,
+  deviceSegment = "all",
+) {
   const row = await getAnalysis(experimentId, variantId, deviceSegment);
   if (!row) return null;
   const num = row.conversionRate;
@@ -244,7 +257,11 @@ export async function getImprovement(experimentId, deviceSegment = "all") {
   if (!variants.length) return null;
 
   // get control conversion rate
-  const controlAnalysis = await getAnalysis(experimentId, control.id, deviceSegment);
+  const controlAnalysis = await getAnalysis(
+    experimentId,
+    control.id,
+    deviceSegment,
+  );
   const controlRate = controlAnalysis ? controlAnalysis.conversionRate : null;
   if (!(typeof controlRate === "number") || controlRate <= 0) return null;
 
@@ -677,7 +694,10 @@ export async function getExperimentsWithAnalyses() {
   });
 }
 
-export async function getExperimentReportData(experimentId, deviceSegment = "all") {
+export async function getExperimentReportData(
+  experimentId,
+  deviceSegment = "all",
+) {
   const experiment = await db.experiment.findUnique({
     where: {
       id: experimentId,
@@ -692,6 +712,11 @@ export async function getExperimentReportData(experimentId, deviceSegment = "all
         orderBy: { calculatedWhen: "desc" }, // newest analyses first
       },
       variants: true,
+      experimentGoals: {
+        include: {
+          goal: true,
+        },
+      },
     },
   });
   return experiment;
@@ -873,7 +898,6 @@ export async function setProbabilityOfBest({
 // Function to get experiments list.
 // This is used for the "Experiments List" page
 
-
 // Function to check if experiment is still active
 export function isExperimentActive(experiment, timeCheck = new Date()) {
   if (!experiment) return false;
@@ -902,6 +926,8 @@ async function handleExperiment_IncludeEvent(payload) {
     );
     return null;
   }
+
+  // Create/update user first so it exists even when variant is not found
   const user = await db.user.upsert({
     where: {
       shopifyCustomerID: payload.client_id,
@@ -916,7 +942,6 @@ async function handleExperiment_IncludeEvent(payload) {
   });
 
   // Then, tie that user to the experiment
-  // First, get the variant ID from the variant name
   const variant = await getVariant(payload.experiment_id, payload.variant);
 
   if (!variant) {
@@ -929,26 +954,74 @@ async function handleExperiment_IncludeEvent(payload) {
     return;
   }
 
-  // Now create or update the allocation
-  // TODO seems like there needs to be more error handling with this result variable here.
-  const result = await db.allocation.upsert({
-    where: {
-      userId_experimentId: {
-        userId: user.id,
-        experimentId: payload.experiment_id,
-      },
-    },
-    create: {
-      userId: user.id,
-      experimentId: payload.experiment_id,
-      variantId: variant.id,
-      deviceType: payload.device_type ?? payload.deviceType ?? null,
-    },
-    update: {
-      variantId: variant.id,
-      deviceType: payload.device_type ?? payload.deviceType ?? null,
+  const experimentId =
+    typeof payload.experiment_id === "string"
+      ? parseInt(payload.experiment_id, 10)
+      : payload.experiment_id;
+  const deviceType = payload.device_type ?? payload.deviceType ?? null;
+
+  // Resolve effective max: experiment override when set, otherwise project default
+  const experiment = await db.experiment.findUnique({
+    where: { id: experimentId },
+    include: {
+      project: { select: { maxUsersPerExperiment: true } },
     },
   });
+  const effectiveMax =
+    experiment?.maxUsers ??
+    experiment?.project?.maxUsersPerExperiment ??
+    10000;
+
+  // Run allocation logic in a transaction to serialize count+create and avoid races.
+  const result = await db.$transaction(async (tx) => {
+    const existingAllocation = await tx.allocation.findUnique({
+      where: {
+        userId_experimentId: {
+          userId: user.id,
+          experimentId,
+        },
+      },
+    });
+
+    if (existingAllocation) {
+      return tx.allocation.update({
+        where: {
+          userId_experimentId: {
+            userId: user.id,
+            experimentId,
+          },
+        },
+        data: {
+          variantId: variant.id,
+          deviceType,
+        },
+      });
+    }
+
+    const count = await tx.allocation.count({
+      where: { experimentId },
+    });
+    if (count >= effectiveMax) {
+      return null;
+    }
+
+    return tx.allocation.create({
+      data: {
+        userId: user.id,
+        experimentId,
+        variantId: variant.id,
+        deviceType,
+      },
+    });
+  });
+
+  if (!result) {
+    console.log(
+      "[handle experiment include] max users reached, not creating allocation",
+    );
+    return { limitReached: true };
+  }
+
   if (!result) {
     console.log(
       "[handle experiment include] an error occurred while publishing the allocation",
@@ -960,7 +1033,7 @@ async function handleExperiment_IncludeEvent(payload) {
       result,
     );
   }
-  return { result: result }; // should probably return the result to the client in the body of the response.
+  return { result }; // should probably return the result to the client in the body of the response.
 }
 
 async function persistConversion(payload, Goal_Type) {

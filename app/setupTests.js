@@ -37,6 +37,13 @@ defineOnce("s-text-field");
 defineOnce("s-button");
 defineOnce("s-popover");
 defineOnce("s-stack");
+defineOnce("s-page");
+defineOnce("s-section");
+defineOnce("s-menu");
+defineOnce("s-paragraph");
+defineOnce("s-text");
+defineOnce("s-button-group");
+defineOnce("s-link");
 
 // Patch document.createElement so <s-text-field> acts like a real input for tests
 const originalCreateElement = document.createElement.bind(document);
@@ -80,7 +87,16 @@ beforeEach(() => {
       return btn;
     }
 
-    if (tagName === "s-popover" || tagName === "s-stack") {
+    if (
+      tagName === "s-popover" ||
+      tagName === "s-stack" ||
+      tagName === "s-page" ||
+      tagName === "s-section" ||
+      tagName === "s-menu" ||
+      tagName === "s-paragraph" ||
+      tagName === "s-text" ||
+      tagName === "s-button-group"
+    ) {
       const div = originalCreateElement("div");
       div.setAttribute(`data-${tagName}`, "true");
       return div;

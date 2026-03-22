@@ -49,7 +49,14 @@ export const loader = async ({ request }) => {
   //checks to see if web pixel already exists, used as conditional to web pixel section later
   const { webPixelNotNull} = await import ("../services/session.server");
   
-  const tutorialData = await getTutorialData();
+  //for the love of god handle the nulls
+  const tutorialData = (await getTutorialData()) ?? {
+    generalSettings: false,
+    createExperiment: false,
+    viewedListExperiment: false,
+    viewedReportsPage: false,
+    onSiteTracking: false,
+  };
   const webPixelRes = await webPixelNotNull();
 
   tutorialData.allSetupDone= (

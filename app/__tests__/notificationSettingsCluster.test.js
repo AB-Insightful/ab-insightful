@@ -114,6 +114,121 @@ describe('app.settings action', () => {
   });
 
   // ------------------------------------------------------------------
+  //updateMaxUsersPerExperiment
+  // ------------------------------------------------------------------
+  describe('updateMaxUsersPerExperiment', () => {
+    it('saves valid integer to the database', async () => {
+      const request = makeRequest({
+        intent: 'updateMaxUsersPerExperiment',
+        maxUsersPerExperiment: '5000',
+      });
+      const result = await action({ request });
+
+      expect(db.project.update).toHaveBeenCalledWith({
+        where: { shop: 'test-shop.myshopify.com' },
+        data: { maxUsersPerExperiment: 5000 },
+      });
+      expect(result).toEqual({
+        ok: true,
+        intent: 'updateMaxUsersPerExperiment',
+        maxUsersPerExperiment: 5000,
+      });
+    });
+
+    it('accepts 1 as minimum value', async () => {
+      const request = makeRequest({
+        intent: 'updateMaxUsersPerExperiment',
+        maxUsersPerExperiment: '1',
+      });
+      const result = await action({ request });
+
+      expect(db.project.update).toHaveBeenCalledWith({
+        where: { shop: 'test-shop.myshopify.com' },
+        data: { maxUsersPerExperiment: 1 },
+      });
+      expect(result.ok).toBe(true);
+    });
+
+    it('accepts 1,000,000 as maximum value', async () => {
+      const request = makeRequest({
+        intent: 'updateMaxUsersPerExperiment',
+        maxUsersPerExperiment: '1000000',
+      });
+      const result = await action({ request });
+
+      expect(db.project.update).toHaveBeenCalledWith({
+        where: { shop: 'test-shop.myshopify.com' },
+        data: { maxUsersPerExperiment: 1000000 },
+      });
+      expect(result.ok).toBe(true);
+    });
+
+    it('returns error when value is not a valid integer', async () => {
+      const request = makeRequest({
+        intent: 'updateMaxUsersPerExperiment',
+        maxUsersPerExperiment: 'abc',
+      });
+      const result = await action({ request });
+
+      expect(db.project.update).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        ok: false,
+        intent: 'updateMaxUsersPerExperiment',
+        error: 'Must be a valid integer',
+        field: 'maxUsersPerExperiment',
+      });
+    });
+
+    it('returns error when value is empty', async () => {
+      const request = makeRequest({
+        intent: 'updateMaxUsersPerExperiment',
+        maxUsersPerExperiment: '',
+      });
+      const result = await action({ request });
+
+      expect(db.project.update).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        ok: false,
+        intent: 'updateMaxUsersPerExperiment',
+        error: 'Must be a valid integer',
+        field: 'maxUsersPerExperiment',
+      });
+    });
+
+    it('returns error when value is less than 1', async () => {
+      const request = makeRequest({
+        intent: 'updateMaxUsersPerExperiment',
+        maxUsersPerExperiment: '0',
+      });
+      const result = await action({ request });
+
+      expect(db.project.update).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        ok: false,
+        intent: 'updateMaxUsersPerExperiment',
+        error: 'Must be at least 1',
+        field: 'maxUsersPerExperiment',
+      });
+    });
+
+    it('returns error when value exceeds 1,000,000', async () => {
+      const request = makeRequest({
+        intent: 'updateMaxUsersPerExperiment',
+        maxUsersPerExperiment: '1000001',
+      });
+      const result = await action({ request });
+
+      expect(db.project.update).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        ok: false,
+        intent: 'updateMaxUsersPerExperiment',
+        error: 'Must be at most 1,000,000',
+        field: 'maxUsersPerExperiment',
+      });
+    });
+  });
+
+  // ------------------------------------------------------------------
   //disableNotifications
   // ------------------------------------------------------------------
   describe('disableNotifications', () => {
@@ -204,6 +319,10 @@ vi.mock('../services/notifications.server', () => ({
     sendEmailEnd: vi.fn(),
 }));
 vi.mock('../services/notifications.server.js', () => ({
+  sendEmailTopic: vi.fn(),
+  subscribeEmail: vi.fn(),
+  unsubscribeEmail: vi.fn(),
+  unsubscribeAll: vi.fn(),
     sendEmailStart: vi.fn(),
     sendEmailEnd: vi.fn(),
 }));

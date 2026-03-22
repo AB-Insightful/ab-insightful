@@ -15,6 +15,7 @@ export const loader = async ({ request }) => {
       defaultGoal: true,
       enableExperimentStart: true,
       enableExperimentEnd: true,
+      maxUsersPerExperiment: true,
       contactEmails: { select: { id: true, email: true } },
       contactPhones: { select: { id: true, phoneNumber: true } },
     },
@@ -32,6 +33,7 @@ export const loader = async ({ request }) => {
     defaultGoal: project.defaultGoal,
     enableExperimentStart: project.enableExperimentStart,
     enableExperimentEnd: project.enableExperimentEnd,
+    maxUsersPerExperiment: project.maxUsersPerExperiment,
     contactEmails: project.contactEmails,
     contactPhones: project.contactPhones,
     tutorialData: tutorialInfo,
@@ -112,8 +114,15 @@ export const action = async ({ request }) => {
   }
 
   //add an email to the list
+  //sends subscriber email 
   if (intent === "addEmail") {
+
     const email = (formData.get("email") || "").trim().toLowerCase();
+
+    const {subscribeEmail} = await import ("../services/notifications.server");
+    const emailSubStatus= await subscribeEmail(email);
+    console.log("email subscribed: " + emailSubStatus);
+
 
     //check if empty
     if (!email) return { error: "Email cannot be null", field: "email" };
@@ -139,6 +148,10 @@ export const action = async ({ request }) => {
 
   //delete an email from the list
   if (intent === "deleteEmail") {
+    const email = formData.get("email");
+    const {unsubscribeEmail} = await import ("../services/notifications.server");
+    const unsubStatus = await unsubscribeEmail(email);
+
     const id = parseInt(formData.get("id"), 10);
     await db.contactEmail.delete({ where: { id } });
     return { ok: true };
@@ -181,7 +194,10 @@ export const action = async ({ request }) => {
   }
 
   if (intent === "deleteAll") {
-    
+    //performs notification function to unsubscribe everyone associated with the topic
+    const {unsubscribeAll} = await import ("../services/notifications.server");
+    const res = await unsubscribeAll();
+
     //locate the project
     const project = await db.project.findUnique({
       where: { shop: session.shop },
@@ -211,6 +227,25 @@ export const action = async ({ request }) => {
     return { ok: true, intent: "updateExperimentEnd" };
   }
 
+  if (intent === "updateMaxUsersPerExperiment") {
+    const raw = formData.get("maxUsersPerExperiment");
+    const parsed = raw === "" || raw === null ? NaN : parseInt(String(raw), 10);
+    if (Number.isNaN(parsed)) {
+      return { ok: false, intent: "updateMaxUsersPerExperiment", error: "Must be a valid integer", field: "maxUsersPerExperiment" };
+    }
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      return { ok: false, intent: "updateMaxUsersPerExperiment", error: "Must be at least 1", field: "maxUsersPerExperiment" };
+    }
+    if (parsed > 1_000_000) {
+      return { ok: false, intent: "updateMaxUsersPerExperiment", error: "Must be at most 1,000,000", field: "maxUsersPerExperiment" };
+    }
+    await db.project.update({
+      where: { shop: session.shop },
+      data: { maxUsersPerExperiment: parsed },
+    });
+    return { ok: true, intent: "updateMaxUsersPerExperiment", maxUsersPerExperiment: parsed };
+  }
+
   if (intent === "disableNotifications") {
     await db.project.update({
       where: { shop: session.shop },
@@ -232,9 +267,10 @@ function formatPhone(digits) {
 }
 
 export default function Settings() {
-  const { defaultGoal, enableExperimentStart, enableExperimentEnd, contactEmails, contactPhones, tutorialData, emailNotifEnabled } = useLoaderData();
+  const { defaultGoal, enableExperimentStart, enableExperimentEnd, maxUsersPerExperiment, contactEmails, contactPhones, tutorialData, emailNotifEnabled } = useLoaderData();
   const fetcher = useFetcher();
   const goalFetcher = useFetcher();
+  const maxUsersFetcher = useFetcher();
   const notifFetcher = useFetcher();
   const tutorialFetcher = useFetcher(); // for tutorial actions
   const modalRef = useRef(null);
@@ -246,7 +282,10 @@ export default function Settings() {
   const [selectedExperimentStart, setEnableExperimentStart] = useState(enableExperimentStart ?? false);
   const [selectedExperimentEnd, setEnableExperimentEnd] = useState(enableExperimentEnd ?? false);
   const [savedDefaultGoal, setSavedDefaultGoal] = useState(defaultGoal);
+  const [maxUsersInput, setMaxUsersInput] = useState(String(maxUsersPerExperiment ?? 10000));
+  const [savedMaxUsers, setSavedMaxUsers] = useState(maxUsersPerExperiment ?? 10000);
   const [showGoalSaveSuccess, setShowGoalSaveSuccess] = useState(false);
+  const [showMaxUsersSaveSuccess, setShowMaxUsersSaveSuccess] = useState(false);
   const [showStartSaveSuccess, setShowStartSaveSuccess] = useState(false);
   const [showEndSaveSuccess, setShowEndSaveSuccess] = useState(false);
   const [isGoalSaveHovered, setIsGoalSaveHovered] = useState(false);
@@ -261,6 +300,9 @@ export default function Settings() {
 
   const hasPendingGoalChanges = selectedDefaultGoal !== savedDefaultGoal;
   const isSavingGoal = goalFetcher.state !== "idle";
+  const hasPendingMaxUsersChanges = maxUsersInput !== String(savedMaxUsers);
+  const isSavingMaxUsers = maxUsersFetcher.state !== "idle";
+  const maxUsersError = maxUsersFetcher.data?.field === "maxUsersPerExperiment" ? maxUsersFetcher.data.error : null;
 
   //notification toggle fields
   const [emailEnabled, setEmailEnabled] = useState(emailNotifEnabled);
@@ -299,6 +341,12 @@ export default function Settings() {
   }, [defaultGoal]);
 
   useEffect(() => {
+    const value = maxUsersPerExperiment ?? 10000;
+    setMaxUsersInput(String(value));
+    setSavedMaxUsers(value);
+  }, [maxUsersPerExperiment]);
+
+  useEffect(() => {
     setEnableExperimentStart(enableExperimentStart ?? false);
     setEnableExperimentEnd(enableExperimentEnd ?? false);
   }, [enableExperimentStart, enableExperimentEnd]);
@@ -314,6 +362,18 @@ export default function Settings() {
         setShowGoalSaveSuccess(true);
     }
   }, [goalFetcher.state, goalFetcher.data]);
+
+  useEffect(() => {
+    if (
+      maxUsersFetcher.state === "idle" &&
+      maxUsersFetcher.data?.ok &&
+      maxUsersFetcher.data?.intent === "updateMaxUsersPerExperiment"
+    ) {
+      setSavedMaxUsers(maxUsersFetcher.data.maxUsersPerExperiment);
+      setMaxUsersInput(String(maxUsersFetcher.data.maxUsersPerExperiment));
+      setShowMaxUsersSaveSuccess(true);
+    }
+  }, [maxUsersFetcher.state, maxUsersFetcher.data]);
 
   //notifications success popups
   useEffect(() => {
@@ -338,16 +398,35 @@ export default function Settings() {
     }
   }, [hasPendingGoalChanges]);
 
+  useEffect(() => {
+    if (hasPendingMaxUsersChanges) {
+      setShowMaxUsersSaveSuccess(false);
+    }
+  }, [hasPendingMaxUsersChanges]);
+
   //handler functions
   const handleAddEmail = () => {fetcher.submit({ intent: "addEmail", email: emailInput }, { method: "post" });};
-  const handleDeleteEmail = (id) => {fetcher.submit({ intent: "deleteEmail", id: String(id) }, { method: "post" });};
   const handleAddPhone = () => {fetcher.submit({ intent: "addPhone", phone: phoneInput }, { method: "post" });};
-  const handleDeletePhone = (id) => {fetcher.submit({ intent: "deletePhone", id: String(id) }, { method: "post" });};
-  const handleDeleteAllContact = () => {fetcher.submit({ intent: "deleteAll" }, { method: "post" });};   
+  const handleDeletePhone = (id) => {fetcher.submit({ intent: "deletePhone", id: String(id)}, { method: "post" });};
+  const handleDeleteAllContact = () => {fetcher.submit({ intent: "deleteAll" }, { method: "post" });};  
+  
+  const handleDeleteEmail = (id, email) => {
+    fetcher.submit({ intent: "deleteEmail", id: String(id), email }, { method: "post" });
+  
+  };
+
   const handleSaveDefaultGoal = () => {
     if (!hasPendingGoalChanges || isSavingGoal) return;
     goalFetcher.submit(
       { intent: "updateDefaultGoal", defaultGoal: selectedDefaultGoal },
+      { method: "post" },
+    );
+  };
+
+  const handleSaveMaxUsersPerExperiment = () => {
+    if (!hasPendingMaxUsersChanges || isSavingMaxUsers) return;
+    maxUsersFetcher.submit(
+      { intent: "updateMaxUsersPerExperiment", maxUsersPerExperiment: maxUsersInput },
       { method: "post" },
     );
   };
@@ -424,7 +503,7 @@ export default function Settings() {
                         {contactEmails.map((entry) => (
                           <s-clickable-chip
                             key={entry.id}
-                            onClick={() => handleDeleteEmail(entry.id)}
+                            onClick={() => handleDeleteEmail(entry.id, entry.email)}
                             onMouseEnter={() => setHoveredEmailId(entry.id)}
                             onMouseLeave={() => setHoveredEmailId(null)}
                           >
@@ -556,39 +635,65 @@ export default function Settings() {
       {/*experiment configuration*/}
       <s-section heading="Experiment Configuration">
         <div>
-          <s-stack direction="block" gap="base">
-            <s-select
-              label="Select a new default goal for creating new experiments"
-              name="defaultGoal"
-              value={selectedDefaultGoal}
-              onChange={(e) => setSelectedDefaultGoal(e.target.value)}
-            >
-              <s-option value="completedCheckout">Completed Checkout</s-option>
-              <s-option value="viewPage">Viewed Page</s-option>
-              <s-option value="startCheckout">Started Checkout</s-option>
-              <s-option value="addToCart">Added Product to Cart</s-option>
-            </s-select>
-            <s-stack direction="inline" gap="small" alignItems="center">
-              <s-button
-                variant="primary"
-                disabled={!hasPendingGoalChanges || isSavingGoal}
-                onClick={handleSaveDefaultGoal}
-                onMouseEnter={() => setIsGoalSaveHovered(true)}
-                onMouseLeave={() => {
-                  setIsGoalSaveHovered(false);
-                  setIsGoalSavePressed(false);
-                }}
-                onMouseDown={() => setIsGoalSavePressed(true)}
-                onMouseUp={() => setIsGoalSavePressed(false)}
-                style={{
-                  opacity: isGoalSaveHovered ? "0.95" : "1",
-                  transform: isGoalSavePressed ? "translateY(1px)" : "translateY(0)",
-                  transition: "opacity 120ms ease, transform 120ms ease",
-                }}
+          <s-stack direction="block" gap="large">
+            <s-stack direction="block" gap="base">
+              <s-select
+                label="Select a new default goal for creating new experiments"
+                name="defaultGoal"
+                value={selectedDefaultGoal}
+                onChange={(e) => setSelectedDefaultGoal(e.target.value)}
               >
-                Save
-              </s-button>
-              {showGoalSaveSuccess ? <s-text tone="success">Save success!</s-text> : null}
+                <s-option value="completedCheckout">Completed Checkout</s-option>
+                <s-option value="viewPage">Viewed Page</s-option>
+                <s-option value="startCheckout">Started Checkout</s-option>
+                <s-option value="addToCart">Added Product to Cart</s-option>
+              </s-select>
+              <s-stack direction="inline" gap="small" alignItems="center">
+                <s-button
+                  variant="primary"
+                  disabled={!hasPendingGoalChanges || isSavingGoal}
+                  onClick={handleSaveDefaultGoal}
+                  onMouseEnter={() => setIsGoalSaveHovered(true)}
+                  onMouseLeave={() => {
+                    setIsGoalSaveHovered(false);
+                    setIsGoalSavePressed(false);
+                  }}
+                  onMouseDown={() => setIsGoalSavePressed(true)}
+                  onMouseUp={() => setIsGoalSavePressed(false)}
+                  style={{
+                    opacity: isGoalSaveHovered ? "0.95" : "1",
+                    transform: isGoalSavePressed ? "translateY(1px)" : "translateY(0)",
+                    transition: "opacity 120ms ease, transform 120ms ease",
+                  }}
+                >
+                  Save
+                </s-button>
+                {showGoalSaveSuccess ? <s-text tone="success">Save success!</s-text> : null}
+              </s-stack>
+            </s-stack>
+            <s-stack direction="block" gap="base">
+              <s-number-field
+                label="Maximum users per experiment (default)"
+                value={maxUsersInput}
+                onInput={(e) => setMaxUsersInput(e.target.value)}
+                onChange={(e) => setMaxUsersInput(e.target.value)}
+                min={1}
+                max={1000000}
+                step={1}
+                inputMode="numeric"
+                error={maxUsersError ?? undefined}
+                details="Default limit for new experiments. Can be overridden per experiment."
+              />
+              <s-stack direction="inline" gap="small" alignItems="center">
+                <s-button
+                  variant="primary"
+                  disabled={!hasPendingMaxUsersChanges || isSavingMaxUsers}
+                  onClick={handleSaveMaxUsersPerExperiment}
+                >
+                  Save
+                </s-button>
+                {showMaxUsersSaveSuccess ? <s-text tone="success">Save success!</s-text> : null}
+              </s-stack>
             </s-stack>
           </s-stack>
         </div>

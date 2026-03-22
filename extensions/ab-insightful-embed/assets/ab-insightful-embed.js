@@ -236,6 +236,17 @@ async function submitExperimentUser(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+
+    const body = res.ok ? await res.json().catch(() => null) : null;
+    const limitReached =
+      body?.result?.limitReached === true;
+
+    if (limitReached) {
+      // Experiment at max users; assignment was not persisted. Keep showing
+      // the client-assigned variant for consistent UX. Do not retry.
+      return;
+    }
+
     if (!res.ok) throw new Error("Server responded with " + res.status);
   } catch (err) {
     console.error(

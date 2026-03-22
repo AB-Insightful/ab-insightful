@@ -25,9 +25,10 @@ export const loader = async ({ request }) => {
   const { getTutorialData } = await import ("../services/tutorialData.server");
   const tutorialInfo = await getTutorialData();
 
-  //import email toggle notification preset data. 
-  const { getEmailNotifToggle } = await import ("../services/project.server");
+  //import email and sms toggle notification preset data. 
+  const { getEmailNotifToggle, getSMSNotifToggle } = await import ("../services/project.server");
   const emailStatus = await getEmailNotifToggle();
+  const smsStatus = await getSMSNotifToggle();
         
   return {
     defaultGoal: project.defaultGoal,
@@ -37,7 +38,8 @@ export const loader = async ({ request }) => {
     contactEmails: project.contactEmails,
     contactPhones: project.contactPhones,
     tutorialData: tutorialInfo,
-    emailNotifEnabled: emailStatus
+    emailNotifEnabled: emailStatus,
+    smsNotifEnabled: smsStatus
   };
 };
 
@@ -57,6 +59,30 @@ export const action = async ({ request }) => {
     });
     return { ok: true, intent: "updateDefaultGoal", defaultGoal };
   }
+  else if (intent === "set_sms_notif_true")
+  {
+    console.log("performed sms true action");
+    try {
+      const {setSMSNotifToggle} = await import ("../services/project.server");
+      await setSMSNotifToggle(true);
+    } catch (error)
+    {
+      console.error("SMS toggle value change was invalid: ", error);
+      return { ok: false, error: "failed to change sms toggle to true" };
+    }
+  }
+  else if (intent == "set_sms_notif_false")
+  {
+    console.log("performed sms false action");
+    try {
+      const {setSMSNotifToggle} = await import ("../services/project.server");
+      await setSMSNotifToggle(false);
+    } catch (error)
+    {
+      console.error("SMS toggle value change was invalid: ", error);
+      return { ok: false, error: "failed to sms toggle to false" };
+    }
+  }
   else if( intent === "set_email_notif_false")
   {
     try {
@@ -64,7 +90,7 @@ export const action = async ({ request }) => {
         await setEmailNotifToggle(false)
     } catch (error) {
       console.error("Email toggle value change was invalid: ", error)
-      return { ok: false, error: "failed to change email toggle" }; // also fix comma operator    
+      return { ok: false, error: "failed to change email toggle" }; 
     }
   }
   else if (intent === "set_email_notif_true")
@@ -119,11 +145,6 @@ export const action = async ({ request }) => {
 
     const email = (formData.get("email") || "").trim().toLowerCase();
 
-    const {subscribeEmail} = await import ("../services/notifications.server");
-    const emailSubStatus= await subscribeEmail(email);
-    console.log("email subscribed: " + emailSubStatus);
-
-
     //check if empty
     if (!email) return { error: "Email cannot be null", field: "email" };
     //check entry matches format xxx@xxx.xxx
@@ -143,6 +164,12 @@ export const action = async ({ request }) => {
     if (existing) return { error: "Provided email is already saved", field: "email" };
 
     await db.contactEmail.create({ data: { email, projectId: project.id } });
+
+    //adds email to aws
+    const {subscribeEmail} = await import ("../services/notifications.server");
+    const emailSubStatus= await subscribeEmail(email);
+    console.log("email subscribed: " + emailSubStatus);
+
     return { ok: true };
   }
 
@@ -150,7 +177,7 @@ export const action = async ({ request }) => {
   if (intent === "deleteEmail") {
     const email = formData.get("email");
     const {unsubscribeEmail} = await import ("../services/notifications.server");
-    const unsubStatus = await unsubscribeEmail(email);
+    await unsubscribeEmail(email);
 
     const id = parseInt(formData.get("id"), 10);
     await db.contactEmail.delete({ where: { id } });
@@ -183,20 +210,31 @@ export const action = async ({ request }) => {
     if (existing) return { error: "Provided phone number is already saved", field: "phone" };
 
     await db.contactPhone.create({ data: { phoneNumber, projectId: project.id } });
+
+    //add the valid phone number to aws reporting
+    const {subscribePhoneNum} = await import ("../services/notifications.server");
+    await subscribePhoneNum(phoneNumber);
+
     return { ok: true };
   }
 
   //delete a phone number from the list
   if (intent === "deletePhone") {
+    //unsubscribes number from aws
+    const unsubNum = formData.get("phoneNumber"); // double check syntax
+    const {unsubscribePhoneNum} = await import ("../services/notifications.server");
+    await unsubscribePhoneNum(unsubNum);
+
     const id = parseInt(formData.get("id"), 10);
     await db.contactPhone.delete({ where: { id } });
     return { ok: true };
   }
 
   if (intent === "deleteAll") {
-    //performs notification function to unsubscribe everyone associated with the topic
-    const {unsubscribeAll} = await import ("../services/notifications.server");
+    //performs notification function to unsubscribe everyone associated with the email topic
+    const {unsubscribeAll, unsubscribeAllPhoneNums} = await import ("../services/notifications.server");
     const res = await unsubscribeAll();
+    const res2 = await unsubscribeAllPhoneNums()
 
     //locate the project
     const project = await db.project.findUnique({
@@ -267,7 +305,7 @@ function formatPhone(digits) {
 }
 
 export default function Settings() {
-  const { defaultGoal, enableExperimentStart, enableExperimentEnd, maxUsersPerExperiment, contactEmails, contactPhones, tutorialData, emailNotifEnabled } = useLoaderData();
+  const { defaultGoal, enableExperimentStart, enableExperimentEnd, maxUsersPerExperiment, contactEmails, contactPhones, tutorialData, emailNotifEnabled, smsNotifEnabled } = useLoaderData();
   const fetcher = useFetcher();
   const goalFetcher = useFetcher();
   const maxUsersFetcher = useFetcher();
@@ -306,8 +344,12 @@ export default function Settings() {
 
   //notification toggle fields
   const [emailEnabled, setEmailEnabled] = useState(emailNotifEnabled);
+  const [smsEnabled, setSMSEnabled] = useState(false);
   //string show ties in with emailEnabled variable
   const emailNotifToggleDetails = emailEnabled
+    ? 'Notifications enabled'
+    : 'Notifications disabled';
+  const smsNotifToggleDetails = smsEnabled
     ? 'Notifications enabled'
     : 'Notifications disabled';
 
@@ -330,6 +372,31 @@ export default function Settings() {
       console.log('disabled email notifications')
       fetcher.submit(
         {intent: "set_email_notif_false"},
+        {method: "put"}
+      )
+    }
+  }
+
+  
+  function handleSMSNotificationToggle(event){
+    const notifToggleType = event.currentTarget.checked;
+    setSMSEnabled(event.currentTarget.checked);
+    if (notifToggleType)
+    {
+      //Shoud be put since it is a notification change? 
+      console.log('disabled SMS Notifications')
+      fetcher.submit(
+        {intent: "set_sms_notif_true"},
+        {method: "put"}
+      )
+      console.log('enabled e-mail notifications');
+      //call complex function here
+    }
+    else
+    {
+      console.log('disabled SMS Notifications')
+      fetcher.submit(
+        {intent: "set_sms_notif_false"},
         {method: "put"}
       )
     }
@@ -407,12 +474,10 @@ export default function Settings() {
   //handler functions
   const handleAddEmail = () => {fetcher.submit({ intent: "addEmail", email: emailInput }, { method: "post" });};
   const handleAddPhone = () => {fetcher.submit({ intent: "addPhone", phone: phoneInput }, { method: "post" });};
-  const handleDeletePhone = (id) => {fetcher.submit({ intent: "deletePhone", id: String(id)}, { method: "post" });};
+  const handleDeletePhone = (id, phoneNumber) => {fetcher.submit({ intent: "deletePhone", id: String(id), phoneNumber}, { method: "post" });};
   const handleDeleteAllContact = () => {fetcher.submit({ intent: "deleteAll" }, { method: "post" });};  
-  
   const handleDeleteEmail = (id, email) => {
     fetcher.submit({ intent: "deleteEmail", id: String(id), email }, { method: "post" });
-  
   };
 
   const handleSaveDefaultGoal = () => {
@@ -551,7 +616,7 @@ export default function Settings() {
                         {contactPhones.map((entry) => (
                           <s-clickable-chip
                             key={entry.id}
-                            onClick={() => handleDeletePhone(entry.id)}
+                            onClick={() => handleDeletePhone(entry.id, entry.phoneNumber)}
                             onMouseEnter={() => setHoveredPhoneId(entry.id)}
                             onMouseLeave={() => setHoveredPhoneId(null)}
                           >
@@ -573,13 +638,22 @@ export default function Settings() {
             </s-grid-item>
             <s-grid-item>
               <s-switch
+                  id="SMS-notif-toggle"
+                  label="Enable SMS Notifications"
+                  details= {smsNotifToggleDetails}
+                  checked={smsEnabled}
+                  onChange={handleSMSNotificationToggle}
+                  error = "SMS Notifications for AWS may not have been configured. Enabling may cause errors."
+                  >
+              </s-switch>
+              <s-switch
                     id="email-notif-toggle"
                     label="Enable E-mail Notifications"
                     details= {emailNotifToggleDetails}
                     checked={emailEnabled}
                     onChange={handleEmailNotificationToggle}
                     >
-                    Enable E-mail Notifications</s-switch>
+              </s-switch>
               <s-stack direction="block" gap="base">
                 {/*right side, button cluster*/}
                 <div style={{ margin: "10px 0" }}>

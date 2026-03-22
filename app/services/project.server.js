@@ -36,4 +36,36 @@ export async function getEmailNotifToggle(notifId = 1) {
     } 
 }
 
+export async function getSMSNotifToggle(notifId = 1)
+{
+    const project = await db.project.findUnique({
+        where : {id:notifId},
+        select: {smsNotifEnabled:true},
+    });
+       
+    if (!project) {
+        console.log("Failed to find getSMSNotifToggle() value");
+        return null;
+    }
+    else
+    {
+        return project.smsNotifEnabled;
+    } 
+
+}
+
+export async function setSMSNotifToggle(setOn, project_id = 1)
+{
+    const updated = await db.project.update({
+            where: {
+                id : project_id
+            },
+            data:{
+                smsNotifEnabled : setOn
+            }
+    });
+
+    return updated;
+}
+
 

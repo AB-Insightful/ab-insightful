@@ -94,6 +94,11 @@ model Experiment {
   duration            Int?
   timeUnit            TimeUnit? @map("time_unit")
   maxUsers            Int?      @map("max_users")
+  // Controls which device type (all / mobile / desktop) is eligible to be exposed
+  // to a test variant. Visitors on a non-matching device are always shown the control
+  // by the storefront embed and are never tracked as participants in the experiment.
+  // Defaults to "all" so existing experiments remain unaffected.
+  deviceSegment       DeviceSegment @default(all) @map("device_segment")
 
   projectId Int     @map("project_id") // Foreign key
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade) // connects to Project's PK

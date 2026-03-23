@@ -134,6 +134,9 @@ export const loader = async ({ params, request }) => {
       timeUnit: experiment.timeUnit,
       maxUsers: experiment.maxUsers,
       maxUsersPerExperiment: experiment.project?.maxUsersPerExperiment ?? 10000,
+      // Reverse-map the stored DeviceSegment enum back to the UI option value so the
+      // audience picker shows the correct selection when the edit form is opened.
+      customerSegment: { all: "allSegments", mobile: "mobileVisitors", desktop: "desktopVisitors" }[experiment.deviceSegment] ?? "allSegments",
       userCount,
       effectiveMax,
     },
@@ -284,6 +287,9 @@ export const action = async ({ request, params }) => {
 
   const useAccountDefaultMaxUsers = formData.get("useAccountDefaultMaxUsers") === "true";
   const maxUsersStr = (formData.get("maxUsers") || "").trim();
+  // Read the device audience submitted by the form.
+  // Defaults to "allSegments" if the field is absent (e.g. submitted from an older client).
+  const customerSegmentRaw = (formData.get("customerSegment") || "allSegments").trim();
 
   let variantInputs;
   try {
@@ -467,6 +473,13 @@ export const action = async ({ request, params }) => {
     updateData.sectionId = sectionId;
     updateData.controlSectionId = controlSectionId;
     updateData.trafficSplit = parseFloat(trafficSplitStr) / 100.0;
+    // Translate the UI option to the DeviceSegment enum and persist it.
+    // Only applied when structure edits are permitted (draft experiments).
+    //   "allSegments"      → "all"     — every visitor is eligible
+    //   "mobileVisitors"   → "mobile"  — only mobile visitors see variants
+    //   "desktopVisitors"  → "desktop" — only desktop visitors see variants
+    const segmentToDbMap = { allSegments: "all", mobileVisitors: "mobile", desktopVisitors: "desktop" };
+    updateData.deviceSegment = segmentToDbMap[customerSegmentRaw] ?? "all"; // unknown values fall back to "all"
   }
 
   // Build variant operations (draft only - recreate all variants)
@@ -739,6 +752,9 @@ export default function EditExperiment() {
       setEndTime(exp.endTime);
       setEndCondition(exp.endCondition);
       setGoalSelected(exp.goal);
+      // Hydrate the device audience picker with the value returned by the loader
+      // (which already reverse-mapped the DB enum to the UI option string).
+      setCustomerSegment(exp.customerSegment ?? "allSegments");
       setProbabilityToBeBest(exp.probabilityToBeBest || "");
       setDuration(exp.duration || "");
       setTimeUnit(exp.timeUnit || "days");
@@ -831,6 +847,9 @@ export default function EditExperiment() {
     formData.set("timeUnit", timeUnit);
     formData.set("useAccountDefaultMaxUsers", String(useAccountDefaultMaxUsers));
     formData.set("maxUsers", useAccountDefaultMaxUsers ? "" : String(maxUsers));
+    // Include the currently selected device audience so the server action can persist it.
+    // Values: "allSegments" | "mobileVisitors" | "desktopVisitors"
+    formData.set("customerSegment", customerSegment);
 
     try {
       await fetcher.submit(formData, { method: "POST" });

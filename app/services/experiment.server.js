@@ -77,6 +77,10 @@ export async function GetFrontendExperimentsData() {
     },
     select: {
       id: true,
+      // The storefront embed uses deviceSegment to decide whether the visiting
+      // device is eligible for a test variant. Without it the embed cannot gate
+      // exposure and would assign every visitor regardless of device type.
+      deviceSegment: true,
       variants: {
         select: {
           id: true,
@@ -90,6 +94,9 @@ export async function GetFrontendExperimentsData() {
 
   return experiments.map((exp) => ({
     id: exp.id,
+    // Forwarded directly to the embed payload so the client-side script can
+    // compare this value against the visitor's detected device type.
+    deviceSegment: exp.deviceSegment,
     variants: exp.variants.map((v) => ({
       id: v.id,
       name: v.name,
@@ -971,6 +978,16 @@ async function handleExperiment_IncludeEvent(payload) {
     experiment?.maxUsers ??
     experiment?.project?.maxUsersPerExperiment ??
     10000;
+
+  // Device segment guard: only allocate if the visitor's device matches the experiment audience
+  const expSegment = experiment?.deviceSegment ?? "all";
+  const normalizedDevice = (deviceType || "").toLowerCase();
+  if (expSegment !== "all" && normalizedDevice !== expSegment) {
+    console.log(
+      `[handle experiment include] device "${normalizedDevice}" does not match experiment segment "${expSegment}", skipping allocation`,
+    );
+    return { ineligible: true };
+  }
 
   // Run allocation logic in a transaction to serialize count+create and avoid races.
   const result = await db.$transaction(async (tx) => {

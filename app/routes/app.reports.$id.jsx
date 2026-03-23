@@ -684,19 +684,21 @@ export default function Report() {
             </s-box>
           )}
       </s-section>
+      {/* Probability Chart Section */}
       <s-section heading="Probability To Be The Best">
         {isClient ? (
           <ResponsiveContainer width="100%" height={400}>
             <LineChart data={filteredPData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name"
+              <XAxis 
+                dataKey="name"
                 minTickGap={30}
                 tick={{ fontSize: 12 }}
-                tickFormatter={(tick) =>{
+                tickFormatter={(tick) => {
                   const date = new Date(tick);
                   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                 }}
-               />
+              />
               <YAxis
                 width={80}
                 tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
@@ -710,36 +712,15 @@ export default function Report() {
               <Tooltip formatter={(value) => `${(value * 100).toFixed(2)}%`} />
               <Legend />
               <ReferenceLine
-              y={0.8}
-              stroke="#2c2d2c"
-              strokeDasharray="5.5"
-              />
-              {/* Dynamically renders all variants */}
-              { experiment.variants.map((v, index) => {
-                // Array of colors to distinguis variants
-                const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
-                return(
-                  <Line
-                  key={v.id}
-                  type="monotone"
-                  dataKey={v.name}
-                  stroke={colors[index % colors.length]}
-                  activeDot={{ r: 8 }}
-                  dot={false}
-                />
-                <Tooltip formatter={(value) => `${(value * 100).toFixed(2)}%`} />
-                <Legend />
-                <ReferenceLine
                 y={0.8}
                 stroke="#2c2d2c"
                 strokeDasharray="5.5"
-                />
-                {/* Dynamically renders all variants */}
-                { experiment.variants.map((v, index) => {
-                  // Array of colors to distinguis variants
-                  const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
-                  return(
-                    <Line
+                label={{ value: '80% Threshold', position: 'right', fill: '#2c2d2c', fontSize: 10 }}
+              />
+              {experiment.variants.map((v, index) => {
+                const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
+                return (
+                  <Line
                     key={v.id}
                     type="monotone"
                     dataKey={v.name}
@@ -748,27 +729,31 @@ export default function Report() {
                     dot={false}
                   />
                 );
-                })}
-              </LineChart>
-            </ResponsiveContainer>
-            )
+              })}
+            </LineChart>
+          </ResponsiveContainer>
         ) : (
-          <div style={{ width: 700, height: 400 }}>Loading chart...</div>
+          <div style={{ width: "100%", height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+             <s-text color="subdued">Loading chart...</s-text>
+          </div>
         )}
       </s-section>
+
+      {/* Expected Loss Chart Section */}
       <s-section heading="Expected Loss">
         {isClient ? (
           <ResponsiveContainer width="100%" height={400}>
             <LineChart data={filteredELData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name"
+              <XAxis 
+                dataKey="name"
                 minTickGap={30}
                 tick={{ fontSize: 12 }}
-                tickFormatter={(tick) =>{
+                tickFormatter={(tick) => {
                   const date = new Date(tick);
                   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                 }}
-               />
+              />
               <YAxis
                 width={80}
                 tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
@@ -781,27 +766,10 @@ export default function Report() {
               />
               <Tooltip formatter={(value) => `${(value * 100).toFixed(2)}%`} />
               <Legend />
-              {/* Dynamically renders all variants */}
-              { experiment.variants.map((v, index) => {
-                // Array of colors to distinguis variants
+              {experiment.variants.map((v, index) => {
                 const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
-                return(
+                return (
                   <Line
-                  key={v.id}
-                  type="monotone"
-                  dataKey={v.name}
-                  stroke={colors[index % colors.length]}
-                  activeDot={{ r: 8 }}
-                  dot={false}
-                />
-                <Tooltip formatter={(value) => `${(value * 100).toFixed(2)}%`} />
-                <Legend />
-                {/* Dynamically renders all variants */}
-                { experiment.variants.map((v, index) => {
-                  // Array of colors to distinguis variants
-                  const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
-                  return(
-                    <Line
                     key={v.id}
                     type="monotone"
                     dataKey={v.name}
@@ -810,14 +778,15 @@ export default function Report() {
                     dot={false}
                   />
                 );
-                })}
-              </LineChart>
-            </ResponsiveContainer>
-            )
+              })}
+            </LineChart>
+          </ResponsiveContainer>
         ) : (
-          <div style={{ width: 700, height: 400 }}>Loading chart...</div>
+          <div style={{ width: "100%", height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <s-text color="subdued">Loading chart...</s-text>
+          </div>
         )}
       </s-section>
     </s-page>
   );
-  }
+}

@@ -35,23 +35,21 @@ export async function loader({ request }) {
     }
 
     // poll for experiments
-    const {
-      getCandidatesForScheduledEnd,
+    const { 
+      getCandidatesForScheduledEnd, 
       getCandidatesForScheduledStart,
       getCandidatesForStableSuccessEnd,
-      endExperiment,
-      startExperiment,
+      endExperiment, 
+      startExperiment 
     } = await import("../services/experiment.server");
     
-    const ended_experiments = await getCandidatesForScheduledEnd();
+    const scheduled_ended = await getCandidatesForScheduledEnd();
     const started_experiments = await getCandidatesForScheduledStart();
-    const stable_success_experiments = await getCandidatesForStableSuccessEnd();
+    const stable_winners = await getCandidatesForStableSuccessEnd();
+    const ended_experiments = [...scheduled_ended, ...stable_winners];
 
-    // combine the ended experiments and the stable success experiments
-    const all_ended_experiments = [...ended_experiments, ...stable_success_experiments];
-
-    console.log("[Poll-Experiments] Started: ",started_experiments, "Scheduled Ends: ", ended_experiments, "Stable Success Ends: ", stable_success_experiments);
-    if (all_ended_experiments.length === 0 && started_experiments.length === 0 ) {
+    console.log(started_experiments, ended_experiments);
+    if (ended_experiments.length === 0 && started_experiments.length === 0) {
       // refactor opp: can remove this if statement and just return the else response, but do i want the distinct messaging?
       try {
         return new Response(
@@ -73,7 +71,7 @@ export async function loader({ request }) {
       let start_results = [];
       let end_results = [];
       let failures = [];
-      const { sendEmailStart } = await import("../services/notifications.server");
+      const { sendEmailStart, sendSMSEnd, sendSMSStart } = await import("../services/notifications.server");
       const { sendEmailEnd } = await import("../services/notifications.server");
       if (started_experiments.length > 0 ) {
         for (const experiment of started_experiments) {
@@ -84,35 +82,43 @@ export async function loader({ request }) {
             //check if starting of experiment notifications is enabled
             const project = await db.project.findUnique({
                 where: { id: experiment.projectId },
-                select: { enableExperimentStart: true, shop: true }
+                select: { enableExperimentStart: true, emailNotifEnabled: true, smsNotifEnabled: true,  shop: true }
             });
 
-            //send the email if enabled
-            if (project?.enableExperimentStart) {
+            //send the email and sms if enabled
+            if (project?.enableExperimentStart && project?.emailNotifEnabled) {
                 await sendEmailStart(experiment.id, experiment.name, project.shop);
             }
+            if (project?.enableExperimentStart && project?.smsNotifEnabled)
+            {
+              await sendSMSStart(experiment.id, experiment.name, project.shop);
+            }
           }catch(e){
-            failures.push(`Start Experiment Failure: [${experiment.id}]: ${e.message}`);
+            failures.push(e.message);
           }
         }
       }
-      if (all_ended_experiments.length > 0) {
-        for (const experiment of all_ended_experiments) {
+      if (ended_experiments.length > 0) {
+        for (const experiment of ended_experiments) {
           try{
             end_results.push(await endExperiment(experiment.id));
             
             //check if ending of experiment notifications is enabled
             const project = await db.project.findUnique({
                 where: { id: experiment.projectId },
-                select: { enableExperimentEnd: true, shop: true }
+                select: { enableExperimentEnd: true,  emailNotifEnabled: true, smsNotifEnabled: true,  shop: true }
             });
 
-            //send the email if enabled
-            if (project?.enableExperimentEnd) {
+            //send the email and sms once experiment completes if enabled in settings
+            if (project?.enableExperimentEnd && project?.emailNotifEnabled) {
                 await sendEmailEnd(experiment.id, experiment.name, project.shop);
             }
+            if (project?.enableExperimentEnt && project?.smsNotifEnabled)
+            {
+              await sendSMSEnd(experiment.id, experiment.name, project.shop);
+            }
           }catch(e){
-            failures.push(`End Experiment Failure: [${experiment.id}]: ${e.message}`);
+            failures.push(e.message);
           }
         }
       }
@@ -121,7 +127,7 @@ export async function loader({ request }) {
           JSON.stringify({
             ok: true,
             started_experiments: started_experiments.length === 0 ? "None" : `${started_experiments}`,
-            ended_experiments: all_ended_experiments.length === 0 ? "None" : `${all_ended_experiments}`,
+            ended_experiments: ended_experiments.length === 0 ? "None" : `${ended_experiments}`,
             failures: failures 
           }),
           {

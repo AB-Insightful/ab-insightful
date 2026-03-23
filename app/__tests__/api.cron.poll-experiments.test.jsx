@@ -233,7 +233,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
     vi.doMock("../services/experiment.server", () => ({
       getCandidatesForScheduledEnd: vi.fn().mockResolvedValue([]),
       getCandidatesForScheduledStart: vi.fn().mockResolvedValue([{ id: 101, name: "Exp A", projectId: 55 }]),
-      getCandidatesForStableSuccessEnd: vi.fn().mockResolvedValue([]), // Added missing mock export
+      getCandidatesForStableSuccessEnd: vi.fn().mockResolvedValue([]), // Critical fix for ET-570
       endExperiment: vi.fn(),
       startExperiment,
     }));
@@ -255,7 +255,9 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
     });
 
     expect(response.status).toBe(200);
+    expect(startExperiment).toHaveBeenCalledWith(101);
     expect(sendSMSStart).toHaveBeenCalledWith(101, "Exp A", "test.myshopify.com");
+    expect(sendEmailStart).not.toHaveBeenCalled();
   });
 
   test("GET: records failure when sendSMSStart throws", async () => {
@@ -272,7 +274,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
     vi.doMock("../services/experiment.server", () => ({
       getCandidatesForScheduledEnd: vi.fn().mockResolvedValue([]),
       getCandidatesForScheduledStart: vi.fn().mockResolvedValue([{ id: 101, name: "Exp A", projectId: 55 }]),
-      getCandidatesForStableSuccessEnd: vi.fn().mockResolvedValue([]), // Added missing mock export
+      getCandidatesForStableSuccessEnd: vi.fn().mockResolvedValue([]), // Critical fix for ET-570
       endExperiment: vi.fn(),
       startExperiment: vi.fn().mockResolvedValue(undefined),
     }));

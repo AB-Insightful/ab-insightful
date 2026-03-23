@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { setEmailNotifToggle } from '../services/project.server.js';
-import { sendEmailStart } from '../services/notifications.server.js';
+import { sendEmailStart, sendEmailEnd, sendSMSStart, sendSMSEnd } from '../services/notifications.server.js';
 
 //mock authenticate before importing action
 vi.mock('../shopify.server', () => ({
@@ -305,26 +305,22 @@ describe('app.settings action', () => {
 // email notification toggle
 // ------------------------------------------------------------------
 //shotgun approach since some of these mocks aren't working
-vi.mock('../services/project.server', () => ({
-  setEmailNotifToggle: vi.fn(),
-  getEmailNotifToggle: vi.fn(),
-}));
+
 vi.mock('../services/project.server.js', () => ({
   setEmailNotifToggle: vi.fn(),
   getEmailNotifToggle: vi.fn(),
 }));
 
-vi.mock('../services/notifications.server', () => ({
-    sendEmailStart: vi.fn(),
-    sendEmailEnd: vi.fn(),
-}));
-vi.mock('../services/notifications.server.js', () => ({
-  sendEmailTopic: vi.fn(),
+
+vi.mock("../services/notifications.server.js", () => ({
   subscribeEmail: vi.fn(),
   unsubscribeEmail: vi.fn(),
+  subscribePhoneNum: vi.fn(),
+  unsubscribePhoneNum: vi.fn(),
   unsubscribeAll: vi.fn(),
-    sendEmailStart: vi.fn(),
-    sendEmailEnd: vi.fn(),
+  unsubscribeAllPhoneNums: vi.fn(),
+  sendEmailStart: vi.fn(),
+  sendEmailEnd: vi.fn(),
 }));
 
 //fixes mock issues
@@ -332,10 +328,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   setEmailNotifToggle.mockReset();
   sendEmailStart.mockReset();
+  sendEmailStart.mockReset();
+  sendEmailEnd.mockReset();
 });
 
-it('set_email_notif_false runs toggle update (side effect)', async () => {
+it('set_email_notif_false disables email notifications and returns success', async () => {
   setEmailNotifToggle.mockResolvedValue({ id: 1, emailNotifEnabled: false });
+  db.project.update.mockResolvedValue({ id: 1, emailNotifEnabled: false });
 
   const request = makeRequest({ intent: 'set_email_notif_false' });
   const result = await action({ request });
@@ -343,15 +342,23 @@ it('set_email_notif_false runs toggle update (side effect)', async () => {
   expect(setEmailNotifToggle).toHaveBeenCalledTimes(1);
   expect(setEmailNotifToggle).toHaveBeenCalledWith(false);
 
+  expect(db.project.update).toHaveBeenCalledTimes(1);
+  expect(db.project.update).toHaveBeenCalledWith({
+    where: { shop: 'test-shop.myshopify.com' },
+    data: { emailNotifEnabled: false },
+  });
+
   expect(sendEmailStart).not.toHaveBeenCalled();
 
-  //document current behavior (falls through)
-  expect(result).toEqual({ error: "Unknown intent.", field: null });
+  expect(result).toEqual({
+    ok: true,
+    intent: 'set_email_notif_false',
+  });
 });
 
-it('set_email_notif_true runs toggle update AND sends email (side effects)', async () => {
+it('set_email_notif_true enables email notifications and returns success', async () => {
   setEmailNotifToggle.mockResolvedValue({ id: 1, emailNotifEnabled: true });
-  sendEmailStart.mockResolvedValue({ MessageId: 'abc-123' });
+  db.project.update.mockResolvedValue({ id: 1, emailNotifEnabled: true });
 
   const request = makeRequest({ intent: 'set_email_notif_true' });
   const result = await action({ request });
@@ -359,10 +366,18 @@ it('set_email_notif_true runs toggle update AND sends email (side effects)', asy
   expect(setEmailNotifToggle).toHaveBeenCalledTimes(1);
   expect(setEmailNotifToggle).toHaveBeenCalledWith(true);
 
-  expect(sendEmailStart).toHaveBeenCalledTimes(1);
+  expect(db.project.update).toHaveBeenCalledTimes(1);
+  expect(db.project.update).toHaveBeenCalledWith({
+    where: { shop: 'test-shop.myshopify.com' },
+    data: { emailNotifEnabled: true },
+  });
 
-  // document current behavior (falls through)
-  expect(result).toEqual({ error: "Unknown intent.", field: null });
+  expect(sendEmailStart).not.toHaveBeenCalled();
+
+  expect(result).toEqual({
+    ok: true,
+    intent: 'set_email_notif_true',
+  });
 });
 
 it('set_email_notif_true returns ok:false when setEmailNotifToggle throws and does not send email', async () => {
@@ -378,17 +393,5 @@ it('set_email_notif_true returns ok:false when setEmailNotifToggle throws and do
   errSpy.mockRestore();
 });
 
-it('set_email_notif_true returns ok:false when sendEmailStart throws', async () => {
-  setEmailNotifToggle.mockResolvedValue({ id: 1, emailNotifEnabled: true });
-  sendEmailStart.mockRejectedValue(new Error('SNS fail'));
-  const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-  const request = makeRequest({ intent: 'set_email_notif_true' });
-  const result = await action({ request });
-
-  expect(setEmailNotifToggle).toHaveBeenCalledWith(true);
-  expect(result).toEqual({ ok: false, error: "failed to send email" });
-
-  errSpy.mockRestore();
-});
 

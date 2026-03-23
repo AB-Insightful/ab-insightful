@@ -18,12 +18,17 @@ vi.mock("../db.server", () => {
 
 let setEmailNotifToggle;
 let getEmailNotifToggle;
+let setSMSNotifToggle;
+let getSMSNotifToggle;
 
 beforeAll(async () => {
   //Adjust to your real module location
   const mod = await import("../services/project.server.js");
   setEmailNotifToggle = mod.setEmailNotifToggle;
   getEmailNotifToggle = mod.getEmailNotifToggle;
+  setSMSNotifToggle = mod.setSMSNotifToggle;
+  getSMSNotifToggle = mod.getSMSNotifToggle;
+  
 });
 
 describe("project.server.js", () => {
@@ -114,5 +119,88 @@ describe("project.server.js", () => {
     findUniqueMock.mockRejectedValue(new Error("DB read failed"));
 
     await expect(getEmailNotifToggle(1)).rejects.toThrow("DB read failed");
+  });
+
+  it("setSMSNotifToggle updates smsNotifEnabled for the default project_id=1", async () => {
+  const fakeUpdatedProject = { id: 1, smsNotifEnabled: true };
+  updateMock.mockResolvedValue(fakeUpdatedProject);
+
+  const result = await setSMSNotifToggle(true); // project_id defaults to 1
+
+  expect(updateMock).toHaveBeenCalledTimes(1);
+  expect(updateMock).toHaveBeenCalledWith({
+    where: { id: 1 },
+    data: { smsNotifEnabled: true },
+  });
+
+  expect(result).toEqual(fakeUpdatedProject);
+  });
+
+  it("setSMSNotifToggle updates smsNotifEnabled for a provided project_id", async () => {
+    const fakeUpdatedProject = { id: 7, smsNotifEnabled: false };
+    updateMock.mockResolvedValue(fakeUpdatedProject);
+
+    const result = await setSMSNotifToggle(false, 7);
+
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(updateMock).toHaveBeenCalledWith({
+      where: { id: 7 },
+      data: { smsNotifEnabled: false },
+    });
+
+    expect(result).toEqual(fakeUpdatedProject);
+  });
+
+  it("setSMSNotifToggle propagates db errors", async () => {
+    updateMock.mockRejectedValue(new Error("DB update failed"));
+
+    await expect(setSMSNotifToggle(true, 1)).rejects.toThrow("DB update failed");
+  });
+
+  it("getSMSNotifToggle returns the boolean value when project exists (default notifId=1)", async () => {
+    findUniqueMock.mockResolvedValue({ smsNotifEnabled: true });
+
+    const result = await getSMSNotifToggle(); // defaults to 1
+
+    expect(findUniqueMock).toHaveBeenCalledTimes(1);
+    expect(findUniqueMock).toHaveBeenCalledWith({
+      where: { id: 1 },
+      select: { smsNotifEnabled: true },
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it("getSMSNotifToggle returns false when project exists and toggle is false", async () => {
+    findUniqueMock.mockResolvedValue({ smsNotifEnabled: false });
+
+    const result = await getSMSNotifToggle(3);
+
+    expect(findUniqueMock).toHaveBeenCalledTimes(1);
+    expect(findUniqueMock).toHaveBeenCalledWith({
+      where: { id: 3 },
+      select: { smsNotifEnabled: true },
+    });
+
+    expect(result).toBe(false);
+  });
+
+  it("getSMSNotifToggle returns null and logs when project is not found", async () => {
+    findUniqueMock.mockResolvedValue(null);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const result = await getSMSNotifToggle(999);
+
+    expect(findUniqueMock).toHaveBeenCalledTimes(1);
+    expect(result).toBeNull();
+    expect(logSpy).toHaveBeenCalledWith("Failed to find getSMSNotifToggle() value");
+
+    logSpy.mockRestore();
+  });
+
+  it("getSMSNotifToggle propagates db errors", async () => {
+    findUniqueMock.mockRejectedValue(new Error("DB read failed"));
+
+    await expect(getSMSNotifToggle(1)).rejects.toThrow("DB read failed");
   });
 });

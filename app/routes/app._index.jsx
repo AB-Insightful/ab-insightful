@@ -141,12 +141,12 @@ export const action = async ({ request }) => {
     if (response.ok) {
       return {
         success: true,
-        message: data.message ||"Tracking enabled successfully",
+        message: "Tracking enabled successfully",
       };
     } else {
       return {
         success: false,
-        message: data.message ||"Tracking could not be enabled",
+        message: "Tracking could not be enabled",
       };
     }
   }
@@ -529,38 +529,40 @@ export default function Index() {
       {/* End Setup guide */}
       
       <s-grid gridTemplateColumns="3fr 1fr"  gap="base">
-        <s-grid-item>
-      <s-section><s-box><s-heading>Latest Experiment Results</s-heading>
-      {/*graphical section */ }
-      <div style={{ marginBottom: "16px", marginTop: "16px" }}>
-              <DateRangePicker />
-                        
-        </div>
-      <s-section heading="Probability To Be The Best">
-              {isClient ? (
-                  filteredPData.length === 0 ? (
-                    <s-box padding="extraLarge" borderRadius="base" background="subdued">
-                      <s-stack direction="block" gap="small" alignItems="center">
-                        <s-text color="subdued">No data available for the selected date range.</s-text>
-                      </s-stack>
-                    </s-box>
-                  ) : (
-                    <ResponsiveContainer width="100%" height={400}>
-                      <LineChart data={filteredPData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" />
-                        <YAxis
-                          width={80}
-                          tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
-                          label={{
-                            value: "Probability to be the best (%)",
-                            angle: -90,
-                            position: "insideLeft",
-                            style: { textAnchor: "middle" },
-                          }}
-                        />
-                        <Tooltip />
-                        <Legend />
+      <s-grid-item>
+      <s-section>
+        <s-box>
+          <s-heading>Latest Experiment Results</s-heading>
+          <div style={{ marginBottom: "16px", marginTop: "16px" }}>
+            <DateRangePicker />
+          </div>
+          
+          <s-section heading="Probability To Be The Best">
+            {isClient ? (
+              <ResponsiveContainer width="100%" height={400}>
+                <LineChart data={filteredPData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      dataKey="name"
+                      minTickGap={30}
+                      tick={{ fontSize: 12 }}
+                      tickFormatter={(tick) =>{
+                        const date = new Date(tick);
+                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      }}
+                    />
+                    <YAxis
+                      width={80}
+                      tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
+                      label={{
+                        value: "Probability to be the best (%)",
+                        angle: -90,
+                        position: "insideLeft",
+                        style: { textAnchor: "middle" },
+                      }}
+                    />
+                    <Tooltip />
+                    <Legend />
                         {experiment.variants.map((v, index) => {
                           const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
                           return (
@@ -576,16 +578,16 @@ export default function Index() {
                         })}
                       </LineChart>
                     </ResponsiveContainer>
-                  )
               ) : (
-                <div style={{ width: 700, height: 400 }}>Loading chart...</div>
-              )}
+                <div style={{ width: "100%", height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <s-text color="subdued">Loading chart...</s-text>
+                  </div>
+                )}
+              </s-section>
+            </s-box>
             {/*This current button link should theoretically work but cannot be tested since not all of these graphs contain graphing data (causes app crash) and appropriate error handling */}
             {/* Good candidate for unit/integration test */}
             {/* recent experiment additional info section */}
-            
-            </s-section>
-            </s-box>
             <s-table>
               <s-table-header-row>
                 <s-table-header listslot="primary">Name</s-table-header>

@@ -35,16 +35,19 @@ export async function loader({ request }) {
     }
 
     // poll for experiments
-    const { getCandidatesForScheduledEnd } = await import(
-      "../services/experiment.server"
-    );
-    const { getCandidatesForScheduledStart } = await import(
-      "../services/experiment.server"
-    );
-    const { endExperiment } = await import("../services/experiment.server");
-    const { startExperiment } = await import("../services/experiment.server");
-    const ended_experiments = await getCandidatesForScheduledEnd();
+    const { 
+      getCandidatesForScheduledEnd, 
+      getCandidatesForScheduledStart,
+      getCandidatesForStableSuccessEnd,
+      endExperiment, 
+      startExperiment 
+    } = await import("../services/experiment.server");
+    
+    const scheduled_ended = await getCandidatesForScheduledEnd();
     const started_experiments = await getCandidatesForScheduledStart();
+    const stable_winners = await getCandidatesForStableSuccessEnd();
+    const ended_experiments = [...scheduled_ended, ...stable_winners];
+
     console.log(started_experiments, ended_experiments);
     if (ended_experiments.length === 0 && started_experiments.length === 0) {
       // refactor opp: can remove this if statement and just return the else response, but do i want the distinct messaging?

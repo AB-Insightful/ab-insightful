@@ -13,12 +13,17 @@ import {
   getCandidatesForScheduledStart,
   getExperimentReportData,
   isExperimentActive,
+  getCandidatesForStableSuccessEnd,
 } from "../services/experiment.server";
 
 vi.mock("../db.server", () => {
   return {
     default: {
       experiment: {
+        findMany: vi.fn(),
+        findUnique: vi.fn(),
+      },
+      analysis: {
         findMany: vi.fn(),
         findUnique: vi.fn(),
       },
@@ -112,6 +117,84 @@ describe("getCandidatesForScheduledStart", () => {
     );
 
     expect(result).toEqual([{ id: 10 }]);
+  });
+
+  describe("getCandidatesForStableSuccessEnd", () => {
+    test("success: returns experiments where a variant has SMA >= 80% and beats control", async () => {
+      // Mock the active experiment
+      db.experiment.findMany.mockResolvedValueOnce([
+        {
+          id: "exp_1",
+          variants: [
+            { id: "v_ctrl", name: "Control" },
+            { id: "v_treat", name: "Variant B" },
+          ],
+        },
+      ]);
+  
+      // Mock Variant History: 3 days of high probability (Average = 0.9)
+      // Most recent conversion rate: 0.15
+      db.analysis.findMany.mockResolvedValueOnce([
+        { probabilityOfBeingBest: 0.9, conversionRate: 0.15 },
+        { probabilityOfBeingBest: 0.9, conversionRate: 0.14 },
+        { probabilityOfBeingBest: 0.9, conversionRate: 0.13 },
+      ]);
+  
+      // Mock Control History: Most recent conversion rate: 0.10
+      db.analysis.findMany.mockResolvedValueOnce([
+        { probabilityOfBeingBest: 0.05, conversionRate: 0.10 },
+        { probabilityOfBeingBest: 0.05, conversionRate: 0.11 },
+        { probabilityOfBeingBest: 0.05, conversionRate: 0.12 },
+      ]);
+  
+      const result = await getCandidatesForStableSuccessEnd();
+  
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("exp_1");
+    });
+  
+    test("failure: returns empty if SMA is high but conversion rate is lower than control", async () => {
+      db.experiment.findMany.mockResolvedValueOnce([
+        {
+          id: "exp_2",
+          variants: [
+            { id: "v_ctrl", name: "Control" },
+            { id: "v_treat", name: "Variant B" },
+          ],
+        },
+      ]);
+  
+      // High SMA (1.0) but variant (0.05) is currently LOSING to control (0.10)
+      db.analysis.findMany.mockResolvedValueOnce([
+        { probabilityOfBeingBest: 1.0, conversionRate: 0.05 },
+        { probabilityOfBeingBest: 1.0, conversionRate: 0.05 },
+        { probabilityOfBeingBest: 1.0, conversionRate: 0.05 },
+      ]);
+      db.analysis.findMany.mockResolvedValueOnce([
+        { probabilityOfBeingBest: 0.0, conversionRate: 0.10 },
+        { probabilityOfBeingBest: 0.0, conversionRate: 0.10 },
+        { probabilityOfBeingBest: 0.0, conversionRate: 0.10 },
+      ]);
+  
+      const result = await getCandidatesForStableSuccessEnd();
+      expect(result).toHaveLength(0);
+    });
+  
+    test("failure: returns empty if history has fewer than 3 entries", async () => {
+      db.experiment.findMany.mockResolvedValueOnce([
+        {
+          id: "exp_3",
+          variants: [{ id: "c", name: "Control" }, { id: "v", name: "V" }],
+        },
+      ]);
+  
+      // Only 2 days of data
+      db.analysis.findMany.mockResolvedValueOnce([{ probabilityOfBeingBest: 1.0 }, { probabilityOfBeingBest: 1.0 }]);
+      db.analysis.findMany.mockResolvedValueOnce([{ probabilityOfBeingBest: 0.0 }, { probabilityOfBeingBest: 0.0 }]);
+  
+      const result = await getCandidatesForStableSuccessEnd();
+      expect(result).toHaveLength(0);
+    });
   });
 
   test("failure: PrismaClientKnownRequestError returns { error: message }", async () => {

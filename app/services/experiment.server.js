@@ -128,6 +128,75 @@ export async function getCandidatesForScheduledEnd() {
     }
   }
 }
+// Evaluates active experiments for Stable Success Probability termination criteria
+// Returns experiments that have a variant with a 3-day SMA >= 80%
+// and a conversion rate strictly greater than the control's conversion rate
+export async function getCandidatesForStableSuccessEnd() {
+  const MIN_USERS_THRESHOLD = 100;
+
+  const activeExps = await db.experiment.findMany({
+    where: {
+      status: ExperimentStatus.active,
+      endCondition: "stableSuccessProbability",
+    },
+    include: {
+      variants: true,
+    },
+  });
+
+  const candidatesToEnd = [];
+
+  for (const exp of activeExps) {
+    const control = exp.variants.find((v) => v.name === "Control");
+    if (!control) continue; // Cant evaluate stable success without a control
+
+    let hasStableWinner = false;
+
+    // Evaluate each [a/b/c/d] variant in an experiment against the Control
+    for (const variant of exp.variants) {
+      if (variant.name === "Control") continue;
+
+      // fetch the 3 most recent analyses for variant and control
+      const [variantHistory, controlHistory] = await Promise.all([
+        db.analysis.findMany({
+          where: { experimentId: exp.id, variantId: variant.id, deviceSegment: "all" },
+          orderBy: { calculatedWhen: "desc" },
+          take: 3,
+        }),
+        db.analysis.findMany({
+          where: { experimentId: exp.id, variantId: control.id, deviceSegment: "all" },
+          orderBy: { calculatedWhen: "desc" },
+          take: 3,
+        }),
+      ]);
+
+      // Minimum 3 days of historical analysis data
+      if (variantHistory.length < 3 || controlHistory.length < 3) continue;
+      
+      const totalUsersSoFar = variantHistory[0].totalUsers + controlHistory[0].totalUsers;
+      
+      if (totalUsersSoFar < MIN_USERS_THRESHOLD) continue;
+      // SMA Calculation: Smoothing out the "Daily Noise"
+      const avgProb = variantHistory.reduce((sum, singleDay) => sum + (singleDay.probabilityOfBeingBest || 0), 0) / 3;
+
+      // Probability Threshold (80%) + Positive Delta Requirement
+      if (avgProb >= 0.8) {
+        // checks latest variant conversion against control conversion
+        const isCurrentlyBetter = variantHistory[0].conversionRate > controlHistory[0].conversionRate;
+        if (isCurrentlyBetter) {
+          hasStableWinner = true;
+          break; // Found a winner; move to the next experiment
+        }
+      }
+    }
+
+    if (hasStableWinner) {
+      candidatesToEnd.push(exp);
+    }
+  }
+
+  return candidatesToEnd;
+}
 // [Ryan] function to get experiments that meet the following criteria:
 //  - is a draft
 //  - has a scheduled start date that is either Now or has Passed

@@ -1,21 +1,67 @@
 // notifications.test.js
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
+import {
+  determineWinner,
+  sendEmailEnd,
+  sendEmailStart,
+  subscribeEmail,
+  unsubscribeEmail,
+  unsubscribeAll,
+  subscribePhoneNum,
+  unsubscribePhoneNum,
+  sendSMSEnd,
+  sendSMSStart,
+  unsubscribeAllPhoneNums,
+} from "../services/notifications.server.js";
+
 // ─── Mock AWS SNS ─────────────────────────────────────────────────────────────
 // SNSClient must be mocked as a class — arrow functions can't be used with `new`
 const mockSend = vi.fn().mockResolvedValue({ MessageId: "mock-message-id-123" });
 vi.mock("@aws-sdk/client-sns", () => {
     class SNSClient {
-        constructor(config) { this.config = config; }
-        send = mockSend;
+        constructor(config) {
+            this.config = config;
+            this.send = mockSend;
+        }
     }
     class PublishCommand {
         constructor(input) { this.input = input; this.__type = "PublishCommand"; }
     }
     class SubscribeCommand {
-        constructor(input) { this.input = input; this.__type = "SubscribeCommand"; }
+    constructor(input) {
+        this.input = input;
+        this.__type = "SubscribeCommand";
+        }
     }
-    return { SNSClient, PublishCommand, SubscribeCommand };
+
+    class ListSubscriptionsByTopicCommand {
+        constructor(input) {
+        this.input = input;
+        this.__type = "ListSubscriptionsByTopicCommand";
+        }
+    }
+
+    class UnsubscribeCommand {
+        constructor(input) {
+        this.input = input;
+        this.__type = "UnsubscribeCommand";
+        }
+    }
+    return {
+        SNSClient,
+        PublishCommand,
+        SubscribeCommand,
+        ListSubscriptionsByTopicCommand,
+        UnsubscribeCommand,
+    };
+    
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockSend.mockReset();
+  mockSend.mockResolvedValue({ MessageId: "mock-message-id-123" });
 });
 
 // ─── Mock DB ──────────────────────────────────────────────────────────────────
@@ -41,11 +87,6 @@ vi.mock("../services/experiment.server.js", () => ({
 vi.mock("../services/variant.server.js", () => ({
     getVariants: mockGetVariants,
 }));
-
-// ─── Import after mocks are set up ───────────────────────────────────────────
-const { determineWinner, sendEmailEnd, sendEmailStart } = await import(
-    "../services/notifications.server.js"
-);
 
 // ─── Shared mock analysis data ────────────────────────────────────────────────
 
@@ -370,4 +411,373 @@ describe("notifications.server", () => {
             expect(mockSend).toHaveBeenCalledTimes(2);
         });
     });
+    
+    describe("subscribeEmail", () => {
+        it("calls SNS SubscribeCommand with email topic and email protocol", async () => {
+            mockSend.mockResolvedValueOnce({ SubscriptionArn: "arn:email-sub" });
+
+            const response = await subscribeEmail("user@example.com");
+            
+            expect(mockSend).toHaveBeenCalledOnce();
+            const sentCommand = mockSend.mock.calls[0][0];
+            
+            expect(sentCommand.__type).toBe("SubscribeCommand");
+            expect(sentCommand.input).toEqual({
+            TopicArn: process.env.AWS_TOPIC,
+            Protocol: "email",
+            Endpoint: "user@example.com",
+            });
+            expect(response).toEqual({ SubscriptionArn: "arn:email-sub" });
+        });
+    });
+
+    //testing for unsubscribeEmail
+    describe("unsubscribeEmail", () => {
+        it("unsubscribes matching email when found", async () => {
+            mockSend
+            .mockResolvedValueOnce({
+                Subscriptions: [
+                { Endpoint: "other@example.com", SubscriptionArn: "arn:other" },
+                { Endpoint: "user@example.com", SubscriptionArn: "arn:target" },
+                ],
+                NextToken: undefined,
+            })
+            .mockResolvedValueOnce({
+                $metadata: { httpStatusCode: 200 },
+            });
+
+            await unsubscribeEmail("user@example.com");
+
+            expect(mockSend).toHaveBeenCalledTimes(2);
+
+            expect(mockSend.mock.calls[0][0].__type).toBe("ListSubscriptionsByTopicCommand");
+            expect(mockSend.mock.calls[1][0].__type).toBe("UnsubscribeCommand");
+            expect(mockSend.mock.calls[1][0].input).toEqual({
+            SubscriptionArn: "arn:target",
+            });
+        });
+
+        it("returns early when matching email is PendingConfirmation", async () => {
+            mockSend.mockResolvedValueOnce({
+            Subscriptions: [
+                { Endpoint: "user@example.com", SubscriptionArn: "PendingConfirmation" },
+            ],
+            NextToken: undefined,
+            });
+
+            await unsubscribeEmail("user@example.com");
+
+            expect(mockSend).toHaveBeenCalledTimes(1);
+            expect(mockSend.mock.calls[0][0].__type).toBe("ListSubscriptionsByTopicCommand");
+        });
+
+        it("returns early when email is not found", async () => {
+            mockSend.mockResolvedValueOnce({
+            Subscriptions: [
+                { Endpoint: "other@example.com", SubscriptionArn: "arn:other" },
+            ],
+            NextToken: undefined,
+            });
+
+            await unsubscribeEmail("user@example.com");
+
+            expect(mockSend).toHaveBeenCalledTimes(1);
+            expect(mockSend.mock.calls[0][0].__type).toBe("ListSubscriptionsByTopicCommand");
+        });
+
+        it("searches multiple pages until it finds the email", async () => {
+            mockSend
+            .mockResolvedValueOnce({
+                Subscriptions: [{ Endpoint: "other@example.com", SubscriptionArn: "arn:other" }],
+                NextToken: "page-2",
+            })
+            .mockResolvedValueOnce({
+                Subscriptions: [{ Endpoint: "user@example.com", SubscriptionArn: "arn:target" }],
+                NextToken: undefined,
+            })
+            .mockResolvedValueOnce({
+                $metadata: { httpStatusCode: 200 },
+            });
+
+            await unsubscribeEmail("user@example.com");
+
+            expect(mockSend).toHaveBeenCalledTimes(3);
+            expect(mockSend.mock.calls[1][0].__type).toBe("ListSubscriptionsByTopicCommand");
+            expect(mockSend.mock.calls[1][0].input.NextToken).toBe("page-2");
+            expect(mockSend.mock.calls[2][0].__type).toBe("UnsubscribeCommand");
+        });
+    });
+
+    //unsubscribe all tests
+    describe("unsubscribeAll", () => {
+        it("removes all confirmed email subscriptions across pages", async () => {
+            mockSend
+            .mockResolvedValueOnce({
+                Subscriptions: [
+                { Endpoint: "a@example.com", SubscriptionArn: "arn:a" },
+                { Endpoint: "b@example.com", SubscriptionArn: "PendingConfirmation" },
+                ],
+                NextToken: "page-2",
+            })
+            .mockResolvedValueOnce({
+                Subscriptions: [
+                { Endpoint: "c@example.com", SubscriptionArn: "arn:c" },
+                ],
+                NextToken: undefined,
+            })
+            .mockResolvedValueOnce({})
+            .mockResolvedValueOnce({});
+
+            const result = await unsubscribeAll();
+
+            expect(result).toEqual({ ok: true, removed: 2 });
+            expect(mockSend).toHaveBeenCalledTimes(4);
+            expect(mockSend.mock.calls[2][0].__type).toBe("UnsubscribeCommand");
+            expect(mockSend.mock.calls[2][0].input.SubscriptionArn).toBe("arn:a");
+            expect(mockSend.mock.calls[3][0].input.SubscriptionArn).toBe("arn:c");
+        });
+
+        it("returns zero removed when there are no subscriptions", async () => {
+            mockSend.mockResolvedValueOnce({
+            Subscriptions: [],
+            NextToken: undefined,
+            });
+
+            const result = await unsubscribeAll();
+
+            expect(result).toEqual({ ok: true, removed: 0 });
+            expect(mockSend).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    //subscribe phone number testing
+    describe("subscribePhoneNum", () => {
+        it("throws for invalid phone number length", async () => {
+            await expect(subscribePhoneNum("12345")).rejects.toThrow("invalid phone number format");
+        });
+
+        it("formats 10-digit phone number to E.164 and subscribes with sms protocol", async () => {
+            mockSend.mockResolvedValueOnce({ SubscriptionArn: "arn:sms-sub" });
+
+            const response = await subscribePhoneNum("9165551234");
+
+            expect(mockSend).toHaveBeenCalledOnce();
+            const sentCommand = mockSend.mock.calls[0][0];
+
+            expect(sentCommand.__type).toBe("SubscribeCommand");
+            expect(sentCommand.input).toEqual({
+            TopicArn: process.env.AWS_TOPIC_SMS,
+            Protocol: "sms",
+            Endpoint: "+19165551234",
+            });
+            expect(response).toEqual({ SubscriptionArn: "arn:sms-sub" });
+        });
+    });
+
+    describe("subscribePhoneNum", () => {
+        it("throws for invalid phone number length", async () => {
+            await expect(subscribePhoneNum("12345")).rejects.toThrow("invalid phone number format");
+        });
+
+        it("formats 10-digit phone number to E.164 and subscribes with sms protocol", async () => {
+            mockSend.mockResolvedValueOnce({ SubscriptionArn: "arn:sms-sub" });
+
+            const response = await subscribePhoneNum("9165551234");
+
+            expect(mockSend).toHaveBeenCalledOnce();
+            const sentCommand = mockSend.mock.calls[0][0];
+
+            expect(sentCommand.__type).toBe("SubscribeCommand");
+            expect(sentCommand.input).toEqual({
+            TopicArn: process.env.AWS_TOPIC_SMS,
+            Protocol: "sms",
+            Endpoint: "+19165551234",
+            });
+            expect(response).toEqual({ SubscriptionArn: "arn:sms-sub" });
+        });
+    });
+
+    describe("unsubscribePhoneNum", () => {
+        it("throws for invalid phone number length", async () => {
+            await expect(unsubscribePhoneNum("12345")).rejects.toThrow("invalid phone number format");
+        });
+
+        it("unsubscribes matching phone number when found", async () => {
+            mockSend
+            .mockResolvedValueOnce({
+                Subscriptions: [
+                { Endpoint: "+15551234567", SubscriptionArn: "arn:other" },
+                { Endpoint: "+19165551234", SubscriptionArn: "arn:target" },
+                ],
+                NextToken: undefined,
+            })
+            .mockResolvedValueOnce({
+                $metadata: { requestId: "req-1", httpStatusCode: 200 },
+            });
+
+            await unsubscribePhoneNum("9165551234");
+
+            expect(mockSend).toHaveBeenCalledTimes(2);
+            expect(mockSend.mock.calls[0][0].__type).toBe("ListSubscriptionsByTopicCommand");
+            expect(mockSend.mock.calls[1][0].__type).toBe("UnsubscribeCommand");
+            expect(mockSend.mock.calls[1][0].input).toEqual({
+            SubscriptionArn: "arn:target",
+            });
+        });
+
+        it("returns early when matching phone number is PendingConfirmation", async () => {
+            mockSend.mockResolvedValueOnce({
+            Subscriptions: [
+                { Endpoint: "+19165551234", SubscriptionArn: "PendingConfirmation" },
+            ],
+            NextToken: undefined,
+            });
+
+            await unsubscribePhoneNum("9165551234");
+
+            expect(mockSend).toHaveBeenCalledTimes(1);
+        });
+
+        it("returns early when phone number is not found", async () => {
+            mockSend.mockResolvedValueOnce({
+            Subscriptions: [
+                { Endpoint: "+15551234567", SubscriptionArn: "arn:other" },
+            ],
+            NextToken: undefined,
+            });
+
+            await unsubscribePhoneNum("9165551234");
+
+            expect(mockSend).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe("sendSMSStart", () => {
+        it("throws if experimentId is missing", async () => {
+            await expect(sendSMSStart(null, "My Experiment", "test.myshopify.com"))
+            .rejects.toThrow("experimentId is required");
+        });
+
+        it("throws if experimentName is missing", async () => {
+            await expect(sendSMSStart(1, null, "test.myshopify.com"))
+            .rejects.toThrow("experimentName is required");
+        });
+
+        it("throws if shop is missing", async () => {
+            await expect(sendSMSStart(1, "My Experiment", null))
+            .rejects.toThrow("shop is required");
+        });
+
+        it("publishes SMS start message to AWS_TOPIC_SMS without Subject", async () => {
+            const response = await sendSMSStart(1, "My Experiment", "test.myshopify.com");
+
+            expect(mockSend).toHaveBeenCalledOnce();
+            const sentCommand = mockSend.mock.calls[0][0];
+
+            expect(sentCommand.__type).toBe("PublishCommand");
+            expect(sentCommand.input.TopicArn).toBe(process.env.AWS_TOPIC_SMS);
+            expect(sentCommand.input.Message).toContain("My Experiment");
+            expect(sentCommand.input.Subject).toBeUndefined();
+            expect(response).toEqual({ MessageId: "mock-message-id-123" });
+        });
+    });
+
+    //sendSMSEnd function tests
+    describe("sendSMSEnd", () => {
+        beforeEach(() => {
+            mockGetVariants.mockResolvedValue([
+            { id: 1, name: "Control" },
+            { id: 2, name: "Variant A" },
+            ]);
+
+            mockGetAnalysis.mockImplementation((_experimentId, variantId) => {
+            if (variantId === 1) return { probabilityOfBeingBest: 0.05, conversionRate: 0.10 };
+            if (variantId === 2) return { probabilityOfBeingBest: 0.92, conversionRate: 0.18 };
+            });
+        });
+
+        it("throws if experimentId is missing", async () => {
+            await expect(sendSMSEnd(null, "My Experiment", "test.myshopify.com"))
+            .rejects.toThrow("experimentId is required");
+        });
+
+        it("throws if experimentName is missing", async () => {
+            await expect(sendSMSEnd(1, null, "test.myshopify.com"))
+            .rejects.toThrow("experimentName is required");
+        });
+
+        it("throws if shop is missing", async () => {
+            await expect(sendSMSEnd(1, "My Experiment", null))
+            .rejects.toThrow("shop is required");
+        });
+
+        it("publishes SMS end message to AWS_TOPIC_SMS without Subject and includes winner summary", async () => {
+            const response = await sendSMSEnd(1, "My Experiment", "test.myshopify.com");
+
+            expect(mockSend).toHaveBeenCalledOnce();
+            const sentCommand = mockSend.mock.calls[0][0];
+
+            expect(sentCommand.__type).toBe("PublishCommand");
+            expect(sentCommand.input.TopicArn).toBe(process.env.AWS_TOPIC_SMS);
+            expect(sentCommand.input.Message).toContain("Variant A has won");
+            expect(sentCommand.input.Subject).toBeUndefined();
+            expect(response).toEqual({ MessageId: "mock-message-id-123" });
+        });
+
+        it("uses Inconclusive when no winner exists", async () => {
+            mockGetAnalysis.mockImplementation((_experimentId, variantId) => {
+            if (variantId === 1) return { probabilityOfBeingBest: 0.45, conversionRate: 0.10 };
+            if (variantId === 2) return { probabilityOfBeingBest: 0.55, conversionRate: 0.11 };
+            });
+
+            await sendSMSEnd(1, "My Experiment", "test.myshopify.com");
+
+            const sentCommand = mockSend.mock.calls[0][0];
+            expect(sentCommand.input.Message).toContain("Inconclusive");
+        });
+    });
+
+    //unsubscribeAllPhoneNums feature
+    describe("unsubscribeAllPhoneNums", () => {
+        it("removes all confirmed phone subscriptions across pages", async () => {
+            mockSend
+            .mockResolvedValueOnce({
+                Subscriptions: [
+                { Endpoint: "+19165550001", SubscriptionArn: "arn:p1" },
+                { Endpoint: "+19165550002", SubscriptionArn: "PendingConfirmation" },
+                ],
+                NextToken: "page-2",
+            })
+            .mockResolvedValueOnce({
+                Subscriptions: [
+                { Endpoint: "+19165550003", SubscriptionArn: "arn:p3" },
+                ],
+                NextToken: undefined,
+            })
+            .mockResolvedValueOnce({})
+            .mockResolvedValueOnce({});
+
+            const result = await unsubscribeAllPhoneNums();
+
+            expect(result).toEqual({ ok: true, removed: 2 });
+            expect(mockSend).toHaveBeenCalledTimes(4);
+            expect(mockSend.mock.calls[2][0].__type).toBe("UnsubscribeCommand");
+            expect(mockSend.mock.calls[2][0].input.SubscriptionArn).toBe("arn:p1");
+            expect(mockSend.mock.calls[3][0].input.SubscriptionArn).toBe("arn:p3");
+        });
+
+        it("returns zero removed when there are no phone subscriptions", async () => {
+            mockSend.mockResolvedValueOnce({
+            Subscriptions: [],
+            NextToken: undefined,
+            });
+
+            const result = await unsubscribeAllPhoneNums();
+
+            expect(result).toEqual({ ok: true, removed: 0 });
+            expect(mockSend).toHaveBeenCalledTimes(1);
+        });
+    });
+
+
 });

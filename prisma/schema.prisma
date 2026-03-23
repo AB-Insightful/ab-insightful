@@ -46,6 +46,7 @@ model Project {
 
   contactEmails ContactEmail[]
   contactPhones ContactPhone[]
+  smsNotifEnabled Boolean @default(false)
   emailNotifEnabled Boolean @default(false)
 
   //enable notifications for start and end of experiment

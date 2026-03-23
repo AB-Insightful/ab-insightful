@@ -57,6 +57,8 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
     vi.doMock("../services/notifications.server", () => ({
         sendEmailStart: vi.fn(),
         sendEmailEnd: vi.fn(),
+        sendSMSStart: vi.fn(),
+        sendSMSEnd: vi.fn()
     }));
 
     const mod = await import("../routes/api.cron.poll-experiments.jsx");
@@ -240,4 +242,168 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
     expect(response.status).toBe(405);
     expect(await response.text()).toBe("");
   });
+
+  //covers new SMS branch (happy branch) 
+  test("GET: sends SMS start notification when experiment start + sms notifications are enabled", async () => {
+    vi.resetModules();
+
+    const getCandidatesForScheduledEnd = vi.fn().mockResolvedValue([]);
+    const getCandidatesForScheduledStart = vi.fn().mockResolvedValue([
+      { id: 101, name: "Exp A", projectId: 55 },
+    ]);
+    const endExperiment = vi.fn();
+    const startExperiment = vi.fn().mockResolvedValue(undefined);
+
+    const sendEmailStart = vi.fn();
+    const sendSMSStart = vi.fn();
+    const sendEmailEnd = vi.fn();
+    const sendSMSEnd = vi.fn();
+
+    mockProjectFindUnique.mockResolvedValue({
+      enableExperimentStart: true,
+      emailNotifEnabled: false,
+      smsNotifEnabled: true,
+      shop: "test.myshopify.com",
+    });
+
+    vi.doMock("../services/experiment.server", () => ({
+      getCandidatesForScheduledEnd,
+      getCandidatesForScheduledStart,
+      endExperiment,
+      startExperiment,
+    }));
+
+    vi.doMock("../db.server", () => ({
+      default: {
+        project: { findUnique: mockProjectFindUnique },
+      },
+    }));
+
+    vi.doMock("../services/notifications.server", () => ({
+      sendEmailStart,
+      sendSMSStart,
+      sendEmailEnd,
+      sendSMSEnd,
+    }));
+
+    const { loader } = await import("../routes/api.cron.poll-experiments.jsx");
+
+    const response = await loader({
+      request: makeRequest("GET", { "Cron-Secret": "test-secret" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(startExperiment).toHaveBeenCalledWith(101);
+    expect(sendSMSStart).toHaveBeenCalledTimes(1);
+    expect(sendSMSStart).toHaveBeenCalledWith(101, "Exp A", "test.myshopify.com");
+    expect(sendEmailStart).not.toHaveBeenCalled();
+
+  });
+
+  test("GET: records failure when sendSMSStart throws", async () => {
+    vi.resetModules();
+
+    const getCandidatesForScheduledEnd = vi.fn().mockResolvedValue([]);
+    const getCandidatesForScheduledStart = vi.fn().mockResolvedValue([
+      { id: 101, name: "Exp A", projectId: 55 },
+    ]);
+    const endExperiment = vi.fn();
+    const startExperiment = vi.fn().mockResolvedValue(undefined);
+
+    const sendEmailStart = vi.fn();
+    const sendSMSStart = vi.fn().mockRejectedValue(new Error("sms failed"));
+    const sendEmailEnd = vi.fn();
+    const sendSMSEnd = vi.fn();
+
+    mockProjectFindUnique.mockResolvedValue({
+      enableExperimentStart: true,
+      emailNotifEnabled: false,
+      smsNotifEnabled: true,
+      shop: "test.myshopify.com",
+    });
+
+    vi.doMock("../services/experiment.server", () => ({
+      getCandidatesForScheduledEnd,
+      getCandidatesForScheduledStart,
+      endExperiment,
+      startExperiment,
+    }));
+
+    vi.doMock("../db.server", () => ({
+      default: {
+        project: { findUnique: mockProjectFindUnique },
+      },
+    }));
+
+    vi.doMock("../services/notifications.server", () => ({
+      sendEmailStart,
+      sendSMSStart,
+      sendEmailEnd,
+      sendSMSEnd,
+    }));
+
+    const { loader } = await import("../routes/api.cron.poll-experiments.jsx");
+
+    const response = await loader({
+      request: makeRequest("GET", { "Cron-Secret": "test-secret" }),
+    });
+
+    const body = await readJson(response);
+
+    expect(body.failures).toContain("sms failed");
+  });
+
+  test("GET: records failure when sendSMSStart throws", async () => {
+    vi.resetModules();
+
+    const getCandidatesForScheduledEnd = vi.fn().mockResolvedValue([]);
+    const getCandidatesForScheduledStart = vi.fn().mockResolvedValue([
+      { id: 101, name: "Exp A", projectId: 55 },
+    ]);
+    const endExperiment = vi.fn();
+    const startExperiment = vi.fn().mockResolvedValue(undefined);
+
+    const sendEmailStart = vi.fn();
+    const sendSMSStart = vi.fn().mockRejectedValue(new Error("sms failed"));
+    const sendEmailEnd = vi.fn();
+    const sendSMSEnd = vi.fn();
+
+    mockProjectFindUnique.mockResolvedValue({
+      enableExperimentStart: true,
+      emailNotifEnabled: false,
+      smsNotifEnabled: true,
+      shop: "test.myshopify.com",
+    });
+
+    vi.doMock("../services/experiment.server", () => ({
+      getCandidatesForScheduledEnd,
+      getCandidatesForScheduledStart,
+      endExperiment,
+      startExperiment,
+    }));
+
+    vi.doMock("../db.server", () => ({
+      default: {
+        project: { findUnique: mockProjectFindUnique },
+      },
+    }));
+
+    vi.doMock("../services/notifications.server", () => ({
+      sendEmailStart,
+      sendSMSStart,
+      sendEmailEnd,
+      sendSMSEnd,
+    }));
+
+    const { loader } = await import("../routes/api.cron.poll-experiments.jsx");
+
+    const response = await loader({
+      request: makeRequest("GET", { "Cron-Secret": "test-secret" }),
+    });
+
+    const body = await readJson(response);
+
+    expect(body.failures).toContain("sms failed");
+  });
+
 });

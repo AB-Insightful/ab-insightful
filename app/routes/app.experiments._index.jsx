@@ -300,7 +300,10 @@ export default function Experimentsindex() {
           case "status":
             return exp.status ?? "";
           case "runtime":
-            return exp.startDate ?? null;
+            if (!exp.startDate) return null;
+            const start = new Date(exp.startDate).getTime();
+            const end = exp.endDate ? new Date(exp.endDate).getTime() : Date.now();
+            return end - start;
           case "users":
             return exp.userCount ?? 0;
           case "improvement":
@@ -780,7 +783,7 @@ export default function Experimentsindex() {
                     Probability to be the best {getSortIndicator("probability")}
                   </s-button>
                 </s-table-header>
-                
+
                 <s-table-header></s-table-header> {/* New empty header for the action column */}
                 {/*Place Quick Access Button here */}
               </s-table-header-row>

@@ -13,6 +13,8 @@ export const loader = async ({ request }) => {
     create: { shop: session.shop, name: `${session.shop} Project`, defaultGoal: "completedCheckout" },
     select: {
       defaultGoal: true,
+      smsNotifEnabled: true,
+      emailNotifEnabled: true,
       enableExperimentStart: true,
       enableExperimentEnd: true,
       maxUsersPerExperiment: true,
@@ -25,11 +27,6 @@ export const loader = async ({ request }) => {
   const { getTutorialData } = await import ("../services/tutorialData.server");
   const tutorialInfo = await getTutorialData();
 
-  //import email and sms toggle notification preset data. 
-  const { getEmailNotifToggle, getSMSNotifToggle } = await import ("../services/project.server");
-  const emailStatus = await getEmailNotifToggle();
-  const smsStatus = await getSMSNotifToggle();
-        
   return {
     defaultGoal: project.defaultGoal,
     enableExperimentStart: project.enableExperimentStart,
@@ -38,8 +35,8 @@ export const loader = async ({ request }) => {
     contactEmails: project.contactEmails,
     contactPhones: project.contactPhones,
     tutorialData: tutorialInfo,
-    emailNotifEnabled: emailStatus,
-    smsNotifEnabled: smsStatus
+    emailNotifEnabled: project.emailNotifEnabled,
+    smsNotifEnabled: project.smsNotifEnabled
   };
 };
 
@@ -70,6 +67,11 @@ export const action = async ({ request }) => {
       console.error("SMS toggle value change was invalid: ", error);
       return { ok: false, error: "failed to change sms toggle to true" };
     }
+    await db.project.update({
+      where: { shop: session.shop },
+      data: { smsNotifEnabled: true },
+    });
+    return { ok: true, intent: "set_sms_notif_true" };
   }
   else if (intent == "set_sms_notif_false")
   {
@@ -82,6 +84,11 @@ export const action = async ({ request }) => {
       console.error("SMS toggle value change was invalid: ", error);
       return { ok: false, error: "failed to sms toggle to false" };
     }
+    await db.project.update({
+      where: { shop: session.shop },
+      data: { smsNotifEnabled: false },
+    });
+    return { ok: true, intent: "set_sms_notif_false" };
   }
   else if( intent === "set_email_notif_false")
   {
@@ -92,9 +99,17 @@ export const action = async ({ request }) => {
       console.error("Email toggle value change was invalid: ", error)
       return { ok: false, error: "failed to change email toggle" }; 
     }
+
+    await db.project.update({
+      where: { shop: session.shop },
+      data: { emailNotifEnabled: false },
+    });
+    return { ok: true, intent: "set_email_notif_false" };
+
   }
   else if (intent === "set_email_notif_true")
   {
+      
     //actual notification toggle update
     try {
       const { setEmailNotifToggle} = await import ("../services/project.server");
@@ -105,26 +120,13 @@ export const action = async ({ request }) => {
       return {ok: false, error: "failed to change email toggle"};
     }
     //function and commands that send email on experiment start (for testing purposes)
-    try {
-      const { sendEmailStart } = await import ("../services/notifications.server");
-      await sendEmailStart(); 
-    }
-    catch (error) {
-      console.error("Email Notification Toggle Error: ", error);
-      return {ok: false, error: "failed to send email"};
-    } 
 
-    //function and commands that send email on experiment end (for testing purposes)
-    try {
-      const { sendEmailEnd } = await import ("../services/notifications.server");
-      await sendEmailEnd(); 
-    }
-    catch (error) {
-      console.error("Email Notification Toggle Error: ", error);
-      return {ok: false, error: "failed to send email"};
-    } 
-    
-    
+    //db query update to adjust proper store associated
+    await db.project.update({
+      where: { shop: session.shop },
+      data: { emailNotifEnabled: true },
+    });
+      return { ok: true, intent: "set_email_notif_true" };
   }
 
   if(intent === "tutorial_viewed")
@@ -344,7 +346,7 @@ export default function Settings() {
 
   //notification toggle fields
   const [emailEnabled, setEmailEnabled] = useState(emailNotifEnabled);
-  const [smsEnabled, setSMSEnabled] = useState(false);
+  const [smsEnabled, setSMSEnabled] = useState(smsNotifEnabled);
   //string show ties in with emailEnabled variable
   const emailNotifToggleDetails = emailEnabled
     ? 'Notifications enabled'

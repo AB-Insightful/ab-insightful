@@ -20,8 +20,10 @@ import {
 const mockSend = vi.fn().mockResolvedValue({ MessageId: "mock-message-id-123" });
 vi.mock("@aws-sdk/client-sns", () => {
     class SNSClient {
-        constructor(config) { this.config = config; }
-        send = mockSend;
+        constructor(config) {
+            this.config = config;
+            this.send = mockSend;
+        }
     }
     class PublishCommand {
         constructor(input) { this.input = input; this.__type = "PublishCommand"; }

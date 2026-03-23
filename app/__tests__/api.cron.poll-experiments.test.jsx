@@ -221,6 +221,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
   test("GET: sends SMS start notification when enabled", async () => {
     vi.resetModules();
     const sendSMSStart = vi.fn();
+    const sendEmailStart = vi.fn();
     const startExperiment = vi.fn().mockResolvedValue(undefined);
 
     mockProjectFindUnique.mockResolvedValue({
@@ -233,7 +234,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
     vi.doMock("../services/experiment.server", () => ({
       getCandidatesForScheduledEnd: vi.fn().mockResolvedValue([]),
       getCandidatesForScheduledStart: vi.fn().mockResolvedValue([{ id: 101, name: "Exp A", projectId: 55 }]),
-      getCandidatesForStableSuccessEnd: vi.fn().mockResolvedValue([]), // Critical fix for ET-570
+      getCandidatesForStableSuccessEnd: vi.fn().mockResolvedValue([]), 
       endExperiment: vi.fn(),
       startExperiment,
     }));
@@ -274,7 +275,7 @@ describe("routes/api.cron.poll-experiments.jsx loader", () => {
     vi.doMock("../services/experiment.server", () => ({
       getCandidatesForScheduledEnd: vi.fn().mockResolvedValue([]),
       getCandidatesForScheduledStart: vi.fn().mockResolvedValue([{ id: 101, name: "Exp A", projectId: 55 }]),
-      getCandidatesForStableSuccessEnd: vi.fn().mockResolvedValue([]), // Critical fix for ET-570
+      getCandidatesForStableSuccessEnd: vi.fn().mockResolvedValue([]), 
       endExperiment: vi.fn(),
       startExperiment: vi.fn().mockResolvedValue(undefined),
     }));

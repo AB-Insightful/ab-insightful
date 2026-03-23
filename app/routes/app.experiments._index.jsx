@@ -1,5 +1,5 @@
 import { useLoaderData, useFetcher, useRevalidator } from "react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 //import Decimal from 'decimal.js';
 import { formatRuntime } from "../utils/formatRuntime.js";
 import { formatImprovement } from "../utils/formatImprovement.js";
@@ -7,6 +7,7 @@ import { ExperimentStatus } from "../utils/experimentConstants.js";
 import { allowedStatusIntents } from "./policies/experimentPolicy";
 import { usePagination } from "../hooks/usePagination";
 import Pagination from "../hooks/Pagination";
+import { sortRows, getNextSort } from "../utils/sortExperimentsList";
 import db from "../db.server";
 
 // Server side code
@@ -225,14 +226,98 @@ export default function Experimentsindex() {
   //track active filter selection (all by default)
   const [activeFilter, setActiveFilter] = useState("all");
 
-  const filteredExperiments = (experiments || []).filter((exp) => {
-    if (activeFilter === "all") return true;
-    return exp.status === activeFilter;
-  });
+  //track active sort
+  const [sortKey, setSortKey] = useState("name");
+  const [sortDirection, setSortDirection] = useState("desc");
+
+
+  function handleSort(clickedKey) {
+    const nextSort = getNextSort(clickedKey, sortKey, sortDirection);
+    setSortKey(nextSort.sortKey);
+    setSortDirection(nextSort.sortDirection);
+    setCurrentPage(1);
+  }
+
+  function getSortIndicator(columnKey) {
+    if (sortKey !== columnKey) return "";
+    return sortDirection === "asc" ? "↑" : "↓";
+  }
+
+  function getProbabilitySortValue(experiment) {
+    if (!experiment?.analyses || experiment.analyses.length === 0) return null;
+
+    const probabilities = experiment.analyses
+      .map((analysis) => analysis?.probabilityOfBeingBest)
+      .filter((value) => value != null && value >= 0 && value <= 1);
+
+    if (probabilities.length === 0) return null;
+
+    return Math.max(...probabilities);
+  }
+
+  function getProbabilityOfBest(experiment) {
+    if (!experiment?.analyses || experiment.analyses.length === 0) {
+      return "inconclusive";
+    }
+
+    const validAnalyses = experiment.analyses.filter((analysis) => {
+      const value = analysis?.probabilityOfBeingBest;
+      return value != null && value >= 0 && value <= 1;
+    });
+
+    if (validAnalyses.length === 0) {
+      return "inconclusive";
+    }
+
+    const bestAnalysis = validAnalyses.reduce((best, current) => {
+      return current.probabilityOfBeingBest > best.probabilityOfBeingBest
+        ? current
+        : best;
+    });
+
+    const maxTrunc =
+      Math.trunc(bestAnalysis.probabilityOfBeingBest * 10000) / 10000;
+    const maxValueFormatted = (100 * maxTrunc).toFixed(2);
+    const bestName = bestAnalysis?.variant?.name ?? "Unknown";
+
+    return `${bestName} (${maxValueFormatted}%)`;
+  }
+
+  const filteredExperiments = useMemo(() => {
+    return (experiments || []).filter((exp) => {
+      if (activeFilter === "all") return true;
+      return exp.status === activeFilter;
+    });
+  }, [experiments, activeFilter]);
+
+  const sortedExperiments = useMemo(() => {
+    return sortRows(
+      filteredExperiments,
+      (exp) => {
+        switch (sortKey) {
+          case "name":
+            return exp.name ?? "";
+          case "status":
+            return exp.status ?? "";
+          case "runtime":
+            return exp.startDate ?? null;
+          case "users":
+            return exp.userCount ?? 0;
+          case "improvement":
+            return exp.improvement ?? null;
+          case "probability":
+            return getProbabilitySortValue(exp);
+          default:
+            return exp.name ?? "";
+        }
+      },
+      sortDirection
+    );
+  }, [filteredExperiments, sortKey, sortDirection]);
 
   //pagination elements
   const { currentPage, setCurrentPage, totalPages, startIndex, paginatedItems: paginatedExperiments } =
-    usePagination(filteredExperiments, 16);
+    usePagination(sortedExperiments, 16);
   //check for errors after rename attempt
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.action === "rename_error") {
@@ -282,6 +367,10 @@ export default function Experimentsindex() {
     }
     
   }, [fetcher.state, fetcher.data, revalidator]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeFilter, sortKey, sortDirection, setCurrentPage]);
 
 
   //function responsible for render of table rows based off db
@@ -357,50 +446,6 @@ export default function Experimentsindex() {
     const rows = [];
 
     if (!experiments || experiments.length === 0) return rows;
-
-    //retrieves the highest probability of best from the experiment and the winning variant's name
-    //PLEASE NOTE: This function does not account for an experiment having multiple entries with different goals. 
-    //It will simply pick the highest probability (apples to oranges comparison). 
-    const getProbabilityOfBest = (experiment) => {
-      //check for analysis data
-      if (experiment.analyses && experiment.analyses.length > 0) {
-        let probabilityOfBestArr = [];
-        let probabilityOfBestName = [];
-        let i = 0;
-        for (i in experiment.analyses) {
-          const analysisInstance = experiment.analyses[i];
-          const nameInstance = experiment.analyses[i].variant;
-          probabilityOfBestArr.push(analysisInstance.probabilityOfBeingBest);
-          probabilityOfBestName.push(nameInstance.name);
-        }
-
-        let maxValue = Math.max(...probabilityOfBestArr);
-        const maxIndex = probabilityOfBestArr.indexOf(maxValue);
-        const maxTrunc = Math.trunc(maxValue * 10000) / 10000; //manual truncation to avoid judicious rounding
-        const bestName = probabilityOfBestName[maxIndex];
-        const maxValueFormatted = (100 * maxTrunc).toFixed(2); //shifts decimals over to string version (e.g. .6789 to 67.89)
-
-        //get the most recent analysis
-        const latestAnalysis =
-          experiment.analyses[experiment.analyses.length - 1]; //assumes there are not multiple analyses
-        //get the conversions and users from analysis
-        const { otherThing, probabilityOfBeingBest } = latestAnalysis;
-
-        //(parseFloat(probabilityOfBeingBest) * 100).toFixed(2)
-        //check for valid data
-        //checks for negative or illogical values (should be between 1 and 0)
-        if (maxValue < 0 || maxValue > 1) {
-          return "N/A";
-        }
-        if (
-          probabilityOfBeingBest !== null &&
-          probabilityOfBeingBest !== undefined
-        ) {
-          return `${bestName} (${maxValueFormatted}%)`;
-        }
-      }
-      return "inconclusive";
-    };
 
     for (let i = 0; i < experiments.length; i++) {
       //single tuple of the experiment data
@@ -632,7 +677,7 @@ export default function Experimentsindex() {
     return rows;
   } // end renderTableData function
 
-  if (experiments.length > 0) {
+  if ((experiments || []).length > 0) {
     return (
       <s-page heading="Experiment Management">
         <s-button
@@ -643,12 +688,12 @@ export default function Experimentsindex() {
         <div style={{ margin: "24px 0" }}>
           <s-button commandFor="activity-filter">Filter By</s-button>
             <s-menu id="activity-filter" accessibilityLabel="Filter by activity">
-              <s-button onClick={() => setActiveFilter("all")}>All</s-button>
-              <s-button onClick={() => setActiveFilter(ExperimentStatus.draft)}>Draft</s-button>
-              <s-button icon="gauge" onClick={() => setActiveFilter(ExperimentStatus.active)}>Active</s-button>
-              <s-button icon="check" onClick={() => setActiveFilter(ExperimentStatus.completed)}>Completed</s-button>
-              <s-button icon="pause-circle" onClick={() => setActiveFilter(ExperimentStatus.paused)}>Paused</s-button>
-              <s-button icon="order" onClick={() => setActiveFilter(ExperimentStatus.archived)}>Archived</s-button>
+              <s-button onClick={() => {setActiveFilter("all"); setCurrentPage(1);}}>All</s-button>
+              <s-button onClick={() => {setActiveFilter(ExperimentStatus.draft); setCurrentPage(1);}}>Draft</s-button>
+              <s-button icon="gauge" onClick={() => {setActiveFilter(ExperimentStatus.active); setCurrentPage(1);}}>Active</s-button>
+              <s-button icon="check" onClick={() => {setActiveFilter(ExperimentStatus.completed); setCurrentPage(1);}}>Completed</s-button>
+              <s-button icon="pause-circle" onClick={() => {setActiveFilter(ExperimentStatus.paused); setCurrentPage(1);}}>Paused</s-button>
+              <s-button icon="order" onClick={() => {setActiveFilter(ExperimentStatus.archived); setCurrentPage(1);}}>Archived</s-button>
             </s-menu>
         </div>
         {/*modal for tutorial popup */}
@@ -691,13 +736,51 @@ export default function Experimentsindex() {
                   {/*box used to provide a curved edge table */}
             <s-table>
               <s-table-header-row>
-                <s-table-header listslot="primary">Name</s-table-header>
-                <s-table-header listSlot="secondary">Status</s-table-header>
-                <s-table-header listSlot="labeled">Runtime</s-table-header>
-                <s-table-header listSlot="labeled" format="numeric">Users</s-table-header>
-                <s-table-header listSlot="labeled" format="numeric">Goal Completion Rate</s-table-header>
-                <s-table-header listSlot="labeled" format="numeric">Improvement (%)</s-table-header>
-                <s-table-header listSlot="labeled" format="numeric">Probability to be the best</s-table-header>
+                <s-table-header listslot="primary">
+                  <s-button variant="tertiary" onClick={() => handleSort("name")}>
+                    Name {getSortIndicator("name")}
+                  </s-button>
+                </s-table-header>
+
+                <s-table-header listSlot="secondary">
+                  <s-button variant="tertiary" onClick={() => handleSort("status")}>
+                    Status {getSortIndicator("status")}
+                  </s-button>
+                </s-table-header>
+
+                <s-table-header listSlot="labeled">
+                  <s-button variant="tertiary" onClick={() => handleSort("runtime")}>
+                    Runtime {getSortIndicator("runtime")}
+                  </s-button>
+                </s-table-header>
+
+                <s-table-header listSlot="labeled" format="numeric">
+                  <s-button variant="tertiary" onClick={() => handleSort("users")}>
+                    Users {getSortIndicator("users")}
+                  </s-button>
+                </s-table-header>
+
+                <s-table-header listSlot="labeled" format="numeric">
+                  <s-button
+                    variant="tertiary"
+                    onClick={() => handleSort("goalCompletionRate")}
+                  >
+                    Goal Completion Rate {getSortIndicator("goalCompletionRate")}
+                  </s-button>
+                </s-table-header>
+
+                <s-table-header listSlot="labeled" format="numeric">
+                  <s-button variant="tertiary" onClick={() => handleSort("improvement")}>
+                    Improvement (%) {getSortIndicator("improvement")}
+                  </s-button>
+                </s-table-header>
+
+                <s-table-header listSlot="labeled" format="numeric">
+                  <s-button variant="tertiary" onClick={() => handleSort("probability")}>
+                    Probability to be the best {getSortIndicator("probability")}
+                  </s-button>
+                </s-table-header>
+                
                 <s-table-header></s-table-header> {/* New empty header for the action column */}
                 {/*Place Quick Access Button here */}
               </s-table-header-row>
@@ -713,7 +796,7 @@ export default function Experimentsindex() {
             setCurrentPage={setCurrentPage}
             totalPages={totalPages}
             startIndex={startIndex}
-            totalItems={filteredExperiments.length}
+            totalItems={sortedExperiments.length}
             itemsPerPage={16}
           />
           {/*end of table section*/}

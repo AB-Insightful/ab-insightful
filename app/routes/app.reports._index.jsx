@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useLoaderData, useFetcher } from "react-router";
 import { formatRuntime } from "../utils/formatRuntime.js";
 import { useDateRange } from "../contexts/DateRangeContext";
@@ -9,6 +9,7 @@ import shopify from "../shopify.server";
 import { ExperimentStatus } from "../utils/experimentConstants.js";
 import { usePagination } from "../hooks/usePagination";
 import Pagination from "../hooks/Pagination";
+import { sortRows, getNextSort } from "../utils/sortExperimentsList";
 
 //server side code
 export async function loader({ request }) {
@@ -83,17 +84,84 @@ export default function Reports() {
   const { dateRange } = useDateRange();
 
   //state for all experiments
-  const allActiveExperiments = (experiments || []).filter(
-    (exp) =>
-      exp.status !== ExperimentStatus.archived &&
-      exp.status !== ExperimentStatus.draft,
-  );
+  const allActiveExperiments = useMemo(() => {
+    return (experiments || []).filter(
+      (exp) =>
+        exp.status !== ExperimentStatus.archived &&
+        exp.status !== ExperimentStatus.draft,
+    );
+  }, [experiments]);
+
   const [filteredSessionData, setFilteredSessionData] = useState(
     sessionData || { sessions: [], total: 0 },
   );
   const [filteredConversionsData, setFilteredConversionsData] = useState(
     conversionsData || { sessions: [], total: 0 },
   );
+
+  const [sortKey, setSortKey] = useState("name");
+  const [sortDirection, setSortDirection] = useState("desc");
+
+  function handleSort(clickedKey) {
+    const nextSort = getNextSort(clickedKey, sortKey, sortDirection);
+    setSortKey(nextSort.sortKey);
+    setSortDirection(nextSort.sortDirection);
+    setCurrentPage(1);
+  }
+
+  function getSortIndicator(columnKey) {
+    if (sortKey !== columnKey) return "";
+    return sortDirection === "asc" ? "↑" : "↓";
+  }
+
+  const getConversionSortValue = (experiment) => {
+    if (experiment.analyses && experiment.analyses.length > 0) {
+      const latestAnalysis =
+        experiment.analyses[experiment.analyses.length - 1];
+
+      const { totalConversions, totalUsers } = latestAnalysis;
+
+      if (
+        totalConversions !== null &&
+        totalConversions !== undefined &&
+        totalUsers !== null &&
+        totalUsers !== undefined
+      ) {
+        return totalConversions;
+      }
+    }
+
+    return null;
+  };
+
+  const sortedExperiments = useMemo(() => {
+    return sortRows(
+      allActiveExperiments,
+      (exp) => {
+        switch (sortKey) {
+          case "name":
+            return exp.name ?? "";
+
+          case "status":
+            return exp.status ?? "";
+
+          case "runtime":
+            return exp.startDate ?? null;
+
+          case "endCondition":
+            return exp.endCondition ?? "";
+
+          case "conversions":
+            return getConversionSortValue(exp);
+
+          default:
+            return exp.name ?? "";
+        }
+      },
+      sortDirection,
+    );
+  }, [allActiveExperiments, sortKey, sortDirection]);
+
   //pagination elements
   const {
     currentPage,
@@ -101,7 +169,7 @@ export default function Reports() {
     totalPages,
     startIndex,
     paginatedItems: paginatedExperiments,
-  } = usePagination(allActiveExperiments, 6);
+  } = usePagination(sortedExperiments, 6);
 
   //calculate runtime using formatRuntime utility
   const getRuntime = (experiment) => {
@@ -320,15 +388,33 @@ export default function Reports() {
           <s-table>
             <s-table-header-row>
               <s-table-header listSlot="primary">
-                Experiment Name (Click To View Report)
+                <s-button variant="tertiary" onClick={() => handleSort("name")}>
+                  Experiment Name {getSortIndicator("name")}
+                </s-button>
               </s-table-header>
-              <s-table-header listSlot="secondary">Status</s-table-header>
-              <s-table-header listSlot="labeled">Run Length</s-table-header>
-              <s-table-header listSlot="labeled" format="numeric">
-                End Condition
+
+              <s-table-header listSlot="secondary">
+                <s-button variant="tertiary" onClick={() => handleSort("status")}>
+                  Status {getSortIndicator("status")}
+                </s-button>
               </s-table-header>
+
+              <s-table-header listSlot="labeled">
+                <s-button variant="tertiary" onClick={() => handleSort("runtime")}>
+                  Run Length {getSortIndicator("runtime")}
+                </s-button>
+              </s-table-header>
+
               <s-table-header listSlot="labeled" format="numeric">
-                Conversions
+                <s-button variant="tertiary" onClick={() => handleSort("endCondition")}>
+                  End Condition {getSortIndicator("endCondition")}
+                </s-button>
+              </s-table-header>
+
+              <s-table-header listSlot="labeled" format="numeric">
+                <s-button variant="tertiary" onClick={() => handleSort("conversions")}>
+                  Conversions {getSortIndicator("conversions")}
+                </s-button>
               </s-table-header>
             </s-table-header-row>
             {/* This uses the destructured filteredExperiments array */}
@@ -341,7 +427,7 @@ export default function Reports() {
           setCurrentPage={setCurrentPage}
           totalPages={totalPages}
           startIndex={startIndex}
-          totalItems={allActiveExperiments.length}
+          totalItems={sortedExperiments.length}
           itemsPerPage={6}
         />
       </s-section>

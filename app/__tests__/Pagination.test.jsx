@@ -3,6 +3,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { useLoaderData } from 'react-router';
 import Reports from '../routes/app.reports._index';
 import Experimentsindex from '../routes/app.experiments._index';
+import Pagination from '../hooks/Pagination';
 
 // ─── Shared mocks ────────────────────────────────────────────────────────────
 
@@ -27,7 +28,10 @@ vi.mock('../shopify.server', () => ({
 }));
 
 vi.mock('../db.server', () => ({
-  default: { experiment: { findMany: vi.fn() } },
+  default: {
+    allocation: { count: vi.fn(() => 0) },
+    experiment: { findMany: vi.fn() },
+  },
 }));
 
 vi.mock('../utils/formatRuntime.js', () => ({
@@ -84,6 +88,8 @@ const makeExperimentsPageData = (count) =>
     endCondition: 'Manual',
     analyses: [],
     improvement: null,
+    userCount: 0,
+    effectiveMax: 10000,
   }));
 
 // ─── Reports page pagination ──────────────────────────────────────────────────
@@ -100,9 +106,9 @@ describe('Reports — Pagination', () => {
 
   it('shows only 6 experiments on the first page', () => {
     render(<Reports />);
-    expect(screen.getByText('Experiment 1')).toBeInTheDocument();
-    expect(screen.getByText('Experiment 6')).toBeInTheDocument();
-    expect(screen.queryByText('Experiment 7')).not.toBeInTheDocument();
+    expect(screen.getByText('Experiment 8')).toBeInTheDocument();
+    expect(screen.getByText('Experiment 3')).toBeInTheDocument();
+    expect(screen.queryByText('Experiment 2')).not.toBeInTheDocument();
   });
 
   it('shows correct page info text on page 1', () => {
@@ -112,42 +118,42 @@ describe('Reports — Pagination', () => {
 
   it('Previous button is disabled on page 1', () => {
     render(<Reports />);
-    expect(screen.getByText('Previous')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
   });
 
   it('navigates to page 2 when Next is clicked', () => {
     render(<Reports />);
-    fireEvent.click(screen.getByText('Next'));
-    expect(screen.getByText('Experiment 7')).toBeInTheDocument();
-    expect(screen.getByText('Experiment 8')).toBeInTheDocument();
-    expect(screen.queryByText('Experiment 1')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('Experiment 2')).toBeInTheDocument();
+    expect(screen.getByText('Experiment 1')).toBeInTheDocument();
+    expect(screen.queryByText('Experiment 8')).not.toBeInTheDocument();
   });
 
   it('shows correct page info text on page 2', () => {
     render(<Reports />);
-    fireEvent.click(screen.getByText('Next'));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(screen.getByText(/Showing 7–8 of 8/)).toBeInTheDocument();
   });
 
   it('Next button is disabled on the last page', () => {
     render(<Reports />);
-    fireEvent.click(screen.getByText('Next'));
-    expect(screen.getByText('Next')).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
   });
 
   it('can navigate back to page 1 from page 2', () => {
     render(<Reports />);
-    fireEvent.click(screen.getByText('Next'));
-    fireEvent.click(screen.getByText('Previous'));
-    expect(screen.getByText('Experiment 1')).toBeInTheDocument();
-    expect(screen.queryByText('Experiment 7')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    expect(screen.getByText('Experiment 8')).toBeInTheDocument();
+    expect(screen.queryByText('Experiment 2')).not.toBeInTheDocument();
   });
 
   it('renders each shown experiment name as a clickable report link', () => {
     render(<Reports />);
-    const link = screen.getByText('Experiment 1').closest('s-link');
+    const link = screen.getByText('Experiment 8').closest('s-link');
     expect(link).not.toBeNull();
-    expect(link).toHaveAttribute('href', '/app/reports/1');
+    expect(link).toHaveAttribute('href', '/app/reports/8');
   });
 
   it('shows N/A for conversions when analysis is missing', () => {
@@ -159,8 +165,24 @@ describe('Reports — Pagination', () => {
     useLoaderData.mockReturnValue({
       experiments: [
         ...makeReportsExperiments(2),
-        { id: 99, name: 'Archived Exp', status: 'archived', startDate: '2025-06-01', endDate: null, endCondition: 'Manual', analyses: [] },
-        { id: 100, name: 'Draft Exp', status: 'draft', startDate: '2025-06-01', endDate: null, endCondition: 'Manual', analyses: [] },
+        {
+          id: 99,
+          name: 'Archived Exp',
+          status: 'archived',
+          startDate: '2025-06-01',
+          endDate: null,
+          endCondition: 'Manual',
+          analyses: [],
+        },
+        {
+          id: 100,
+          name: 'Draft Exp',
+          status: 'draft',
+          startDate: '2025-06-01',
+          endDate: null,
+          endCondition: 'Manual',
+          analyses: [],
+        },
       ],
       sessionData: { sessions: [], total: 0 },
       conversionsData: { sessions: [], total: 0 },
@@ -169,7 +191,7 @@ describe('Reports — Pagination', () => {
     render(<Reports />);
     expect(screen.queryByText('Archived Exp')).not.toBeInTheDocument();
     expect(screen.queryByText('Draft Exp')).not.toBeInTheDocument();
-    expect(screen.getByText('Experiment 1')).toBeInTheDocument();
+    expect(screen.getByText('Experiment 2')).toBeInTheDocument();
   });
 
   it('shows all experiments on one page when count is within limit', () => {
@@ -181,8 +203,8 @@ describe('Reports — Pagination', () => {
     });
     render(<Reports />);
     expect(screen.getByText(/Showing 1–3 of 3/)).toBeInTheDocument();
-    expect(screen.getByText('Previous')).toBeDisabled();
-    expect(screen.getByText('Next')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
   });
 });
 
@@ -198,9 +220,9 @@ describe('Experimentsindex — Pagination', () => {
 
   it('shows only 16 experiments on the first page', () => {
     render(<Experimentsindex />);
-    expect(screen.getByText('Experiment 1')).toBeInTheDocument();
-    expect(screen.getByText('Experiment 16')).toBeInTheDocument();
-    expect(screen.queryByText('Experiment 17')).not.toBeInTheDocument();
+    expect(screen.getByText('Experiment 20')).toBeInTheDocument();
+    expect(screen.getByText('Experiment 5')).toBeInTheDocument();
+    expect(screen.queryByText('Experiment 4')).not.toBeInTheDocument();
   });
 
   it('shows correct page info text on page 1', () => {
@@ -210,36 +232,36 @@ describe('Experimentsindex — Pagination', () => {
 
   it('Previous button is disabled on page 1', () => {
     render(<Experimentsindex />);
-    expect(screen.getByText('Previous')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
   });
 
   it('navigates to page 2 when Next is clicked', () => {
     render(<Experimentsindex />);
-    fireEvent.click(screen.getByText('Next'));
-    expect(screen.getByText('Experiment 17')).toBeInTheDocument();
-    expect(screen.getByText('Experiment 20')).toBeInTheDocument();
-    expect(screen.queryByText('Experiment 1')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('Experiment 4')).toBeInTheDocument();
+    expect(screen.getByText('Experiment 1')).toBeInTheDocument();
+    expect(screen.queryByText('Experiment 20')).not.toBeInTheDocument();
   });
 
   it('Next button is disabled on the last page', () => {
     render(<Experimentsindex />);
-    fireEvent.click(screen.getByText('Next'));
-    expect(screen.getByText('Next')).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
   });
 
   it('can navigate back to page 1 from page 2', () => {
     render(<Experimentsindex />);
-    fireEvent.click(screen.getByText('Next'));
-    fireEvent.click(screen.getByText('Previous'));
-    expect(screen.getByText('Experiment 1')).toBeInTheDocument();
-    expect(screen.queryByText('Experiment 17')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    expect(screen.getByText('Experiment 20')).toBeInTheDocument();
+    expect(screen.queryByText('Experiment 4')).not.toBeInTheDocument();
   });
 
-  it('renders experiment names as links to the reports page', () => {
+  it('renders experiment names inside s-link elements to the reports page', () => {
     render(<Experimentsindex />);
-    const link = screen.getByText('Experiment 1').closest('s-link');
+    const link = screen.getByText('Experiment 20').closest('s-link');
     expect(link).not.toBeNull();
-    expect(link).toHaveAttribute('href', '/app/reports/1');
+    expect(link).toHaveAttribute('href', '/app/reports/20');
   });
 
   it('shows empty state when there are no experiments', () => {
@@ -255,10 +277,9 @@ describe('Experimentsindex — Pagination', () => {
 // ─── Experiments page — filter + pagination interaction ───────────────────────
 
 describe('Experimentsindex — Filter + Pagination', () => {
-  //10 active, 10 completed — all 20 fit on one page unfiltered (itemsPerPage=16 shows first 16)
   beforeEach(() => {
     useLoaderData.mockReturnValue({
-      experiments: makeExperimentsPageData(20), //even indices = active, odd = completed
+      experiments: makeExperimentsPageData(20),
       tutorialData: { viewedListExperiment: true },
     });
   });
@@ -266,16 +287,14 @@ describe('Experimentsindex — Filter + Pagination', () => {
   it('filtering by active reduces the shown count', () => {
     render(<Experimentsindex />);
     fireEvent.click(screen.getByRole('button', { name: 'Active' }));
-    //10 active experiments total, all fit on one page
     expect(screen.getByText(/of 10/)).toBeInTheDocument();
   });
 
   it('filtering by active shows only active experiments', () => {
     render(<Experimentsindex />);
     fireEvent.click(screen.getByRole('button', { name: 'Active' }));
-    //experiment 1 is active (index 0), experiment 2 is completed (index 1)
-    expect(screen.getByText('Experiment 1')).toBeInTheDocument();
-    expect(screen.queryByText('Experiment 2')).not.toBeInTheDocument();
+    expect(screen.getByText('Experiment 19')).toBeInTheDocument();
+    expect(screen.queryByText('Experiment 20')).not.toBeInTheDocument();
   });
 
   it('switching back to All restores full count', () => {
@@ -287,11 +306,29 @@ describe('Experimentsindex — Filter + Pagination', () => {
 
   it('pagination resets correctly after filter change', () => {
     render(<Experimentsindex />);
-    //go to page 2
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    expect(screen.getByText('Experiment 17')).toBeInTheDocument();
-    //filter down - should now show page 1 of filtered results
+    expect(screen.getByText('Experiment 4')).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole('button', { name: 'Active' }));
-    expect(screen.getByText('Experiment 1')).toBeInTheDocument();
+
+    expect(screen.getByText('Experiment 19')).toBeInTheDocument();
+    expect(screen.queryByText('Experiment 4')).not.toBeInTheDocument();
+  });
+
+  it('shows 0–0 of 0 when there are no items', () => {
+    render(
+      <Pagination
+        currentPage={1}
+        setCurrentPage={vi.fn()}
+        totalPages={1}
+        startIndex={0}
+        totalItems={0}
+        itemsPerPage={16}
+      />
+    );
+
+    expect(screen.getByText(/Showing 0–0 of 0 experiments/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
   });
 });

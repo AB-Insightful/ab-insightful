@@ -19,16 +19,22 @@ if (isPickerMode) {
 }
 
 function initPickerMode() {
+
+  let isSelecting = false;
+  let isAltDown = false;
+
   const style = document.createElement("style");
   style.innerHTML = `
-    /* Force visibility of all sections during picking */
-    [id^="shopify-section-"] {
+    body.ab-insightful-selecting [id^="shopify-section-"],
+    body.ab-insightful-alt-selecting [id^="shopify-section-"] {
       transition: all 0.2s ease-in-out;
-      display: block !important; /* Overrides theme-level hiding */
+      display: block !important; 
       min-height: 50px !important; 
       visibility: visible !important;
     }
-    [id^="shopify-section-"]:hover {
+    
+    body.ab-insightful-selecting [id^="shopify-section-"]:hover,
+    body.ab-insightful-alt-selecting [id^="shopify-section-"]:hover {
       outline: 4px dashed #008060 !important;
       outline-offset: -4px;
       cursor: crosshair !important;
@@ -38,7 +44,67 @@ function initPickerMode() {
   `;
   document.head.appendChild(style);
 
+  function setupPickerUI() {
+    const ui = document.createElement("div");
+    ui.id = "ab-insightful-picker-ui";
+    ui.style.cssText = "position:fixed; bottom:20px; right:20px; z-index:9999999; background:#ffffff; padding:16px; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15); font-family:-apple-system, BlinkMacSystemFont, 'San Francisco', Roboto, 'Segoe UI', 'Helvetica Neue', sans-serif; border:1px solid #e1e3e5; width: 250px;";
+    
+    ui.innerHTML = `
+      <div style="font-weight:600; font-size:14px; margin-bottom:8px; color:#202223;">AB Insightful Picker</div>
+      <div style="font-size:12px; color:#6d7175; margin-bottom:12px; line-height:1.4;">Browse the store normally. Click below or hold <b>ALT/Option</b> to select a section.</div>
+      <button id="ab-insightful-toggle" style="width:100%; background:#008060; color:#ffffff; border:none; padding:8px 12px; border-radius:4px; cursor:pointer; font-weight:600; transition: background 0.2s ease;">
+        Enter Select Mode
+      </button>
+    `;
+    document.body.appendChild(ui);
+
+    const toggleBtn = document.getElementById("ab-insightful-toggle");
+
+    // Toggle button logic
+    toggleBtn.addEventListener("click", () => {
+      isSelecting = !isSelecting;
+      if (isSelecting) {
+        documennt.body.classList.add("ab-insightful-selecting");
+        toggleBtn.style.background = '#d82c0d';
+        toggleBtn.innerText = "Exit Select Mode";
+      } else {
+        document.body.classList.remove("ab-insightful-selecting");
+        toggleBtn.style.background = '#008060';
+        toggleBtn.innerText = "Enter Select Mode";
+      }
+    });
+  }
+
+  // Ensure DOM is ready before appending the UI
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", setupPickerUI);
+  } else {
+    setupPickerUI();
+  }
+
+  // Hotkey Support (Hold ALT to temporarily enter selection mode)
+  document.addEventListener("keydown", (e) => {
+    if (e.altKey && !isAltDown) {
+      isAltDown = true;
+      document.body.classList.add("ab-insightful-alt-selecting");
+    }
+  });
+
+  document.addEventListener("keyup", (e) => {
+    if (!e.altKey && isAltDown) {
+      isAltDown = false;
+      document.body.classList.remove("ab-insightful-alt-selecting");
+    }
+  });
+
+  // Click Interception
   document.addEventListener("click", function (event) {
+    // Let normal clicks pass through if we aren't in Select Mode or holding alt/control
+    if (!isSelecting && !event.altKey) return;
+    
+    // Prevent the toggle button itself from triggering a section pick
+    if (event.target.closest("#ab-insightful-picker-ui")) return;
+
     const section = event.target.closest('[id^="shopify-section-"]');
     
     if (section && window.opener) {

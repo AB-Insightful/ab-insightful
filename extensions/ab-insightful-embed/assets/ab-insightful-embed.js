@@ -25,12 +25,18 @@ if (isPickerMode) {
     console.warn("API Url not found - AB Testing will not run");
   }
 }
-
+/**
+ * Initiates the section ID picker mode
+ * Injects custom CSS, a control UI, and global event listeners
+ * to intercept clicks and capture Shopify section IDs
+ */
 function initPickerMode() {
 
-  let isSelecting = false;
-  let isAltDown = false;
+  let isSelecting = false; // Tracks if the user has toggled Select Mode button
+  let isAltDown = false; // Tracks if the user is holding alt/option key
+  let activeToast = null; // Tracks the active toast message
 
+  // Inject scoped CSS for visual feedback during selection
   const style = document.createElement("style");
   style.innerHTML = `
     /* Forces crosshair everywhere when active */
@@ -60,25 +66,130 @@ function initPickerMode() {
     }
   `;
   document.head.appendChild(style);
+  
+  /**
+   * Displays a Polaris styled toast notifaction at the bottom center of the screen
+   * Automatically closes after 4 seconds or when the close button is clicked
+   * @param {string} message - The message to display in the toast
+   */
+  function showToast(message) {
+    // Clears any existing toast to prevent stacking
+    if (activeToast) {
+      document.body.removeChild(activeToast);
+      activeToast = null;
+    }
 
+    const toast = document.createElement("div");
+    toast.id = "ab-insightful-toast";
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translate(-50%, 10px);
+      background: #1a1a1a;
+      color: #f6f6f7;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.25),
+        0 4px 8px rgba(0, 0, 0, 0.3);
+      z-index: 9999999;
+      opacity: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition:
+        opacity 0.25s cubic-bezier(0.25, 0.1, 0.25, 1),
+        transform 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
+      max-width: 90vw;
+      pointer-events: auto;
+    `;
+    // Inject the message and a native Polaris SVG close icon
+    toast.innerHTML = `
+      <span>${message}</span>
+      <button id="ab-toast-close" aria-label="Close" style="
+        background: transparent;
+        border: none;
+        padding: 0;
+        margin: 0;
+        cursor: pointer;
+        color: #a6a6a6;
+        display: flex;
+        align-items: center;
+        transition: color 0.15s ease;
+        outline: none;
+      ">
+        <svg viewBox="0 0 20 20" style="width: 20px; height: 20px; fill: currentColor;">
+          <path d="M11.414 10l4.293-4.293a.999.999 0 1 0-1.414-1.414L10 8.586 5.707 4.293a.999.999 0 1 0-1.414 1.414L8.586 10l-4.293 4.293a.999.999 0 1 0 1.414 1.414L10 11.414l4.293 4.293a.997.997 0 0 0 1.414 0 .999.999 0 0 0 0-1.414L11.414 10z"/>
+        </svg>
+      </button>
+    `;
+    document.body.appendChild(toast);
+
+    // Trigger slide up animation
+    requestAnimationFrame(() => {
+      toast.style.opacity = "1";
+      toast.style.transform = "translate(-50%, 0)";
+    });
+
+    activeToast = toast;
+
+    // Helper to animate out and remove the element from the DOM
+    const removeToast = () => {
+      if (activeToast === toast) {
+        toast.style.opacity = "0";
+        toast.style.transform = "translate(-50%, 10px)";
+        setTimeout(() => {
+          if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+          }
+          if (activeToast === toast) activeToast = null;
+        }, 250);
+      }
+    };
+    // Close button interactions
+    const closeBtn = toast.querySelector("#ab-toast-close");
+    closeBtn.addEventListener("mouseover", () => (closeBtn.style.color = "#ffffff"));
+    closeBtn.addEventListener("mouseout", () => (closeBtn.style.color = "#a6a6a6"));
+    closeBtn.addEventListener("focus", () => (closeBtn.style.color = "#ffffff"));
+    closeBtn.addEventListener("blur", () => (closeBtn.style.color = "#a6a6a6"));
+    closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      removeToast();
+    });
+
+    // Auto-dismiss after 4s
+    setTimeout(removeToast, 4000);
+  }
+
+  /** 
+   * Injects the floating control panel to toggle picker mode
+   * Custom CSS to mimic Polaris Web Component styling
+   */
   function setupPickerUI() {
     const ui = document.createElement("div");
     ui.id = "ab-insightful-picker-ui";
     ui.style.cssText = `
-      position: fixed; 
-      bottom: 24px; 
-      right: 24px; 
-      z-index: 9999999; 
-      background: #ffffff; 
-      padding: 16px; 
-      border-radius: 8px; 
-      box-shadow: 0 0 0 1px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.1); /* Polaris shadow */
-      font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Segoe UI", Roboto, "Helvetica Neue", sans-serif; 
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 9999999;
+      background: #ffffff;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.04),
+        0 1px 3px rgba(0, 0, 0, 0.1);
+      font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       width: 260px;
       color: #202223;
+      font-size: 13px;
+      line-height: 1.5;
     `;
 
-    // Polaris Typography and Button Styles
     ui.innerHTML = `
       <div style="font-weight: 650; font-size: 14px; margin-bottom: 8px; color: #202223;">
         AB Insightful Picker
@@ -87,57 +198,75 @@ function initPickerMode() {
         Click below or hold <b>ALT/Option</b> to make a section selection.
       </div>
       <button id="ab-insightful-toggle" style="
-        width: 100%; 
-        background: #1a1a1a; /* Polaris Primary Button */
-        color: #ffffff; 
-        border: none; 
-        padding: 8px 16px; 
-        border-radius: 6px; 
-        cursor: pointer; 
-        font-weight: 600; 
+        width: 100%;
+        background: #1a1a1a;
+        color: #ffffff;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
         font-size: 13px;
-        box-shadow: 0 1px 0 rgba(0,0,0,0.15);
-        transition: background 0.15s ease, box-shadow 0.15s ease;
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+        transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+        outline: none;
       ">
         Enter Select Mode
       </button>
     `;
+
     document.body.appendChild(ui);
 
     const toggleBtn = document.getElementById("ab-insightful-toggle");
 
-    // Toggle button logic with Polaris hover/active states
+    // Polaris styled Hover states
     toggleBtn.addEventListener("mouseover", () => {
-      toggleBtn.style.background = isSelecting ? '#b8260b' : '#303030';
+      toggleBtn.style.background = isSelecting ? "#b8260b" : "#303030";
     });
     toggleBtn.addEventListener("mouseout", () => {
-      toggleBtn.style.background = isSelecting ? '#d82c0d' : '#1a1a1a';
+      toggleBtn.style.background = isSelecting ? "#d82c0d" : "#1a1a1a";
     });
 
+    // Polaris style Pressed state
+    toggleBtn.addEventListener("mousedown", () => {
+      toggleBtn.style.transform = "translateY(1px)";
+      toggleBtn.style.boxShadow = "0 0 0 rgba(0,0,0,0.15)";
+    });
+    toggleBtn.addEventListener("mouseup", () => {
+      toggleBtn.style.transform = "translateY(0)";
+      toggleBtn.style.boxShadow = "0 1px 0 rgba(0,0,0,0.15)";
+    });
+
+    // Polaris styled Focus outline
+    toggleBtn.addEventListener("focus", () => {
+      toggleBtn.style.boxShadow = "0 0 0 2px #005bd3, 0 1px 0 rgba(0,0,0,0.15)";
+    });
+    toggleBtn.addEventListener("blur", () => {
+      toggleBtn.style.boxShadow = "0 1px 0 rgba(0,0,0,0.15)";
+    });
+
+    // State mangement for the toggle button
     toggleBtn.addEventListener("click", () => {
       isSelecting = !isSelecting;
       if (isSelecting) {
         document.body.classList.add("ab-insightful-selecting");
-        // Polaris Critical Button (Red)
-        toggleBtn.style.background = '#d82c0d';
+        toggleBtn.style.background = "#d82c0d"; // critical
         toggleBtn.innerText = "Exit Select Mode";
       } else {
         document.body.classList.remove("ab-insightful-selecting");
-        // Polaris Primary Button (Black)
-        toggleBtn.style.background = '#1a1a1a';
+        toggleBtn.style.background = "#1a1a1a"; // primary
         toggleBtn.innerText = "Enter Select Mode";
       }
     });
   }
 
-  // Ensure DOM is ready before appending the UI
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", setupPickerUI);
   } else {
     setupPickerUI();
   }
-
-  // Hotkey Support (Hold alt/control to temporarily enter selection mode)
+  // Global Listeners
+  // Hotkey support (Hold alt/option to temporarily enter selection mode)
   document.addEventListener("keydown", (e) => {
     if (e.altKey && !isAltDown) {
       isAltDown = true;
@@ -152,30 +281,39 @@ function initPickerMode() {
     }
   });
 
-  // Click Interception
-  document.addEventListener("click", function (event) {
-    // Let normal clicks pass through if we aren't in Select Mode or holding alt/control
-    if (!isSelecting && !event.altKey) return;
-    
-    // Prevent the toggle button itself from triggering a section pick
-    if (event.target.closest("#ab-insightful-picker-ui")) return;
-
-    const section = event.target.closest('[id^="shopify-section-"]');
-    
-    if (section && window.opener) {
+  // Click interception (Prevents navigation and captures section IDs)
+  document.addEventListener(
+    "click",
+    function (event) {
+      if (!isSelecting && !event.altKey) return;
+      if (event.target.closest("#ab-insightful-picker-ui") || event.target.closest("#ab-insightful-toast")) return;
+      // Prevents the click from navigating the user away
       event.preventDefault();
       event.stopPropagation();
-      window.opener.postMessage(
-        { 
-          type: "AB_INSIGHTFUL_SECTION_PICKED", 
-          sectionId: section.id 
-        }, 
-        "*" 
-      );
       
-      window.close();
-    }
-  }, true);
+      // Find the closest anscestor wrapper that is a native shopify section
+      const section = event.target.closest('[id^="shopify-section-"]');
+      // If no section is found, show a toast and return
+      if (!section) {
+        showToast("Element is not inside a Shopify section. Select a valid section container.");
+        return;
+      }
+      // sends valid section ID back the app
+      if (section && window.opener) {
+        window.opener.postMessage(
+          {
+            type: "AB_INSIGHTFUL_SECTION_PICKED",
+            sectionId: section.id,
+          },
+          "*"
+        );
+        window.close(); // Closes the picker window
+      } else if (section && !window.opener) {
+        showToast("Captured section, but connection to the app was lost. Please relaunch the picker.");
+      }
+    },
+    true
+  );
 }
 
 function initializeApp(appUrl) {

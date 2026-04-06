@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { useLoaderData } from 'react-router';
 import Reports from '../routes/app.reports._index';
@@ -237,10 +237,10 @@ describe('Experimentsindex — Pagination', () => {
     expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
   });
 
-  it('navigates to page 2 when Next is clicked', () => {
+  it('navigates to page 2 when Next is clicked', async () => {
     render(<Experimentsindex />);
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    expect(screen.getByText('Experiment 4')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Experiment 4')).toBeInTheDocument());
     expect(screen.getByText('Experiment 1')).toBeInTheDocument();
     expect(screen.queryByText('Experiment 20')).not.toBeInTheDocument();
   });
@@ -292,10 +292,10 @@ describe('Experimentsindex — Filter + Pagination', () => {
     expect(screen.getByText(/of 10/)).toBeInTheDocument();
   });
 
-  it('filtering by active shows only active experiments', () => {
+  it('filtering by active shows only active experiments', async () => {
     render(<Experimentsindex />);
     fireEvent.click(screen.getByRole('button', { name: 'Active' }));
-    expect(screen.getByText('Experiment 19')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Experiment 19')).toBeInTheDocument());
     expect(screen.queryByText('Experiment 20')).not.toBeInTheDocument();
   });
 
@@ -306,14 +306,13 @@ describe('Experimentsindex — Filter + Pagination', () => {
     expect(screen.getByText(/of 20/)).toBeInTheDocument();
   });
 
-  it('pagination resets correctly after filter change', () => {
+  it('pagination resets correctly after filter change', async () => {
     render(<Experimentsindex />);
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    expect(screen.getByText('Experiment 4')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Experiment 4')).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: 'Active' }));
-
-    expect(screen.getByText('Experiment 19')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Experiment 19')).toBeInTheDocument());
     expect(screen.queryByText('Experiment 4')).not.toBeInTheDocument();
   });
 

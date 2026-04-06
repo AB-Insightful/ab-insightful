@@ -54,6 +54,7 @@ describe("Reports page sorting", () => {
           endDate: null,
           endCondition: "Manual",
           analyses: [{ totalConversions: 20, totalUsers: 100 }],
+          createdAt: "2026-03-20T10:00:00Z",
         },
         {
           id: 2,
@@ -63,6 +64,7 @@ describe("Reports page sorting", () => {
           endDate: null,
           endCondition: "Users",
           analyses: [{ totalConversions: 5, totalUsers: 50 }],
+          createdAt: "2026-03-18T10:00:00Z",
         },
         {
           id: 3,
@@ -72,6 +74,7 @@ describe("Reports page sorting", () => {
           endDate: "2026-03-23T10:00:00Z",
           endCondition: "Date",
           analyses: [{ totalConversions: 12, totalUsers: 75 }],
+          createdAt: "2026-03-22T10:00:00Z",
         },
       ],
       sessionData: { sessions: [], total: 0 },
@@ -95,9 +98,9 @@ describe("Reports page sorting", () => {
     fireEvent.click(nameHeader);
 
     expect(getRenderedNames()).toEqual([
-      "Alpha Experiment",
-      "Beta Experiment",
       "Gamma Experiment",
+      "Beta Experiment",
+      "Alpha Experiment",
     ]);
   });
 
@@ -106,13 +109,13 @@ describe("Reports page sorting", () => {
 
     const nameHeader = screen.getByRole("button", { name: /experiment name/i });
 
-    fireEvent.click(nameHeader); // asc
     fireEvent.click(nameHeader); // desc
+    fireEvent.click(nameHeader); // asc
 
     expect(getRenderedNames()).toEqual([
-      "Gamma Experiment",
-      "Beta Experiment",
       "Alpha Experiment",
+      "Beta Experiment",
+      "Gamma Experiment",
     ]);
   });
 

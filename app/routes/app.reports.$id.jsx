@@ -718,14 +718,13 @@ export default function Report() {
                 label={{ value: '80% Threshold', position: 'right', fill: '#2c2d2c', fontSize: 10 }}
               />
               {experiment.variants.map((v, index) => {
-                const colors = ["#0072B2", "#009E73", "#E69F00", "#D55E00"];
+                const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
                 return (
                   <Line
                     key={v.id}
                     type="monotone"
                     dataKey={v.name}
                     stroke={colors[index % colors.length]}
-                    strokeWidth={2}
                     activeDot={{ r: 8 }}
                     dot={false}
                   />
@@ -768,14 +767,13 @@ export default function Report() {
               <Tooltip formatter={(value) => `${(value * 100).toFixed(2)}%`} />
               <Legend />
               {experiment.variants.map((v, index) => {
-                const colors = ["#0072B2", "#009E73", "#E69F00", "#D55E00"];
+                const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
                 return (
                   <Line
                     key={v.id}
                     type="monotone"
                     dataKey={v.name}
                     stroke={colors[index % colors.length]}
-                    strokeWidth={2}
                     activeDot={{ r: 8 }}
                     dot={false}
                   />

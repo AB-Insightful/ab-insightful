@@ -75,6 +75,7 @@ const makeReportsExperiments = (count) =>
     endDate: null,
     endCondition: 'Manual',
     analyses: [],
+    createdAt: new Date(2026, 0, i + 1).toISOString(), // Experiment N+1 is newer
   }));
 
 //experiments page shows all statuses; mix them up to test filtering
@@ -90,6 +91,7 @@ const makeExperimentsPageData = (count) =>
     improvement: null,
     userCount: 0,
     effectiveMax: 10000,
+    createdAt: new Date(2026, 0, i + 1).toISOString(), // Experiment N+1 is newer
   }));
 
 // ─── Reports page pagination ──────────────────────────────────────────────────

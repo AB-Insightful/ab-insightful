@@ -227,7 +227,7 @@ export default function Experimentsindex() {
   const [activeFilter, setActiveFilter] = useState("all");
 
   //track active sort
-  const [sortKey, setSortKey] = useState("name");
+  const [sortKey, setSortKey] = useState("createdAt");
   const [sortDirection, setSortDirection] = useState("desc");
 
 
@@ -310,8 +310,10 @@ export default function Experimentsindex() {
             return exp.improvement ?? null;
           case "probability":
             return getProbabilitySortValue(exp);
+          case "createdAt":
+            return exp.createdAt ? new Date(exp.createdAt).getTime() : null;
           default:
-            return exp.name ?? "";
+            return exp.createdAt ? new Date(exp.createdAt).getTime() : null;
         }
       },
       sortDirection
@@ -682,7 +684,7 @@ export default function Experimentsindex() {
 
   if ((experiments || []).length > 0) {
     return (
-      <s-page heading="Experiment Management">
+      <s-page heading="Experiment Management" style={{ maxWidth: "none" }}>
         <s-button
           slot="primary-action"
           variant="primary"
@@ -737,6 +739,7 @@ export default function Experimentsindex() {
                   //overflow="hidden"
                   > 
                   {/*box used to provide a curved edge table */}
+
             <s-table>
               <s-table-header-row>
                 <s-table-header listslot="primary">
@@ -780,7 +783,7 @@ export default function Experimentsindex() {
 
                 <s-table-header listSlot="labeled" format="numeric">
                   <s-button variant="tertiary" onClick={() => handleSort("probability")}>
-                    Probability to be the best {getSortIndicator("probability")}
+                    Probability of best {getSortIndicator("probability")}
                   </s-button>
                 </s-table-header>
 

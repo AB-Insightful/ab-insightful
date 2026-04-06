@@ -1,7 +1,15 @@
 // The script for controlling which experiments to show will live here.
 
 const urlParams = new URLSearchParams(window.location.search);
-const isPickerMode = urlParams.get("ab_insightful_picker") === "true";
+
+// Saves initial launch to the new sessionStorage
+// SectionID picker mode persists through page navigation 
+// until the session (tab) is closed
+if (urlParams.get("ab_insightful_picker") === "true") {
+  sessionStorage.setItem("ab_insightful_picker", "true");
+}
+
+const isPickerMode = sessionStorage.getItem("ab_insightful_picker") === "true";
 
 if (isPickerMode) {
   initPickerMode(); // initiate custom css on storefront to select sectionID 
@@ -25,6 +33,15 @@ function initPickerMode() {
 
   const style = document.createElement("style");
   style.innerHTML = `
+    /* Forces crosshair everywhere when active */
+    body.ab-insightful-selecting,
+    body.ab-insightful-selecting *,
+    body.ab-insightful-alt-selecting,
+    body.ab-insightful-alt-selecting * {
+      cursor: crosshair !important;
+    }
+
+    /* Force section visibility */
     body.ab-insightful-selecting [id^="shopify-section-"],
     body.ab-insightful-alt-selecting [id^="shopify-section-"] {
       transition: all 0.2s ease-in-out;
@@ -33,12 +50,12 @@ function initPickerMode() {
       visibility: visible !important;
     }
     
+    /* Hover highlights */
     body.ab-insightful-selecting [id^="shopify-section-"]:hover,
     body.ab-insightful-alt-selecting [id^="shopify-section-"]:hover {
-      outline: 4px dashed #008060 !important;
-      outline-offset: -4px;
-      cursor: crosshair !important;
-      background-color: rgba(0, 128, 96, 0.1) !important;
+      outline: 3px solid #005bd3 !important; /* Modern Polaris focus blue */
+      outline-offset: -3px;
+      background-color: rgba(0, 91, 211, 0.05) !important;
       z-index: 999999;
     }
   `;
@@ -47,12 +64,41 @@ function initPickerMode() {
   function setupPickerUI() {
     const ui = document.createElement("div");
     ui.id = "ab-insightful-picker-ui";
-    ui.style.cssText = "position:fixed; bottom:20px; right:20px; z-index:9999999; background:#ffffff; padding:16px; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15); font-family:-apple-system, BlinkMacSystemFont, 'San Francisco', Roboto, 'Segoe UI', 'Helvetica Neue', sans-serif; border:1px solid #e1e3e5; width: 250px;";
-    
+    ui.style.cssText = `
+      position: fixed; 
+      bottom: 24px; 
+      right: 24px; 
+      z-index: 9999999; 
+      background: #ffffff; 
+      padding: 16px; 
+      border-radius: 8px; 
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.1); /* Polaris shadow */
+      font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Segoe UI", Roboto, "Helvetica Neue", sans-serif; 
+      width: 260px;
+      color: #202223;
+    `;
+
+    // Polaris Typography and Button Styles
     ui.innerHTML = `
-      <div style="font-weight:600; font-size:14px; margin-bottom:8px; color:#202223;">AB Insightful Picker</div>
-      <div style="font-size:12px; color:#6d7175; margin-bottom:12px; line-height:1.4;">Browse the store normally. Click below or hold <b>ALT/Option</b> to select a section.</div>
-      <button id="ab-insightful-toggle" style="width:100%; background:#008060; color:#ffffff; border:none; padding:8px 12px; border-radius:4px; cursor:pointer; font-weight:600; transition: background 0.2s ease;">
+      <div style="font-weight: 650; font-size: 14px; margin-bottom: 8px; color: #202223;">
+        AB Insightful Picker
+      </div>
+      <div style="font-size: 13px; color: #6d7175; margin-bottom: 16px; line-height: 1.4;">
+        Click below or hold <b>ALT/Option</b> to make a section selection.
+      </div>
+      <button id="ab-insightful-toggle" style="
+        width: 100%; 
+        background: #1a1a1a; /* Polaris Primary Button */
+        color: #ffffff; 
+        border: none; 
+        padding: 8px 16px; 
+        border-radius: 6px; 
+        cursor: pointer; 
+        font-weight: 600; 
+        font-size: 13px;
+        box-shadow: 0 1px 0 rgba(0,0,0,0.15);
+        transition: background 0.15s ease, box-shadow 0.15s ease;
+      ">
         Enter Select Mode
       </button>
     `;
@@ -60,16 +106,25 @@ function initPickerMode() {
 
     const toggleBtn = document.getElementById("ab-insightful-toggle");
 
-    // Toggle button logic
+    // Toggle button logic with Polaris hover/active states
+    toggleBtn.addEventListener("mouseover", () => {
+      toggleBtn.style.background = isSelecting ? '#b8260b' : '#303030';
+    });
+    toggleBtn.addEventListener("mouseout", () => {
+      toggleBtn.style.background = isSelecting ? '#d82c0d' : '#1a1a1a';
+    });
+
     toggleBtn.addEventListener("click", () => {
       isSelecting = !isSelecting;
       if (isSelecting) {
-        documennt.body.classList.add("ab-insightful-selecting");
+        document.body.classList.add("ab-insightful-selecting");
+        // Polaris Critical Button (Red)
         toggleBtn.style.background = '#d82c0d';
         toggleBtn.innerText = "Exit Select Mode";
       } else {
         document.body.classList.remove("ab-insightful-selecting");
-        toggleBtn.style.background = '#008060';
+        // Polaris Primary Button (Black)
+        toggleBtn.style.background = '#1a1a1a';
         toggleBtn.innerText = "Enter Select Mode";
       }
     });
@@ -82,7 +137,7 @@ function initPickerMode() {
     setupPickerUI();
   }
 
-  // Hotkey Support (Hold ALT to temporarily enter selection mode)
+  // Hotkey Support (Hold alt/control to temporarily enter selection mode)
   document.addEventListener("keydown", (e) => {
     if (e.altKey && !isAltDown) {
       isAltDown = true;

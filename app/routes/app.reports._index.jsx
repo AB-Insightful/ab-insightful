@@ -99,7 +99,7 @@ export default function Reports() {
     conversionsData || { sessions: [], total: 0 },
   );
 
-  const [sortKey, setSortKey] = useState("name");
+  const [sortKey, setSortKey] = useState("createdAt");
   const [sortDirection, setSortDirection] = useState("desc");
 
   function handleSort(clickedKey) {
@@ -153,9 +153,10 @@ export default function Reports() {
 
           case "conversions":
             return getConversionSortValue(exp);
-
+          case "createdAt":
+            return exp.createdAt ? new Date(exp.createdAt).getTime() : null;
           default:
-            return exp.name ?? "";
+            return exp.createdAt ? new Date(exp.createdAt).getTime() : null;
         }
       },
       sortDirection,

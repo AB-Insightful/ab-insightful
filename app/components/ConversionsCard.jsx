@@ -69,6 +69,11 @@ export default function ConversionsCard({ conversionsData, sessionData, hasExper
         }}>
           <div style={{ height: "250px", width: "100%" , minHeight: "250px", position: "relative"}}>
             {isClient ? (
+              chartData.length === 0 ? (
+                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <s-text color="subdued">No conversion data to display yet.</s-text>
+                </div>
+              ) : (
               <ResponsiveContainer width="100%" height="100%" minWidth="0px">
                 <AreaChart data={chartData} debounce={50} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
@@ -121,6 +126,7 @@ export default function ConversionsCard({ conversionsData, sessionData, hasExper
                   />
                 </AreaChart>
               </ResponsiveContainer>
+              )
             ) : (
               <div style={{ textAlign: "center", paddingTop: "100px" }}>
                 <s-text tone="subdued">Loading chart data...</s-text>

@@ -19,6 +19,8 @@ export async function getSessionReportData(admin, start, end) {
           tableData {
             columns {
               name
+              dataType
+              displayName
             }
             rows
           }
@@ -27,12 +29,16 @@ export async function getSessionReportData(admin, start, end) {
       }`,
       {
         variables: {
-          query: `SHOW sessions SINCE ${startDate} UNTIL ${endDate} TIMESERIES day`,
+          query: `FROM sessions SHOW sessions SINCE ${startDate} UNTIL ${endDate} TIMESERIES day`,
         },
       },
     );
 
     const resJson = await response.json();
+
+    // Console logging 
+    //console.dir(resJson.data.shopifyqlQuery.parseErrors, { depth: null });
+    //console.dir(resJson.data.shopifyqlQuery.tableData, { depth: null });
 
     // Validate and Parse Shopify API Data
     // Check for GraphQL errors or ShopifyQL specific parse errors
@@ -46,12 +52,12 @@ export async function getSessionReportData(admin, start, end) {
 
     if (rows && rows.length > 0) {
       console.log(
-        `[analytics.server] Successfully fetched ${rows.length} live rows.`,
+        `[analytics.server] Successfully fetched ${rows.length} live session rows.`,
       );
 
       const sessions = rows.map((row) => ({
-        date: row[0], // ShopifyQL usually returns date as the first column
-        count: parseInt(row[1], 10), // and count as the second
+        date: row.day, // ShopifyQL usually returns date as the first column
+        count: parseInt(row.sessions, 10) || 0, // and count as the second
       }));
 
       return {
@@ -65,9 +71,9 @@ export async function getSessionReportData(admin, start, end) {
   } catch (error) {
     // If the API fails (Permissions, TableResponse error, etc.), use the mock generator.
     console.warn(
-      `[analytics.server] API Error or No Data. Falling back to mock: ${error.message}`,
+      `[analytics.server] API Error or No Data: ${error.message}`,
     );
-    return generateMockSessions(startDate, endDate);
+    return {sessions: [], total: 0};
   }
 }
 
@@ -142,7 +148,7 @@ export async function getConversionsReportData(admin, start, end) {
 
     if (rows && rows.length > 0) {
       console.log(
-        `[analytics.server] Successfully fetched ${rows.length} live rows.`,
+        `[analytics.server] Successfully fetched ${rows.length} live conversion rows.`,
       );
 
       const sessions = rows.map((row) => ({
@@ -161,8 +167,8 @@ export async function getConversionsReportData(admin, start, end) {
   } catch (error) {
     // If the API fails (Permissions, TableResponse error, etc.), use the mock generator.
     console.warn(
-      `[analytics.server] API Error or No Data. Falling back to mock: ${error.message}`,
+      `[analytics.server] Conversion API Error or No Data: ${error.message}`,
     );
-    return generateMockSessions(startDate, endDate);
+    return {sessions: [], total: 0};
   }
 }

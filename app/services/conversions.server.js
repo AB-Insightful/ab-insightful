@@ -35,6 +35,10 @@ export async function getConversionsReportData(admin, start, end) {
     );
 
     const resJson = await response.json();
+    
+    // Console logging
+    // console.dir(resJson.data.shopifyqlQuery.parseErrors, { depth: null });
+    // console.dir(resJson.data.shopifyqlQuery.tableData, { depth: null });
 
     // Validate and Parse Shopify API Data
     // Check for GraphQL errors or ShopifyQL specific parse errors
@@ -46,37 +50,23 @@ export async function getConversionsReportData(admin, start, end) {
 
     const tableData = resJson.data?.shopifyqlQuery?.tableData;
     const rows = tableData?.rows;
-    const columns = tableData?.columns || [];
 
     if (rows && rows.length > 0) {
       console.log(
         `[conversions.server] Successfully fetched ${rows.length} live rows.`,
       );
 
-      const indexByName = new Map(
-        columns.map((col, index) => [String(col.name || "").toLowerCase(), index]),
-      );
-
-      const pick = (row, key, fallbackIndex) => {
-        const idx = indexByName.get(key);
-        const value = row[idx ?? fallbackIndex];
-        return Number(value) || 0;
-      };
-
       const sessions = rows.map((row) => {
-        const totalSessions = pick(row, "sessions", 1);
-        const addedToCart = pick(row, "sessions_with_cart_additions", 2);
-        const reachedCheckout = pick(row, "sessions_that_reached_checkout", 3);
-        const completedCheckout = pick(row, "sessions_that_completed_checkout", 4);
-        const apiRate = Number(row[indexByName.get("conversion_rate") ?? 5]);
-        const conversionRate = Number.isFinite(apiRate)
-          ? apiRate
-          : totalSessions > 0
-            ? (completedCheckout / totalSessions) * 100
-            : 0;
+        const totalSessions = Number(row.sessions) || 0;
+        const addedToCart = Number(row.sessions_with_cart_additions) || 0;
+        const reachedCheckout = Number(row.sessions_that_reached_checkout) || 0;
+        const completedCheckout = Number(row.sessions_that_completed_checkout) || 0;
+        const apiRate = Number(row.conversion_rate) || 0;
+
+        const conversionRate = apiRate > 0 ? apiRate : totalSessions > 0 ? (completedCheckout / totalSessions) * 100 : 0;
 
         return {
-          date: row[0],
+          date: row.day,
           // `count` remains the charted conversion count for compatibility.
           count: completedCheckout,
           sessions: totalSessions,

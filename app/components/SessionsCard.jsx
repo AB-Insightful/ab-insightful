@@ -71,9 +71,16 @@ export default function SessionsCard({ sessionData }) {
                     axisLine={false} 
                     tickLine={false} 
                     tick={{ fill: '#8c9196', fontSize: 11 }}
+                    tickFormatter={(value) => {
+                      if (value > 1000) {
+                        return `${(value / 1000).toFixed(0)}k`;
+                      }
+                      return `${value}`;
+                    }}
                   />
                   
                   <Tooltip 
+                    formatter={(value) => [`${Number(value).toFixed(0)}`, "Sessions"]}
                     contentStyle={{ 
                       borderRadius: "8px", 
                       border: "1px solid #ebebeb", 

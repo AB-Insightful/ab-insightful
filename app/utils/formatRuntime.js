@@ -1,41 +1,74 @@
 import { ExperimentStatus } from "./experimentConstants.js";
 
-export function formatRuntime(startDateISO, endDateISO, status) {
-    
-    // Handles non-started experiments
+//calculate active runtime by subtracting paused intervals from total elapsed time (uses experiment history to determine pauses).
+export function formatRuntime(startDateISO, endDateISO, status, history = []) {
+
     if (status.toLowerCase() === ExperimentStatus.draft || status.toLowerCase() === "scheduled" || !startDateISO) return "-";
 
     const startDate = new Date(startDateISO);
     let endDate;
 
-    if (status.toLowerCase() === ExperimentStatus.active) endDate = new Date(); // currently running experiment
-    else if (status.toLowerCase() === ExperimentStatus.completed && endDateISO) endDate = new Date(endDateISO); // completed experiment
-    else return "-"; // for any other status, return "-"
-    
-    // Check for invalid dates
+    if (status.toLowerCase() === ExperimentStatus.active || status.toLowerCase() === ExperimentStatus.paused) {
+        endDate = new Date();
+    } else if (status.toLowerCase() === ExperimentStatus.completed && endDateISO) {
+        endDate = new Date(endDateISO);
+    } else {
+        return "-";
+    }
+
+    //error handling
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return "-";
 
-    let diffMs = endDate.getTime() - startDate.getTime();
+    let diffMs = Math.max(0, endDate.getTime() - startDate.getTime());
 
-    // Prevent showing negative time if server/client clocks are misaligned 
-    if (diffMs < 0) diffMs = 0;
+    //subtract paused intervals
+    diffMs -= calcPausedMs(history, endDate, status);
 
-    let totalMinutes = Math.floor(diffMs / 60000); // 1k ms * 60 secs
+    let totalMinutes = Math.floor(diffMs / 60000);
 
-    // Human-readable formatting 
-    if (totalMinutes < 1)return "< 1m";
+    //less than one minute
+    if (totalMinutes < 1) return "< 1m";
+    //less than one hour
     if (totalMinutes < 60) return `${totalMinutes}m`;
-    
 
-    const days = Math.floor(totalMinutes / (60*24));
-    const hours = Math.floor((totalMinutes % (60*24)) / 60);
+    const days = Math.floor(totalMinutes / (60 * 24));
+    const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
     const minutes = totalMinutes % 60;
-
-    if (days > 0){
-        // ex: 3d 4h
-        return `${days}d ${hours}h`;
-    }
-    // ex: 12h 30m
+    //more than one day
+    if (days > 0) return `${days}d ${hours}h`;
+    //1hr<x<1day
     return `${hours}h ${minutes}m`;
+}
 
+//Sums up all paused durations from ExperimentHistory transitions.
+function calcPausedMs(history, endDate, status) {
+    //sort ascending by changedAt
+    const sorted = [...history].sort((a, b) => new Date(a.changedAt) - new Date(b.changedAt));
+
+    //track paused intervals
+    let pausedMs = 0;
+    let pauseStart = null;
+
+    //loop through status changes
+    for (const entry of sorted) {
+        const prev = entry.prevStatus.toLowerCase();
+        const next = entry.newStatus.toLowerCase();
+        const at = new Date(entry.changedAt);
+
+        //if experiment has been paused
+        if (prev === ExperimentStatus.active && next === ExperimentStatus.paused) {
+            pauseStart = at;
+        //if experiment resumes (calculate difference, add to total)
+        } else if (prev === ExperimentStatus.paused && next === ExperimentStatus.active && pauseStart) {
+            pausedMs += at.getTime() - pauseStart.getTime(); // resumed — close the interval
+            pauseStart = null;
+        }
+    }
+
+    //if currently paused, count up to current time
+    if (pauseStart && status.toLowerCase() === ExperimentStatus.paused) {
+        pausedMs += endDate.getTime() - pauseStart.getTime();
+    }
+
+    return Math.max(0, pausedMs);
 }

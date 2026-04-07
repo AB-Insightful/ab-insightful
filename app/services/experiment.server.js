@@ -243,6 +243,7 @@ export async function getExperimentsList() {
       project: {
         select: { maxUsersPerExperiment: true },
       },
+      history: true,
     },
   });
 
@@ -259,6 +260,18 @@ export async function experimentListReport() {
       startDate: true,
       endDate: true,
       endCondition: true,
+
+      history: {
+        select: {
+          prevStatus: true,
+          newStatus: true,
+          changedAt: true,
+        },
+        orderBy: {
+          changedAt: "asc",
+        },
+      },
+      
       analyses: {
         select: {
           totalConversions: true,

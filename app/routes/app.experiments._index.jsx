@@ -1,5 +1,5 @@
 import { useLoaderData, useFetcher, useRevalidator } from "react-router";
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 //import Decimal from 'decimal.js';
 import { formatRuntime } from "../utils/formatRuntime.js";
 import { formatImprovement } from "../utils/formatImprovement.js";
@@ -323,6 +323,14 @@ export default function Experimentsindex() {
   //pagination elements
   const { currentPage, setCurrentPage, totalPages, startIndex, paginatedItems: paginatedExperiments } =
     usePagination(sortedExperiments, 16);
+
+  //firefox fix: frame delay before table update
+  //allow new components to mount before cleanup postMessage is sent (was causing the crash)
+  const [displayedExperiments, setDisplayedExperiments] = useState(paginatedExperiments);
+  useEffect(() => {
+    const id = setTimeout(() => setDisplayedExperiments(paginatedExperiments), 0);
+    return () => clearTimeout(id);
+  }, [paginatedExperiments]);
   //check for errors after rename attempt
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.action === "rename_error") {
@@ -791,7 +799,7 @@ export default function Experimentsindex() {
                 {/*Place Quick Access Button here */}
               </s-table-header-row>
               <s-table-body>
-                {renderTableData(paginatedExperiments)}
+                {renderTableData(displayedExperiments)}
                 {/* function call that returns the jsx data for table rows */}
               </s-table-body>
             </s-table>

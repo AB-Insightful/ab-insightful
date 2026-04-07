@@ -178,6 +178,7 @@ export default function Reports() {
       experiment.startDate,
       experiment.endDate,
       experiment.status,
+      experiment.history ?? [],
     );
   };
 

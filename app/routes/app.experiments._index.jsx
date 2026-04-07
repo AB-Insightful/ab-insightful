@@ -18,7 +18,7 @@ export async function loader() {
   const { updateProbabilityOfBest } = await import("../services/experiment.server");  */
   const { getExperimentsList, getImprovement } = await import("../services/experiment.server");
   const experiments = await getExperimentsList();
-  
+
   //import for tutorial data
   const { getTutorialData } = await import ("../services/tutorialData.server");
   const tutorialData = await getTutorialData();
@@ -470,6 +470,7 @@ export default function Experimentsindex() {
         curExp.startDate,
         curExp.endDate,
         curExp.status,
+        curExp.history ?? [],
       );
 
       const improvement = curExp.improvement; // placeholder for improvement calculation

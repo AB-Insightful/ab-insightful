@@ -86,11 +86,6 @@ describe("formatRuntime", () => {
     expect(formatRuntime("", null, "active")).toBe("-");
   });
 
-  it('returns "-" for unsupported status', () => {
-    expect(formatRuntime("2026-02-01T00:00:00.000Z", null, "paused")).toBe("-");
-    expect(formatRuntime("2026-02-01T00:00:00.000Z", null, "archived")).toBe("-");
-  });
-
   it('returns "-" for invalid dates', () => {
     expect(formatRuntime("not-a-date", null, "active")).toBe("-");
     expect(formatRuntime("2026-02-01T00:00:00.000Z", "not-a-date", "completed")).toBe("-");

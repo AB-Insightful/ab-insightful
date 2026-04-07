@@ -47,7 +47,7 @@ export default function ConversionsCard({ conversionsData, sessionData, hasExper
   const handleFullReport = () => {
     // Cleaner navigation to the native Shopify Analytics report 
     // Uses the shopify:// protocol to ensure navigation happens within the Admin Frame
-    window.open('shopify://admin/analytics/reports/conversions_over_time', '_top');
+    window.open('shopify://admin/analytics/reports/conversion_rate_over_time', '_top');
   };
 
   return (

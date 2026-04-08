@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ─── Static mocks ────────────────────────────────────────────────────────────
@@ -373,6 +371,18 @@ describe("action: tutorial_viewed", () => {
 
     expect(setGeneralSettings).toHaveBeenCalledWith(1, true);
     expect(result).toEqual({ ok: true, action: "tutorial_viewed" });
+  });
+
+  it("returns error when setGeneralSettings throws", async () => {
+    const setGeneralSettings = vi.fn().mockRejectedValue(new Error("db error"));
+    vi.resetModules();
+    vi.doMock("../services/tutorialData.server", () => ({ setGeneralSettings }));
+
+    const { action } = await importModule();
+    const result = await action({ request: makeRequest({ intent: "tutorial_viewed" }) });
+
+    expect(setGeneralSettings).toHaveBeenCalledWith(1, true);
+    expect(result).toEqual({ ok: false, error: "Failed to update viewedListExperiment" });
   });
 });
 
@@ -1160,3 +1170,4 @@ describe("action: unknown intent — extra cases", () => {
     expect(result).toEqual({ error: "Unknown intent.", field: null });
   });
 });
+

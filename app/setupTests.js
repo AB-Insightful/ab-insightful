@@ -28,6 +28,7 @@ vi.mock('../shopify.server', () => ({
 
 // Register custom elements so jsdom doesn't choke
 function defineOnce(tag) {
+  if (typeof customElements === "undefined") return; // ← add this guard
   if (!customElements.get(tag)) {
     customElements.define(tag, class extends HTMLElement {});
   }
@@ -46,66 +47,68 @@ defineOnce("s-button-group");
 defineOnce("s-link");
 
 // Patch document.createElement so <s-text-field> acts like a real input for tests
-const originalCreateElement = document.createElement.bind(document);
+if (typeof document !== "undefined") {
+  const originalCreateElement = document.createElement.bind(document);
 
-beforeEach(() => {
-  document.createElement = ((tagName, options) => {
-    if (tagName === "s-text-field") {
-      const host = originalCreateElement("s-text-field");
+  beforeEach(() => {
+    document.createElement = ((tagName, options) => {
+      if (tagName === "s-text-field") {
+        const host = originalCreateElement("s-text-field");
 
-      const input = originalCreateElement("input");
-      input.setAttribute("data-testid", "time-input");
-      host.appendChild(input);
+        const input = originalCreateElement("input");
+        input.setAttribute("data-testid", "time-input");
+        host.appendChild(input);
 
-      // property bridge (used by tests)
-      Object.defineProperty(host, "value", {
-        get() {
-          return input.value;
-        },
-        set(v) {
-          input.value = v ?? "";
-        },
-      });
+        // property bridge (used by tests)
+        Object.defineProperty(host, "value", {
+          get() {
+            return input.value;
+          },
+          set(v) {
+            input.value = v ?? "";
+          },
+        });
 
-      // IMPORTANT: React sets attributes on custom elements (value="...")
-      // So keep the inner input in sync whenever that happens.
-      const observer = new MutationObserver(() => {
-        const attrVal = host.getAttribute("value");
-        if (attrVal !== null && input.value !== attrVal) {
-          input.value = attrVal;
-        }
-      });
+        // IMPORTANT: React sets attributes on custom elements (value="...")
+        // So keep the inner input in sync whenever that happens.
+        const observer = new MutationObserver(() => {
+          const attrVal = host.getAttribute("value");
+          if (attrVal !== null && input.value !== attrVal) {
+            input.value = attrVal;
+          }
+        });
 
-      observer.observe(host, { attributes: true, attributeFilter: ["value"] });
+        observer.observe(host, { attributes: true, attributeFilter: ["value"] });
 
-      return host;
-    }
+        return host;
+      }
 
-    if (tagName === "s-button") {
-      const btn = originalCreateElement("button");
-      btn.setAttribute("data-s-button", "true");
-      return btn;
-    }
+      if (tagName === "s-button") {
+        const btn = originalCreateElement("button");
+        btn.setAttribute("data-s-button", "true");
+        return btn;
+      }
 
-    if (
-      tagName === "s-popover" ||
-      tagName === "s-stack" ||
-      tagName === "s-page" ||
-      tagName === "s-section" ||
-      tagName === "s-menu" ||
-      tagName === "s-paragraph" ||
-      tagName === "s-text" ||
-      tagName === "s-button-group"
-    ) {
-      const div = originalCreateElement("div");
-      div.setAttribute(`data-${tagName}`, "true");
-      return div;
-    }
+      if (
+        tagName === "s-popover" ||
+        tagName === "s-stack" ||
+        tagName === "s-page" ||
+        tagName === "s-section" ||
+        tagName === "s-menu" ||
+        tagName === "s-paragraph" ||
+        tagName === "s-text" ||
+        tagName === "s-button-group"
+      ) {
+        const div = originalCreateElement("div");
+        div.setAttribute(`data-${tagName}`, "true");
+        return div;
+      }
 
-    return originalCreateElement(tagName, options);
+      return originalCreateElement(tagName, options);
+    });
   });
-});
 
-afterEach(() => {
-  document.createElement = originalCreateElement;
-});
+  afterEach(() => {
+    document.createElement = originalCreateElement;
+  });
+}

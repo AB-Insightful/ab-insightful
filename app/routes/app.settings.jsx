@@ -137,7 +137,7 @@ export const action = async ({ request }) => {
         return {ok: true, action: "tutorial_viewed"}; 
       } catch (error) {
         console.error("Tutorial Error:", error);
-        return {ok: false, error: "Failed to update viewedListExperiment"}, { status: 500};
+        return {ok: false, error: "Failed to update viewedListExperiment"};
       }
   }
 

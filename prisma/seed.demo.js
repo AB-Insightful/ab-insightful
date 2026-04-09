@@ -76,6 +76,7 @@ async function ensureVariants(prisma, experimentId, variantDefs) {
         description: v.description,
         configData: v.configData,
         experimentId,
+        trafficAllocation: v.trafficAllocation,
       },
       create: {
         id: v.id,
@@ -83,6 +84,7 @@ async function ensureVariants(prisma, experimentId, variantDefs) {
         description: v.description,
         configData: v.configData,
         experimentId,
+        trafficAllocation: v.trafficAllocation,
       },
     });
     created.push(row);
@@ -201,37 +203,61 @@ async function seedAnalysisSeries(prisma, { experimentId, goalId, variantIds, da
   });
 
   const rows = [];
+  const segments = ["all", "mobile", "desktop"];
 
   for (let dayIndex = 1; dayIndex <= days; dayIndex++) {
     const calculatedWhen = addDays(start, dayIndex);
 
     for (const variantId of variantIds) {
       const noise = (rand() - 0.5) * 0.01; // +/- 0.5%
-      const rate = Math.max(0.01, Math.min(0.5, baseRates[variantId] + noise));
-
-      const totalUsers = 250 + Math.floor(rand() * 900) + dayIndex * 10;
-      const totalConversions = Math.max(0, Math.round(totalUsers * rate));
-      const conversionRate = totalConversions / totalUsers;
-
-      const postAlpha = totalConversions + 1;
-      const postBeta = totalUsers - totalConversions + 1;
-
+      const baseRate = Math.max(0.01, Math.min(0.5, baseRates[variantId] + noise));
       const isBestCandidate = variantId === variantIds[variantIds.length - 1];
-      rows.push({
-        calculatedWhen,
-        daysAnalyzed: dayIndex,
-        totalUsers,
-        totalConversions,
-        conversionRate,
-        probabilityOfBeingBest: isBestCandidate ? 0.75 + rand() * 0.2 : 0.05 + rand() * 0.25,
-        expectedLoss: isBestCandidate ? 0.001 + rand() * 0.006 : 0.01 + rand() * 0.03,
-        credIntervalLift: { lower: -0.02, upper: 0.08 },
-        postAlpha,
-        postBeta,
-        experimentId,
-        variantId,
-        goalId,
-      });
+
+      const rawUsers = 250 + Math.floor(rand() * 900) + dayIndex * 10;
+
+      for (const segment of segments) {
+        let segmentUserMultiplier = 1;
+        let segmentRateOffset = 0;
+
+        if (segment === "mobile") {
+          segmentUserMultiplier = 0.45;
+          segmentRateOffset = -0.005;
+        } else if (segment === "desktop") {
+          segmentUserMultiplier = 0.55;
+          segmentRateOffset = 0.004;
+        }
+
+        const totalUsers =
+          segment === "all" ? rawUsers : Math.max(10, Math.round(rawUsers * segmentUserMultiplier));
+
+        const rate = Math.max(
+          0.01,
+          Math.min(0.5, baseRate + segmentRateOffset + (rand() - 0.5) * 0.005)
+        );
+
+        const totalConversions = Math.max(0, Math.round(totalUsers * rate));
+        const conversionRate = totalConversions / totalUsers;
+
+        const postAlpha = totalConversions + 1;
+        const postBeta = totalUsers - totalConversions + 1;
+
+        rows.push({
+          calculatedWhen,
+          daysAnalyzed: dayIndex,
+          totalUsers,
+          totalConversions,
+          conversionRate,
+          probabilityOfBeingBest: isBestCandidate ? 0.75 + rand() * 0.2 : 0.05 + rand() * 0.25,
+          expectedLoss: isBestCandidate ? 0.001 + rand() * 0.006 : 0.01 + rand() * 0.03,
+          credIntervalLift: { lower: -0.02, upper: 0.08 },
+          postAlpha,
+          postBeta,
+          deviceSegment: segment,
+          experimentId,
+          variantId,
+          goalId,
+        });
+      }
     }
   }
 
@@ -369,37 +395,37 @@ export async function seedDemo(prisma) {
   // Variant IDs also far away from base (base uses ~3001-3012)
   const variantMap = {
     9101: [
-      { id: 9201, name: "Control", description: "Current PDP", configData: { layout: "control" } },
-      { id: 9202, name: "Variant A", description: "Upsell widget", configData: { widget: "upsell" } },
+      { id: 9201, name: "Control", description: "Current PDP", configData: { layout: "control" }, trafficAllocation: 0 },
+      { id: 9202, name: "Variant A", description: "Upsell widget", configData: { widget: "upsell" }, trafficAllocation: 1.0 },
     ],
     9102: [
-      { id: 9211, name: "Control", description: "Current threshold copy", configData: { thresholdCopy: "standard" } },
-      { id: 9212, name: "Variant A", description: "New copy", configData: { thresholdCopy: "optimized" } },
-      { id: 9213, name: "Variant B", description: "Aggressive copy", configData: { thresholdCopy: "aggressive" } },
+      { id: 9211, name: "Control", description: "Current threshold copy", configData: { thresholdCopy: "standard" }, trafficAllocation: 0 },
+      { id: 9212, name: "Variant A", description: "New copy", configData: { thresholdCopy: "optimized" }, trafficAllocation: 0.5 },
+      { id: 9213, name: "Variant B", description: "Aggressive copy", configData: { thresholdCopy: "aggressive" }, trafficAllocation: 0.5 },
     ],
     9103: [
-      { id: 9221, name: "Control", description: "Delay 10s", configData: { delay: 10 } },
-      { id: 9222, name: "Variant A", description: "Delay 30s", configData: { delay: 30 } },
+      { id: 9221, name: "Control", description: "Delay 10s", configData: { delay: 10 }, trafficAllocation: 0 },
+      { id: 9222, name: "Variant A", description: "Delay 30s", configData: { delay: 30 }, trafficAllocation: 1.0 },
     ],
     9104: [
-      { id: 9231, name: "Control", description: "Classic drawer", configData: { drawer: "classic" } },
-      { id: 9232, name: "Variant A", description: "Modern drawer", configData: { drawer: "modern" } },
+      { id: 9231, name: "Control", description: "Classic drawer", configData: { drawer: "classic" }, trafficAllocation: 0 },
+      { id: 9232, name: "Variant A", description: "Modern drawer", configData: { drawer: "modern" }, trafficAllocation: 1.0 },
     ],
     9105: [
-      { id: 9241, name: "Control", description: "Old tiles", configData: { tiles: "old" } },
-      { id: 9242, name: "Variant A", description: "New tiles", configData: { tiles: "new" } },
+      { id: 9241, name: "Control", description: "Old tiles", configData: { tiles: "old" }, trafficAllocation: 0 },
+      { id: 9242, name: "Variant A", description: "New tiles", configData: { tiles: "new" }, trafficAllocation: 1.0 },
     ],
     9106: [
-      { id: 9251, name: "Control", description: "Old bar", configData: { bar: "old" } },
-      { id: 9252, name: "Variant A", description: "New bar", configData: { bar: "new" } },
+      { id: 9251, name: "Control", description: "Old bar", configData: { bar: "old" }, trafficAllocation: 0 },
+      { id: 9252, name: "Variant A", description: "New bar", configData: { bar: "new" }, trafficAllocation: 1.0 },
     ],
     9107: [
-      { id: 9261, name: "Control", description: "N/A", configData: { } },
-      { id: 9262, name: "Variant A", description: "N/A", configData: { } },
+      { id: 9261, name: "Control", description: "N/A", configData: { }, trafficAllocation: 0 },
+      { id: 9262, name: "Variant A", description: "N/A", configData: { }, trafficAllocation: 1.0 },
     ],
     9108: [
-      { id: 9271, name: "Control", description: "N/A", configData: { } },
-      { id: 9272, name: "Variant A", description: "N/A", configData: { } },
+      { id: 9271, name: "Control", description: "N/A", configData: { }, trafficAllocation: 0 },
+      { id: 9272, name: "Variant A", description: "N/A", configData: { }, trafficAllocation: 1.0 },
     ],
   };
 
@@ -480,6 +506,149 @@ export async function seedDemo(prisma) {
     const rows = await seedAnalysisSeries(prisma, t);
     console.log(`Seeded analysis rows exp ${t.experimentId}: ${rows}`);
   }
+
+  const functionalExperiments = [
+    {
+      id: 2001,
+      name: "FUNC - Collecting Data State",
+      description: "Verify UI stays in 'Collecting Data' with only 1 snapshot.",
+      status: ExperimentStatus.active,
+      trafficSplit: "1.0",
+      sectionId: "sec-collect",
+      startDate: addDays(today, -10),
+      projectId: project.id,
+    },
+    {
+      id: 2002,
+      name: "FUNC - Keep Testing State",
+      description: "Verify UI says 'Keep Testing' when SMA is below 80%.",
+      status: ExperimentStatus.active,
+      trafficSplit: "1.0",
+      sectionId: "sec-test",
+      startDate: addDays(today, -10),
+      projectId: project.id,
+    },
+    {
+      id: 2003,
+      name: "FUNC - Single Winner State",
+      description: "Verify UI says 'Deployable!' when SMA is 95%.",
+      status: ExperimentStatus.active,
+      trafficSplit: "1.0",
+      sectionId: "sec-winner",
+      startDate: addDays(today, -10),
+      projectId: project.id,
+    },
+    {
+      id: 2004,
+      name: "FUNC - Multiple Winners State",
+      description: "Verify comma-separated list rendering for multiple winners.",
+      status: ExperimentStatus.active,
+      trafficSplit: "1.0",
+      sectionId: "sec-multi",
+      startDate: addDays(today, -10),
+      projectId: project.id,
+    },
+  ];
+
+  for (const exp of functionalExperiments) {
+    await ensureExperiment(prisma, exp);
+  }
+
+  // Define variants for the functional tests
+  const funcVariantMap = {
+    2001: [
+      { id: 3001, name: "Control", trafficAllocation: 0.5 },
+      { id: 3002, name: "Variant A", trafficAllocation: 0.5 },
+    ],
+    2002: [
+      { id: 3003, name: "Control", trafficAllocation: 0.5 },
+      { id: 3004, name: "Variant A", trafficAllocation: 0.5 },
+    ],
+    2003: [
+      { id: 3005, name: "Control", trafficAllocation: 0.5 },
+      { id: 3006, name: "Variant A", trafficAllocation: 0.5 },
+    ],
+    2004: [
+      { id: 3007, name: "Control", trafficAllocation: 0.34 },
+      { id: 3008, name: "Variant A", trafficAllocation: 0.33 },
+      { id: 3009, name: "Variant B", trafficAllocation: 0.33 },
+    ],
+  };
+
+  for (const exp of functionalExperiments) {
+    await ensureVariants(prisma, exp.id, funcVariantMap[exp.id]);
+    // Link to primary goal
+    await ensureExperimentGoals(prisma, exp.id, [{ goalId: completedCheckout.id, role: "primary" }]);
+  }
+
+  // Manually seed the Analysis rows for the functional tests
+  const funcAnalysisRows = [
+    // 2001: Only ONE snapshot
+    { 
+      experimentId: 2001, variantId: 3001, goalId: completedCheckout.id, 
+      calculatedWhen: today, probabilityOfBeingBest: 0.5, conversionRate: 0.1, 
+      deviceSegment: "all", totalUsers: 100, totalConversions: 10,
+      daysAnalyzed: 10, credIntervalLift: { lower: -0.01, upper: 0.01 },
+      postAlpha: 11, postBeta: 91 // Added mandatory fields
+    },
+    
+    // 2002: 3 snapshots (SMA ~50%)
+    ...[0, 1, 2].map(d => ({ 
+      experimentId: 2002, variantId: 3004, goalId: completedCheckout.id, 
+      calculatedWhen: addDays(today, -d), probabilityOfBeingBest: 0.5, conversionRate: 0.11, 
+      deviceSegment: "all", totalUsers: 500, totalConversions: 55,
+      daysAnalyzed: 10 - d, credIntervalLift: { lower: -0.02, upper: 0.04 },
+      postAlpha: 56, postBeta: 446
+    })),
+    ...[0, 1, 2].map(d => ({ 
+      experimentId: 2002, variantId: 3003, goalId: completedCheckout.id, 
+      calculatedWhen: addDays(today, -d), probabilityOfBeingBest: 0.5, conversionRate: 0.10, 
+      deviceSegment: "all", totalUsers: 500, totalConversions: 50,
+      daysAnalyzed: 10 - d, credIntervalLift: { lower: 0, upper: 0 },
+      postAlpha: 51, postBeta: 451
+    })),
+
+    // 2003: 3 snapshots (SMA ~95%)
+    ...[0, 1, 2].map(d => ({ 
+      experimentId: 2003, variantId: 3006, goalId: completedCheckout.id, 
+      calculatedWhen: addDays(today, -d), probabilityOfBeingBest: 0.95, conversionRate: 0.18, 
+      deviceSegment: "all", totalUsers: 500, totalConversions: 90,
+      daysAnalyzed: 10 - d, credIntervalLift: { lower: 0.05, upper: 0.12 },
+      postAlpha: 91, postBeta: 411
+    })),
+    ...[0, 1, 2].map(d => ({ 
+      experimentId: 2003, variantId: 3005, goalId: completedCheckout.id, 
+      calculatedWhen: addDays(today, -d), probabilityOfBeingBest: 0.05, conversionRate: 0.05, 
+      deviceSegment: "all", totalUsers: 500, totalConversions: 25,
+      daysAnalyzed: 10 - d, credIntervalLift: { lower: 0, upper: 0 },
+      postAlpha: 26, postBeta: 476
+    })),
+
+    // 2004: Multiple winners
+    ...[0, 1, 2].map(d => ({ 
+      experimentId: 2004, variantId: 3008, goalId: completedCheckout.id, 
+      calculatedWhen: addDays(today, -d), probabilityOfBeingBest: 0.90, conversionRate: 0.20, 
+      deviceSegment: "all", totalUsers: 500, totalConversions: 100,
+      daysAnalyzed: 10 - d, credIntervalLift: { lower: 0.06, upper: 0.15 },
+      postAlpha: 101, postBeta: 401
+    })),
+    ...[0, 1, 2].map(d => ({ 
+      experimentId: 2004, variantId: 3009, goalId: completedCheckout.id, 
+      calculatedWhen: addDays(today, -d), probabilityOfBeingBest: 0.85, conversionRate: 0.19, 
+      deviceSegment: "all", totalUsers: 500, totalConversions: 95,
+      daysAnalyzed: 10 - d, credIntervalLift: { lower: 0.04, upper: 0.11 },
+      postAlpha: 96, postBeta: 406
+    })),
+    ...[0, 1, 2].map(d => ({ 
+      experimentId: 2004, variantId: 3007, goalId: completedCheckout.id, 
+      calculatedWhen: addDays(today, -d), probabilityOfBeingBest: 0.02, conversionRate: 0.04, 
+      deviceSegment: "all", totalUsers: 500, totalConversions: 20,
+      daysAnalyzed: 10 - d, credIntervalLift: { lower: 0, upper: 0 },
+      postAlpha: 21, postBeta: 481
+    })),
+  ];
+
+  await prisma.analysis.createMany({ data: funcAnalysisRows });
 
   console.log("Demo seed completed successfully.");
 }

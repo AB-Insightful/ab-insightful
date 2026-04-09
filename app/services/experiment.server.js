@@ -5,44 +5,57 @@ import { Prisma } from "@prisma/client";
 import { ExperimentStatus } from "@prisma/client";
 
 // Function to create an experiment. Returns the created experiment object.
+// Accepts an array of treatment variant objects, each with { sectionId, trafficAllocation }.
+// A Control variant is always created automatically with the remaining traffic.
+// Variant names are auto-generated: "Control", "Variant A", "Variant B", "Variant C", ...
+// experimentData may include optional maxUsers (integer); when present, overrides account default.
 export async function createExperiment(
   experimentData,
-  {
-    variantEnabled = false,
-    controlSectionId = "",
-    primaryVariantSectionId = "",
-    secondaryVariantSectionId = "",
-  } = {},
+  { controlSectionId = "", variants = [] } = {},
 ) {
   console.log("Creating experiment with data:", experimentData);
+
+  const VARIANT_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+  const treatmentAllocation = variants.reduce(
+    (sum, v) => sum + (v.trafficAllocation || 0),
+    0,
+  );
+  const controlAllocation = 1.0 - treatmentAllocation;
+
+  if (controlAllocation < -0.01) {
+    throw new Error(
+      `Treatment traffic allocations exceed 1.0 (sum: ${treatmentAllocation.toFixed(4)})`,
+    );
+  }
+
+  if (
+    Math.abs(treatmentAllocation + Math.max(0, controlAllocation) - 1.0) > 0.01
+  ) {
+    throw new Error(
+      `Traffic allocations must sum to ~1.0 (got ${(treatmentAllocation + controlAllocation).toFixed(4)})`,
+    );
+  }
 
   const variantCreates = [];
 
   variantCreates.push({
     name: "Control",
-    configData: controlSectionId
-      ? { sectionId: controlSectionId }
-      : null,
+    configData: controlSectionId ? { sectionId: controlSectionId } : null,
+    trafficAllocation: Math.max(0, controlAllocation),
   });
 
-  if (primaryVariantSectionId) {
+  variants.forEach((v, i) => {
     variantCreates.push({
-      name: "Variant A",
-      configData: { sectionId: primaryVariantSectionId },
+      name: `Variant ${VARIANT_LABELS[i]}`,
+      configData: v.sectionId ? { sectionId: v.sectionId } : null,
+      trafficAllocation: v.trafficAllocation,
     });
-  }
+  });
 
-  if (variantEnabled && secondaryVariantSectionId) {
-    variantCreates.push({
-      name: "Variant B",
-      configData: { sectionId: secondaryVariantSectionId },
-    });
-  }
-
-  // Update Prisma database using npx prisma
   const result = await db.experiment.create({
     data: {
-      ...experimentData, // Will include all DB fields of a new experiment
+      ...experimentData,
       variants: {
         create: variantCreates,
       },
@@ -56,7 +69,7 @@ export async function createExperiment(
    Experiment Queries
    ==================================================================================================== */
 
-// Get active experiment ID, Section ID and Probability - used on frontend for showing.
+// Returns active experiments with variant-level data for the storefront embed script.
 export async function GetFrontendExperimentsData() {
   const experiments = await db.experiment.findMany({
     where: {
@@ -64,15 +77,156 @@ export async function GetFrontendExperimentsData() {
     },
     select: {
       id: true,
-      sectionId: true,
-      controlSectionId: true,
-      trafficSplit: true,
+      variants: {
+        select: {
+          id: true,
+          name: true,
+          configData: true,
+          trafficAllocation: true,
+        },
+      },
     },
   });
 
-  return experiments;
+  return experiments.map((exp) => ({
+    id: exp.id,
+    variants: exp.variants.map((v) => ({
+      id: v.id,
+      name: v.name,
+      sectionId: v.configData?.sectionId ?? null,
+      trafficAllocation: Number(v.trafficAllocation),
+      isControl: v.name === "Control",
+    })),
+  }));
 }
 
+// [Ryan] function to get experiments that are active and have an end date that is either Now or has Passed
+export async function getCandidatesForScheduledEnd() {
+  try {
+    const experiments = await db.experiment.findMany({
+      where: {
+        status: ExperimentStatus.active,
+        endDate: {
+          lte: new Date(),
+        },
+      },
+    });
+    return experiments;
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      console.error(
+        "[experiment.server.js::getCandidatesForScheduledEnd] ",
+        e.message,
+      );
+      return { error: e.message };
+    } else if (e instanceof Prisma.PrismaClientValidationError) {
+      console.error(
+        "[experiment.server.js::getCandidatesForScheduledEnd] passed an invalid argument for the select.",
+        e.message,
+      );
+      return { error: e.message };
+    }
+  }
+}
+// Evaluates active experiments for Stable Success Probability termination criteria
+// Returns experiments that have a variant with a 3-day SMA >= 80%
+// and a conversion rate strictly greater than the control's conversion rate
+export async function getCandidatesForStableSuccessEnd() {
+  const MIN_USERS_THRESHOLD = 100;
+
+  const activeExps = await db.experiment.findMany({
+    where: {
+      status: ExperimentStatus.active,
+      endCondition: "stableSuccessProbability",
+    },
+    include: {
+      variants: true,
+    },
+  });
+
+  const candidatesToEnd = [];
+
+  for (const exp of activeExps) {
+    const control = exp.variants.find((v) => v.name === "Control");
+    if (!control) continue; // Cant evaluate stable success without a control
+
+    let hasStableWinner = false;
+
+    // Evaluate each [a/b/c/d] variant in an experiment against the Control
+    for (const variant of exp.variants) {
+      if (variant.name === "Control") continue;
+
+      // fetch the 3 most recent analyses for variant and control
+      const [variantHistory, controlHistory] = await Promise.all([
+        db.analysis.findMany({
+          where: { experimentId: exp.id, variantId: variant.id, deviceSegment: "all" },
+          orderBy: { calculatedWhen: "desc" },
+          take: 3,
+        }),
+        db.analysis.findMany({
+          where: { experimentId: exp.id, variantId: control.id, deviceSegment: "all" },
+          orderBy: { calculatedWhen: "desc" },
+          take: 3,
+        }),
+      ]);
+
+      // Minimum 3 days of historical analysis data
+      if (variantHistory.length < 3 || controlHistory.length < 3) continue;
+      
+      const totalUsersSoFar = variantHistory[0].totalUsers + controlHistory[0].totalUsers;
+      
+      if (totalUsersSoFar < MIN_USERS_THRESHOLD) continue;
+      // SMA Calculation: Smoothing out the "Daily Noise"
+      const avgProb = variantHistory.reduce((sum, singleDay) => sum + (singleDay.probabilityOfBeingBest || 0), 0) / 3;
+
+      // Probability Threshold (80%) + Positive Delta Requirement
+      if (avgProb >= 0.8) {
+        // checks latest variant conversion against control conversion
+        const isCurrentlyBetter = variantHistory[0].conversionRate > controlHistory[0].conversionRate;
+        if (isCurrentlyBetter) {
+          hasStableWinner = true;
+          break; // Found a winner; move to the next experiment
+        }
+      }
+    }
+
+    if (hasStableWinner) {
+      candidatesToEnd.push(exp);
+    }
+  }
+
+  return candidatesToEnd;
+}
+// [Ryan] function to get experiments that meet the following criteria:
+//  - is a draft
+//  - has a scheduled start date that is either Now or has Passed
+export async function getCandidatesForScheduledStart() {
+  try {
+    const experiments = await db.experiment.findMany({
+      where: {
+        status: ExperimentStatus.draft,
+        startDate: {
+          lte: new Date(),
+        },
+      },
+    });
+    return experiments;
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      console.error(
+        "[experiment.server.js::getCandidatesForScheduledStart] ",
+        e.message,
+      );
+      return { error: e.message };
+    } else if (e instanceof Prisma.PrismaClientValidationError) {
+      console.error(
+        "[experiment.server.js::getCandidatesForScheduledStart] passed an invalid argument for the select.",
+        e.message,
+      );
+      return { error: e.message };
+    }
+  }
+}
 // Function to get experiments list.
 // This is used for the "Experiments List" page
 export async function getExperimentsList() {
@@ -86,6 +240,10 @@ export async function getExperimentsList() {
           variant: true, //this gets us the variant name (e.g., "Control", "Variant A")
         },
       },
+      project: {
+        select: { maxUsersPerExperiment: true },
+      },
+      history: true,
     },
   });
 
@@ -93,7 +251,7 @@ export async function getExperimentsList() {
 }
 
 //get the experiment list, additionally analyses for conversion rate
-export async function getExperimentsList1() {
+export async function experimentListReport() {
   const experiments = await db.experiment.findMany({
     select: {
       id: true,
@@ -101,6 +259,29 @@ export async function getExperimentsList1() {
       status: true,
       startDate: true,
       endDate: true,
+      endCondition: true,
+
+      history: {
+        select: {
+          prevStatus: true,
+          newStatus: true,
+          changedAt: true,
+        },
+        orderBy: {
+          changedAt: "asc",
+        },
+      },
+      
+      analyses: {
+        select: {
+          totalConversions: true,
+          totalUsers: true,
+          calculatedWhen: true,
+        },
+        orderBy: {
+          calculatedWhen: "asc",
+        },
+      },
     },
     orderBy: {
       createdAt: "desc",
@@ -120,24 +301,32 @@ export async function getVariant(experimentId, name) {
 }
 
 //get the latest analysis row for that variant (conversionRate lives here)
-export async function getAnalysis(experimentId, variantId) {
+export async function getAnalysis(
+  experimentId,
+  variantId,
+  deviceSegment = "all",
+) {
   return db.analysis.findFirst({
-    where: { experimentId, variantId },
+    where: { experimentId, variantId, deviceSegment },
     orderBy: { calculatedWhen: "desc" },
-    include: { goal: true}
+    include: { goal: true },
   });
 }
 
 //convenience: return conversionRate as a float (or null)
-export async function getVariantConversionRate(experimentId, variantId) {
-  const row = await getAnalysis(experimentId, variantId);
+export async function getVariantConversionRate(
+  experimentId,
+  variantId,
+  deviceSegment = "all",
+) {
+  const row = await getAnalysis(experimentId, variantId, deviceSegment);
   if (!row) return null;
   const num = row.conversionRate;
   return num;
 }
 
 // Improvement calculation for an experiment
-export async function getImprovement(experimentId) {
+export async function getImprovement(experimentId, deviceSegment = "all") {
   // get control
   const control = await getVariant(experimentId, "Control");
   if (!control) return null;
@@ -150,14 +339,18 @@ export async function getImprovement(experimentId) {
   if (!variants.length) return null;
 
   // get control conversion rate
-  const controlAnalysis = await getAnalysis(experimentId, control.id);
+  const controlAnalysis = await getAnalysis(
+    experimentId,
+    control.id,
+    deviceSegment,
+  );
   const controlRate = controlAnalysis ? controlAnalysis.conversionRate : null;
   if (!(typeof controlRate === "number") || controlRate <= 0) return null;
 
   // find best treatment rate
   let best = null;
   for (const v of variants) {
-    const a = await getAnalysis(experimentId, v.id);
+    const a = await getAnalysis(experimentId, v.id, deviceSegment);
     const rate = a ? a.conversionRate : null;
     if (typeof rate === "number" && (best === null || rate > best)) best = rate;
   }
@@ -169,7 +362,6 @@ export async function getImprovement(experimentId) {
   const improvement = ((best - controlRate) / controlRate) * 100;
   return improvement;
 }
-
 
 // Function to get an experiment by id. Returns the experiment object if found, otherwise returns null.
 export async function getExperimentById(id) {
@@ -184,38 +376,33 @@ export async function getExperimentById(id) {
   return null;
 }
 
-//TODO: 
-// Function to retrieve the most recently created experiment and its associated information. 
+//TODO:
+// Function to retrieve the most recently created experiment and its associated information.
 //Primarily used in the home page
 //primarily used to retrieve id.
-export async function getMostRecentExperiment(){
-
+export async function getMostRecentExperiment() {
   //query to retrieve most recent experiment tuple
   return db.experiment.findFirst({
-    where: { status: ExperimentStatus.active},
+    where: { status: ExperimentStatus.active },
     orderBy: { createdAt: "desc" },
   }); //newest experiment first
-
 }
 
 //uses experiment id to find name of goal for experiment since there is no direct attribute for it in this table
-export async function getNameOfExpGoal(expId){
-
+export async function getNameOfExpGoal(expId) {
   //grabs first analysis tuple that matches experiment id, works because all goals should be the same for 1 experiment
   return db.analysis.findFirst({
-    where: { experimentId: expId},
-    include: { goal: true, },
-  }); 
+    where: { experimentId: expId, deviceSegment: "all" },
+    include: { goal: true },
+  });
 }
-
 
 /* ====================================================================================================
    Experiment Status Management
    ==================================================================================================== */
 
-   
-// Function to pause an experiment 
-export async function pauseExperiment(experimentId){
+// Function to pause an experiment
+export async function pauseExperiment(experimentId) {
   // Validate and normalize the ID for the SQLite database
   if (!experimentId)
     throw new Error("pauseExperiment: experimentId is required");
@@ -236,17 +423,21 @@ export async function pauseExperiment(experimentId){
 
   // check if the experiment is eligible to be paused
   switch (experiment.status) {
-        case ExperimentStatus.active:
+    case ExperimentStatus.active:
       // we can pause an active experiment, let it fall through
       break;
     case ExperimentStatus.archived:
     case ExperimentStatus.completed:
     case ExperimentStatus.draft:
     case ExperimentStatus.paused:
-      console.log(`pauseExperiment: Experiment ${id} with status: ${experiment.status} cannot be paused.`);
+      console.log(
+        `pauseExperiment: Experiment ${id} with status: ${experiment.status} cannot be paused.`,
+      );
       return experiment;
     default:
-      throw new Error(`pauseExperiment: Experiment ${id} has unknown status: ${experiment.status}`);
+      throw new Error(
+        `pauseExperiment: Experiment ${id} has unknown status: ${experiment.status}`,
+      );
   }
 
   const prevStatus = experiment.status;
@@ -298,14 +489,18 @@ export async function archiveExperiment(experimentId) {
   switch (experiment.status) {
     case ExperimentStatus.completed:
       break;
-      case ExperimentStatus.draft:
+    case ExperimentStatus.draft:
     case ExperimentStatus.archived:
     case ExperimentStatus.active:
     case ExperimentStatus.paused:
-      console.log(`archiveExperiment: Experiment ${id} with status: ${experiment.status} cannot be archived.`);
+      console.log(
+        `archiveExperiment: Experiment ${id} with status: ${experiment.status} cannot be archived.`,
+      );
       return experiment;
     default:
-      throw new Error(`archiveExperiment: Experiment ${id} has unknown status: ${experiment.status}`);
+      throw new Error(
+        `archiveExperiment: Experiment ${id} has unknown status: ${experiment.status}`,
+      );
   }
 
   const prevStatus = experiment.status;
@@ -344,21 +539,26 @@ export async function resumeExperiment(experimentId) {
       : experimentId;
 
   const experiment = await db.experiment.findUnique({ where: { id } });
-  if (!experiment) throw new Error(`resumeExperiment: Experiment ${id} not found`);
+  if (!experiment)
+    throw new Error(`resumeExperiment: Experiment ${id} not found`);
 
   // check if the experiment is eligible to be resumed
   switch (experiment.status) {
-        case ExperimentStatus.paused:
+    case ExperimentStatus.paused:
       //we can resume a paused experiment, let it fall through
       break;
     case ExperimentStatus.archived:
     case ExperimentStatus.completed:
     case ExperimentStatus.draft:
     case ExperimentStatus.active:
-      console.log(`resumeExperiment: Experiment ${id} with status: ${experiment.status} cannot be resumed.`);
+      console.log(
+        `resumeExperiment: Experiment ${id} with status: ${experiment.status} cannot be resumed.`,
+      );
       return experiment;
     default:
-      throw new Error(`resumeExperiment: Experiment ${id} has unknown status: ${experiment.status}`);
+      throw new Error(
+        `resumeExperiment: Experiment ${id} has unknown status: ${experiment.status}`,
+      );
   }
 
   const now = new Date();
@@ -390,15 +590,16 @@ export async function resumeExperiment(experimentId) {
 // function to manually end an experiment
 export async function endExperiment(experimentId) {
   // Validate input into function, throws error if not valid
-  if (!experimentId)
-    throw new Error(`endExperiment: experimentId is required`);
+  if (!experimentId) throw new Error(`endExperiment: experimentId is required`);
   // normalize id for db
-  const id = typeof experimentId === "string" ? parseInt(experimentId, 10) : experimentId;
+  const id =
+    typeof experimentId === "string"
+      ? parseInt(experimentId, 10)
+      : experimentId;
   // look up experiment
   const experiment = await getExperimentById(id);
   // throw an error if we cant find experiment
-  if (!experiment)
-    throw new Error(`endExperiment: Experiment ${id} not found`);
+  if (!experiment) throw new Error(`endExperiment: Experiment ${id} not found`);
   // check if the experiment is eligible to be ended
   switch (experiment.status) {
     case ExperimentStatus.active:
@@ -407,10 +608,14 @@ export async function endExperiment(experimentId) {
     case ExperimentStatus.archived:
     case ExperimentStatus.completed:
     case ExperimentStatus.draft:
-      console.log(`endExperiment: Experiment ${id} with status: ${experiment.status} cannot be ended.`);
+      console.log(
+        `endExperiment: Experiment ${id} with status: ${experiment.status} cannot be ended.`,
+      );
       return experiment;
     default:
-      throw new Error(`endExperiment: Experiment ${id} has unknown status: ${experiment.status}`);
+      throw new Error(
+        `endExperiment: Experiment ${id} has unknown status: ${experiment.status}`,
+      );
   }
 
   const now = new Date();
@@ -441,13 +646,18 @@ export async function endExperiment(experimentId) {
 
 export async function startExperiment(experimentId) {
   // Validate input into function, throws error if not valid
-  if (!experimentId) throw new Error(`startExperiment: experimentId is required`);
+  if (!experimentId)
+    throw new Error(`startExperiment: experimentId is required`);
   // normalize id for db
-  const id = typeof experimentId === "string" ? parseInt(experimentId, 10) : experimentId;
+  const id =
+    typeof experimentId === "string"
+      ? parseInt(experimentId, 10)
+      : experimentId;
   // look up experiment
   const experiment = await getExperimentById(id);
   // throw an error if we cant find experiment
-  if (!experiment) throw new Error(`startExperiment: Experiment ${id} not found`);
+  if (!experiment)
+    throw new Error(`startExperiment: Experiment ${id} not found`);
 
   // check if the experiment is eligible to start
   switch (experiment.status) {
@@ -457,10 +667,14 @@ export async function startExperiment(experimentId) {
     case ExperimentStatus.archived:
     case ExperimentStatus.completed:
     case ExperimentStatus.active:
-      console.log(`startExperiment: Experiment ${id} with status: ${experiment.status} cannot be started.`);
+      console.log(
+        `startExperiment: Experiment ${id} with status: ${experiment.status} cannot be started.`,
+      );
       return experiment;
     default:
-      throw new Error(`startExperiment: Experiment ${id} has unknown status: ${experiment.status}`);
+      throw new Error(
+        `startExperiment: Experiment ${id} has unknown status: ${experiment.status}`,
+      );
   }
 
   // save date and block starting experiment if end date is in past
@@ -493,20 +707,26 @@ export async function startExperiment(experimentId) {
     },
   });
   // log the experiment and then return our updated experiment
-  console.log(`startExperiment: Experiment ${id} moved from ${prevStatus} to active`);
+  console.log(
+    `startExperiment: Experiment ${id} moved from ${prevStatus} to active`,
+  );
   return updated;
-
-}// end startExperiment()
+} // end startExperiment()
 
 export async function deleteExperiment(experimentId) {
   // Validate input into function, throws error if not valid
-  if (!experimentId) throw new Error(`deleteExperiment: experimentId is required`);
+  if (!experimentId)
+    throw new Error(`deleteExperiment: experimentId is required`);
   // normalize id for db
-  const id = typeof experimentId === "string" ? parseInt(experimentId, 10) : experimentId;
+  const id =
+    typeof experimentId === "string"
+      ? parseInt(experimentId, 10)
+      : experimentId;
   // look up experiment
   const experiment = await getExperimentById(id);
   // throw an error if we cant find experiment
-  if (!experiment) throw new Error(`deleteExperiment: Experiment ${id} not found`);
+  if (!experiment)
+    throw new Error(`deleteExperiment: Experiment ${id} not found`);
 
   // check if the experiment is eligible to start
   switch (experiment.status) {
@@ -518,16 +738,19 @@ export async function deleteExperiment(experimentId) {
     case ExperimentStatus.completed:
     case ExperimentStatus.active:
     case ExperimentStatus.paused:
-      console.log(`deleteExperiment: Experiment ${id} with status: ${experiment.status} cannot be deleted.`);
+      console.log(
+        `deleteExperiment: Experiment ${id} with status: ${experiment.status} cannot be deleted.`,
+      );
       return experiment;
     default:
-      throw new Error(`deleteExperiment: Experiment ${id} has unknown status: ${experiment.status}`);
+      throw new Error(
+        `deleteExperiment: Experiment ${id} has unknown status: ${experiment.status}`,
+      );
   }
 
   //delete from db
-  return await db.experiment.delete({ where: {id}});
+  return await db.experiment.delete({ where: { id } });
 }
-
 
 /* ====================================================================================================
    Experiment Analysis
@@ -553,13 +776,17 @@ export async function getExperimentsWithAnalyses() {
   });
 }
 
-export async function getExperimentReportData(experimentId) {
+export async function getExperimentReportData(
+  experimentId,
+  deviceSegment = "all",
+) {
   const experiment = await db.experiment.findUnique({
     where: {
       id: experimentId,
     },
     include: {
       analyses: {
+        where: { deviceSegment },
         include: {
           variant: true,
           goal: true,
@@ -567,6 +794,11 @@ export async function getExperimentReportData(experimentId) {
         orderBy: { calculatedWhen: "desc" }, // newest analyses first
       },
       variants: true,
+      experimentGoals: {
+        include: {
+          goal: true,
+        },
+      },
     },
   });
   return experiment;
@@ -577,14 +809,17 @@ export async function getExperimentReportData(experimentId) {
 export async function updateProbabilityOfBest(experiment) {
   //DRAW_CONSTANT functions as a limit on the amount of computations this does. The more computations the more accurate but also the more heavy load
   const DRAW_CONSTANT = 20000;
+  const segments = ["all", "mobile", "desktop"];
   for (let i = 0; i < experiment.length; i++) {
     const curExp = experiment[i];
-    await setProbabilityOfBest({
-      experimentId: curExp.id,
-      goalId: curExp.goalId,
-      draws: DRAW_CONSTANT,
-      controlVariantId: null,
-    });
+    for (const segment of segments) {
+      await setProbabilityOfBest({
+        experimentId: curExp.id,
+        goalId: curExp.goalId,
+        deviceSegment: segment,
+        draws: DRAW_CONSTANT,
+      });
+    }
   }
 
   //maybe if we wanted this calculated all at once.
@@ -600,8 +835,8 @@ export async function updateProbabilityOfBest(experiment) {
 export async function setProbabilityOfBest({
   experimentId,
   goalId,
+  deviceSegment = "all",
   draws = 1000,
-  controlVariantId = null,
 }) {
   const experiment = await db.experiment.findUnique({
     where: { id: experimentId },
@@ -614,7 +849,7 @@ export async function setProbabilityOfBest({
 
   //loads all analysis rows
   const allAnalysisRows = await db.analysis.findMany({
-    where: { experimentId, goalId },
+    where: { experimentId, goalId, deviceSegment },
     orderBy: { calculatedWhen: "desc" },
   });
   if (!allAnalysisRows.length)
@@ -625,6 +860,7 @@ export async function setProbabilityOfBest({
     where: {
       experimentId,
       goalId,
+      deviceSegment,
       probabilityOfBeingBest: null,
       expectedLoss: null,
     },
@@ -736,125 +972,13 @@ export async function setProbabilityOfBest({
   }
 } //end of setProbabilityOfBest
 
-
 /* ====================================================================================================
    Experiment Event Handling
    ==================================================================================================== */
 // Get active experiment ID, Section ID and Probability - used on frontend for showing.
-export async function GetFrontendExperimentsData() {
-  const experiments = await db.experiment.findMany({
-    where: {
-      status: "active",
-    },
-    select: {
-      id: true,
-      sectionId: true,
-      controlSectionId: true,
-      trafficSplit: true,
-    },
-  });
-
-  return experiments;
-}
 
 // Function to get experiments list.
 // This is used for the "Experiments List" page
-export async function getExperimentsList() {
-  const experiments = await db.experiment.findMany({
-    select: {//selecting only relevant fields for the experiments list page
-      id: true,
-      name: true,
-      status: true,
-      startDate: true,
-      endDate: true,
-      analyses: {
-        include: {//including analyses to get the most recent conversion rate for the experiment list page
-          variant: true,
-        },
-      },
-    },
-  });
-
-  return experiments; // Returns an array of experiments,
-}
-
-//get the experiment list, additionally analyses for conversion rate
-export async function getExperimentsList1() {
-  const experiments = await db.experiment.findMany({
-    select: {
-      id: true,
-      name: true,
-      status: true,
-      startDate: true,
-      endDate: true,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
-
-  if (experiments) return experiments;
-  else return null;
-}
-
-// get a variant (by name or id) Example: "Control" or "Variant A"
-export async function getVariant(experimentId, name) {
-  return db.variant.findFirst({
-    where: { experimentId, name },
-    select: { id: true, name: true },
-  });
-}
-
-//get the latest analysis row for that variant (conversionRate lives here)
-export async function getAnalysis(experimentId, variantId) {
-  return db.analysis.findFirst({
-    where: { experimentId, variantId },
-    orderBy: { calculatedWhen: "desc" },
-    include: { goal: true}
-  });
-}
-
-//convenience: return conversionRate as a float (or null)
-export async function getVariantConversionRate(experimentId, variantId) {
-  const row = await getAnalysis(experimentId, variantId);
-  if (!row) return null;
-  const num = row.conversionRate;
-  return num;
-}
-
-// Improvement calculation for an experiment
-export async function getImprovement(experimentId) {
-  // get control
-  const control = await getVariant(experimentId, "Control");
-  if (!control) return null;
-
-  // get all other variants
-  const variants = await db.variant.findMany({
-    where: { experimentId, NOT: { id: control.id } },
-    select: { id: true, name: true },
-  });
-  if (!variants.length) return null;
-
-  // get control conversion rate
-  const controlAnalysis = await getAnalysis(experimentId, control.id);
-  const controlRate = controlAnalysis ? controlAnalysis.conversionRate : null;
-  if (!(typeof controlRate === "number") || controlRate <= 0) return null;
-
-  // find best treatment rate
-  let best = null;
-  for (const v of variants) {
-    const a = await getAnalysis(experimentId, v.id);
-    const rate = a ? a.conversionRate : null;
-    if (typeof rate === "number" && (best === null || rate > best)) best = rate;
-  }
-
-  if (best === null || best >= 1 || best <= 0) return null;
-  if (controlRate === null || controlRate >= 1 || controlRate <= 0) return null;
-
-  // improvement formula
-  const improvement = ((best - controlRate) / controlRate) * 100;
-  return improvement;
-}
 
 // Function to check if experiment is still active
 export function isExperimentActive(experiment, timeCheck = new Date()) {
@@ -884,6 +1008,8 @@ async function handleExperiment_IncludeEvent(payload) {
     );
     return null;
   }
+
+  // Create/update user first so it exists even when variant is not found
   const user = await db.user.upsert({
     where: {
       shopifyCustomerID: payload.client_id,
@@ -898,7 +1024,6 @@ async function handleExperiment_IncludeEvent(payload) {
   });
 
   // Then, tie that user to the experiment
-  // First, get the variant ID from the variant name
   const variant = await getVariant(payload.experiment_id, payload.variant);
 
   if (!variant) {
@@ -911,24 +1036,74 @@ async function handleExperiment_IncludeEvent(payload) {
     return;
   }
 
-  // Now create or update the allocation
-  // TODO seems like there needs to be more error handling with this result variable here.
-  const result = await db.allocation.upsert({
-    where: {
-      userId_experimentId: {
-        userId: user.id,
-        experimentId: payload.experiment_id,
-      },
-    },
-    create: {
-      userId: user.id,
-      experimentId: payload.experiment_id,
-      variantId: variant.id,
-    },
-    update: {
-      variantId: variant.id,
+  const experimentId =
+    typeof payload.experiment_id === "string"
+      ? parseInt(payload.experiment_id, 10)
+      : payload.experiment_id;
+  const deviceType = payload.device_type ?? payload.deviceType ?? null;
+
+  // Resolve effective max: experiment override when set, otherwise project default
+  const experiment = await db.experiment.findUnique({
+    where: { id: experimentId },
+    include: {
+      project: { select: { maxUsersPerExperiment: true } },
     },
   });
+  const effectiveMax =
+    experiment?.maxUsers ??
+    experiment?.project?.maxUsersPerExperiment ??
+    10000;
+
+  // Run allocation logic in a transaction to serialize count+create and avoid races.
+  const result = await db.$transaction(async (tx) => {
+    const existingAllocation = await tx.allocation.findUnique({
+      where: {
+        userId_experimentId: {
+          userId: user.id,
+          experimentId,
+        },
+      },
+    });
+
+    if (existingAllocation) {
+      return tx.allocation.update({
+        where: {
+          userId_experimentId: {
+            userId: user.id,
+            experimentId,
+          },
+        },
+        data: {
+          variantId: variant.id,
+          deviceType,
+        },
+      });
+    }
+
+    const count = await tx.allocation.count({
+      where: { experimentId },
+    });
+    if (count >= effectiveMax) {
+      return null;
+    }
+
+    return tx.allocation.create({
+      data: {
+        userId: user.id,
+        experimentId,
+        variantId: variant.id,
+        deviceType,
+      },
+    });
+  });
+
+  if (!result) {
+    console.log(
+      "[handle experiment include] max users reached, not creating allocation",
+    );
+    return { limitReached: true };
+  }
+
   if (!result) {
     console.log(
       "[handle experiment include] an error occurred while publishing the allocation",
@@ -940,7 +1115,7 @@ async function handleExperiment_IncludeEvent(payload) {
       result,
     );
   }
-  return { result: result }; // should probably return the result to the client in the body of the response.
+  return { result }; // should probably return the result to the client in the body of the response.
 }
 
 async function persistConversion(payload, Goal_Type) {
@@ -994,14 +1169,14 @@ async function persistConversion(payload, Goal_Type) {
     },
     create: {
       deviceType: payload.device_type,
-      moneyValue: 0, // TODO change to actually compute this (why do we need this anyways?)
+      moneyValue: new Prisma.Decimal(payload.total_price ?? 0),
       user: { connect: { id: payload.client_id } },
       variant: { connect: { id: allocation.variantId } },
       goal: { connect: { id: goal.id } },
       experiment: { connect: { id: allocation.experimentId } },
     },
     update: {
-      moneyValue: new Prisma.Decimal(0),
+      moneyValue: new Prisma.Decimal(payload.total_price ?? 0),
     },
   });
   if (ResultOfNewConversion) {
@@ -1075,4 +1250,3 @@ export async function handleCollectedEvent(payload) {
     return { result };
   }
 }
-

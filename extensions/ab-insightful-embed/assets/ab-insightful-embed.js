@@ -1,121 +1,457 @@
 // The script for controlling which experiments to show will live here.
 
-const appConfigBlock = document.getElementById("ab-insightful-config");
-// if app config block not loaded - app will not run
-if (appConfigBlock) {
-  const config = JSON.parse(appConfigBlock.textContent);
-  const appUrl = config.api_url;
-  initializeApp(appUrl);
+const urlParams = new URLSearchParams(window.location.search);
+
+// Saves initial launch to the new sessionStorage
+// SectionID picker mode persists through page navigation 
+// until the session (tab) is closed
+if (urlParams.get("ab_insightful_picker") === "true") {
+  sessionStorage.setItem("ab_insightful_picker", "true");
+}
+
+const isPickerMode = sessionStorage.getItem("ab_insightful_picker") === "true";
+
+if (isPickerMode) {
+  initPickerMode(); // initiate custom css on storefront to select sectionID 
 } else {
-  console.warn("API Url not found - AB Testing will not run");
+  // Normal execution
+  const appConfigBlock = document.getElementById("ab-insightful-config");
+  // if app config block not loaded - app will not run
+  if (appConfigBlock) {
+    const config = JSON.parse(appConfigBlock.textContent);
+    const appUrl = config.api_url;
+    initializeApp(appUrl);
+  } else {
+    console.warn("API Url not found - AB Testing will not run");
+  }
+}
+/**
+ * Initiates the section ID picker mode
+ * Injects custom CSS, a control UI, and global event listeners
+ * to intercept clicks and capture Shopify section IDs
+ */
+function initPickerMode() {
+
+  let isSelecting = false; // Tracks if the user has toggled Select Mode button
+  let isAltDown = false; // Tracks if the user is holding alt/option key
+  let activeToast = null; // Tracks the active toast message
+
+  // Inject scoped CSS for visual feedback during selection
+  const style = document.createElement("style");
+  style.innerHTML = `
+    /* Forces crosshair everywhere when active */
+    body.ab-insightful-selecting,
+    body.ab-insightful-selecting *,
+    body.ab-insightful-alt-selecting,
+    body.ab-insightful-alt-selecting * {
+      cursor: crosshair !important;
+    }
+
+    /* Force section visibility */
+    body.ab-insightful-selecting [id^="shopify-section-"],
+    body.ab-insightful-alt-selecting [id^="shopify-section-"] {
+      transition: all 0.2s ease-in-out;
+      display: block !important; 
+      min-height: 50px !important; 
+      visibility: visible !important;
+    }
+    
+    /* Hover highlights */
+    body.ab-insightful-selecting [id^="shopify-section-"]:hover,
+    body.ab-insightful-alt-selecting [id^="shopify-section-"]:hover {
+      outline: 3px solid #005bd3 !important; /* Modern Polaris focus blue */
+      outline-offset: -3px;
+      background-color: rgba(0, 91, 211, 0.05) !important;
+      z-index: 999999;
+    }
+  `;
+  document.head.appendChild(style);
+  
+  /**
+   * Displays a Polaris styled toast notifaction at the bottom center of the screen
+   * Automatically closes after 4 seconds or when the close button is clicked
+   * @param {string} message - The message to display in the toast
+   */
+  function showToast(message) {
+    // Clears any existing toast to prevent stacking
+    if (activeToast) {
+      document.body.removeChild(activeToast);
+      activeToast = null;
+    }
+
+    const toast = document.createElement("div");
+    toast.id = "ab-insightful-toast";
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translate(-50%, 10px);
+      background: #1a1a1a;
+      color: #f6f6f7;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.25),
+        0 4px 8px rgba(0, 0, 0, 0.3);
+      z-index: 9999999;
+      opacity: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition:
+        opacity 0.25s cubic-bezier(0.25, 0.1, 0.25, 1),
+        transform 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
+      max-width: 90vw;
+      pointer-events: auto;
+    `;
+    // Inject the message and a native Polaris SVG close icon
+    toast.innerHTML = `
+      <span>${message}</span>
+      <button id="ab-toast-close" aria-label="Close" style="
+        background: transparent;
+        border: none;
+        padding: 0;
+        margin: 0;
+        cursor: pointer;
+        color: #a6a6a6;
+        display: flex;
+        align-items: center;
+        transition: color 0.15s ease;
+        outline: none;
+      ">
+        <svg viewBox="0 0 20 20" style="width: 20px; height: 20px; fill: currentColor;">
+          <path d="M11.414 10l4.293-4.293a.999.999 0 1 0-1.414-1.414L10 8.586 5.707 4.293a.999.999 0 1 0-1.414 1.414L8.586 10l-4.293 4.293a.999.999 0 1 0 1.414 1.414L10 11.414l4.293 4.293a.997.997 0 0 0 1.414 0 .999.999 0 0 0 0-1.414L11.414 10z"/>
+        </svg>
+      </button>
+    `;
+    document.body.appendChild(toast);
+
+    // Trigger slide up animation
+    requestAnimationFrame(() => {
+      toast.style.opacity = "1";
+      toast.style.transform = "translate(-50%, 0)";
+    });
+
+    activeToast = toast;
+
+    // Helper to animate out and remove the element from the DOM
+    const removeToast = () => {
+      if (activeToast === toast) {
+        toast.style.opacity = "0";
+        toast.style.transform = "translate(-50%, 10px)";
+        setTimeout(() => {
+          if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+          }
+          if (activeToast === toast) activeToast = null;
+        }, 250);
+      }
+    };
+    // Close button interactions
+    const closeBtn = toast.querySelector("#ab-toast-close");
+    closeBtn.addEventListener("mouseover", () => (closeBtn.style.color = "#ffffff"));
+    closeBtn.addEventListener("mouseout", () => (closeBtn.style.color = "#a6a6a6"));
+    closeBtn.addEventListener("focus", () => (closeBtn.style.color = "#ffffff"));
+    closeBtn.addEventListener("blur", () => (closeBtn.style.color = "#a6a6a6"));
+    closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      removeToast();
+    });
+
+    // Auto-dismiss after 4s
+    setTimeout(removeToast, 4000);
+  }
+
+  /** 
+   * Injects the floating control panel to toggle picker mode
+   * Custom CSS to mimic Polaris Web Component styling
+   */
+  function setupPickerUI() {
+    const ui = document.createElement("div");
+    ui.id = "ab-insightful-picker-ui";
+    ui.style.cssText = `
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 9999999;
+      background: #ffffff;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.04),
+        0 1px 3px rgba(0, 0, 0, 0.1);
+      font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      width: 260px;
+      color: #202223;
+      font-size: 13px;
+      line-height: 1.5;
+    `;
+
+    ui.innerHTML = `
+      <div style="font-weight: 650; font-size: 14px; margin-bottom: 8px; color: #202223;">
+        AB Insightful Picker
+      </div>
+      <div style="font-size: 13px; color: #6d7175; margin-bottom: 16px; line-height: 1.4;">
+        Click below or hold <b>ALT/Option</b> to make a section selection.
+      </div>
+      <button id="ab-insightful-toggle" style="
+        width: 100%;
+        background: #1a1a1a;
+        color: #ffffff;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 13px;
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+        transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+        outline: none;
+      ">
+        Enter Select Mode
+      </button>
+    `;
+
+    document.body.appendChild(ui);
+
+    const toggleBtn = document.getElementById("ab-insightful-toggle");
+
+    // Polaris styled Hover states
+    toggleBtn.addEventListener("mouseover", () => {
+      toggleBtn.style.background = isSelecting ? "#b8260b" : "#303030";
+    });
+    toggleBtn.addEventListener("mouseout", () => {
+      toggleBtn.style.background = isSelecting ? "#d82c0d" : "#1a1a1a";
+    });
+
+    // Polaris style Pressed state
+    toggleBtn.addEventListener("mousedown", () => {
+      toggleBtn.style.transform = "translateY(1px)";
+      toggleBtn.style.boxShadow = "0 0 0 rgba(0,0,0,0.15)";
+    });
+    toggleBtn.addEventListener("mouseup", () => {
+      toggleBtn.style.transform = "translateY(0)";
+      toggleBtn.style.boxShadow = "0 1px 0 rgba(0,0,0,0.15)";
+    });
+
+    // Polaris styled Focus outline
+    toggleBtn.addEventListener("focus", () => {
+      toggleBtn.style.boxShadow = "0 0 0 2px #005bd3, 0 1px 0 rgba(0,0,0,0.15)";
+    });
+    toggleBtn.addEventListener("blur", () => {
+      toggleBtn.style.boxShadow = "0 1px 0 rgba(0,0,0,0.15)";
+    });
+
+    // State mangement for the toggle button
+    toggleBtn.addEventListener("click", () => {
+      isSelecting = !isSelecting;
+      if (isSelecting) {
+        document.body.classList.add("ab-insightful-selecting");
+        toggleBtn.style.background = "#d82c0d"; // critical
+        toggleBtn.innerText = "Exit Select Mode";
+      } else {
+        document.body.classList.remove("ab-insightful-selecting");
+        toggleBtn.style.background = "#1a1a1a"; // primary
+        toggleBtn.innerText = "Enter Select Mode";
+      }
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", setupPickerUI);
+  } else {
+    setupPickerUI();
+  }
+  // Global Listeners
+  // Hotkey support (Hold alt/option to temporarily enter selection mode)
+  document.addEventListener("keydown", (e) => {
+    if (e.altKey && !isAltDown) {
+      isAltDown = true;
+      document.body.classList.add("ab-insightful-alt-selecting");
+    }
+  });
+
+  document.addEventListener("keyup", (e) => {
+    if (!e.altKey && isAltDown) {
+      isAltDown = false;
+      document.body.classList.remove("ab-insightful-alt-selecting");
+    }
+  });
+
+  // Click interception (Prevents navigation and captures section IDs)
+  document.addEventListener(
+    "click",
+    function (event) {
+      if (!isSelecting && !event.altKey) return;
+      if (event.target.closest("#ab-insightful-picker-ui") || event.target.closest("#ab-insightful-toast")) return;
+      // Prevents the click from navigating the user away
+      event.preventDefault();
+      event.stopPropagation();
+      
+      // Find the closest anscestor wrapper that is a native shopify section
+      const section = event.target.closest('[id^="shopify-section-"]');
+      // If no section is found, show a toast and return
+      if (!section) {
+        showToast("Element is not inside a Shopify section. Select a valid section container.");
+        return;
+      }
+      // sends valid section ID back the app
+      if (section && window.opener) {
+        window.opener.postMessage(
+          {
+            type: "AB_INSIGHTFUL_SECTION_PICKED",
+            sectionId: section.id,
+          },
+          "*"
+        );
+        window.close(); // Closes the picker window
+      } else if (section && !window.opener) {
+        showToast("Captured section, but connection to the app was lost. Please relaunch the picker.");
+      }
+    },
+    true
+  );
 }
 
 function initializeApp(appUrl) {
-  const experimentsAPIUrl = `${appUrl}/api/experiments`;
-  let experiment_ids = {};
-  fetch(experimentsAPIUrl, {
-    method: "GET",
-  })
-    .then((res) => {
-      return res.json();
-    })
-    .then((data) => {
-      data.forEach((experiment) => {
-        const variantMatch = document.getElementById(experiment.sectionId);
-        if (variantMatch) {
-          console.log(
-            `[ab-insightful-embed] Match! ID: ${experiment.sectionId} Element: ${variantMatch}`,
-          );
-          if (experiment.controlSectionId) {
-            const controlMatch = document.getElementById(
-              experiment.controlSectionId,
-            );
-            // Variant has a control element that needs to be hidden if the user is in variant group
-            if (controlMatch) {
-              invokeExperiment(
-                experiment.id,
-                experiment.trafficSplit,
-                variantMatch,
-                appUrl,
-                controlMatch,
-              );
-            }
-          } else {
-            invokeExperiment(
-              experiment.id,
-              experiment.trafficSplit,
-              variantMatch,
-              appUrl,
-            );
-          }
-        }
+  const deviceType = detectDeviceType();
+
+  fetch(`${appUrl}/api/experiments`, { method: "GET" })
+    .then((res) => res.json())
+    .then((experiments) => {
+      const assignments = migrateOldCookies(getAssignments(), experiments);
+
+      experiments.forEach((experiment) => {
+        processExperiment(experiment, assignments, appUrl, deviceType);
       });
+
+      saveAssignments(assignments);
     })
-    .catch((error) => {
-      console.log(error);
+    .catch((err) => {
+      console.error("[ab-insightful] Failed to fetch experiments:", err);
     });
 }
 
-// Function to decide whether to activate an experiment for the current client given an active experiment
-function invokeExperiment(
-  id,
-  chanceToShow,
-  element,
-  appUrl,
-  controlElement = null,
-) {
-  // Two cookies - one for experiments involved in control, one for involved in variants
-  // Both are comma separated lists of id's
-  const involvedControlExperiments = getCookie("ab-control-ids");
-  const involvedVariantExperiments = getCookie("ab-variant-ids");
-  // Check if this user is already in the experiment as a control
-  if (involvedControlExperiments) {
-    const expids = involvedControlExperiments.split(",");
-    if (expids.includes(String(id))) {
-      element.style.display = "none";
-      return;
+function processExperiment(experiment, assignments, appUrl, deviceType) {
+  // Only relevant if at least one variant section exists on this page
+  const variantsOnPage = experiment.variants.filter(
+    (v) => v.sectionId && document.getElementById(v.sectionId),
+  );
+  if (variantsOnPage.length === 0) return;
+
+  const expKey = String(experiment.id);
+  let assignedVariant = null;
+  let isNew = false;
+
+  // Check for an existing assignment
+  if (assignments[expKey] != null) {
+    assignedVariant = experiment.variants.find(
+      (v) => v.id === assignments[expKey],
+    );
+    // If the stored variant no longer exists in the experiment, reassign
+    if (!assignedVariant) {
+      delete assignments[expKey];
     }
   }
 
-  // Check if this user is already in the experiment as a variant
-  if (involvedVariantExperiments) {
-    const expids = involvedVariantExperiments.split(",");
-    if (expids.includes(String(id))) {
-      if (controlElement) {
-        controlElement.style.display = "none";
-      }
-      return;
-    }
+  // New assignment via weighted random selection
+  if (!assignedVariant) {
+    assignedVariant = weightedRandomSelect(experiment.variants);
+    isNew = true;
   }
 
-  // Base case: not in control or variant list - add to experiment
-  const chance = Number(chanceToShow);
-  if (Math.random() <= chance) {
-    // You are part of experiment - hide control
-    controlElement.style.display = "none";
-    // Add to variant experiment
-    document.cookie =
-      "ab-variant-ids=" +
-      (involvedVariantExperiments ? involvedVariantExperiments + "," : "") +
-      id +
-      "; path=/";
+  assignments[expKey] = assignedVariant.id;
 
-    // Setup data to send to server to notify of new experiment user
-    const user_id = getCookie("_shopify_y");
-    submitExperimentUser(user_id, id, "Variant A", appUrl);
-  } else {
-    // You are part of control group - hide experiment
-    element.style.display = "none";
-    // Add to control group
-    document.cookie =
-      "ab-control-ids=" +
-      (involvedControlExperiments ? involvedControlExperiments + "," : "") +
-      id +
-      "; path=/";
-    // Include user in Control on server
-    const user_id = getCookie("_shopify_y");
-    submitExperimentUser(user_id, id, "Control", appUrl);
+  // Show assigned variant section, hide every other variant section
+  experiment.variants.forEach((v) => {
+    if (!v.sectionId) return;
+    const el = document.getElementById(v.sectionId);
+    if (!el) return;
+    el.style.display = v.id === assignedVariant.id ? "" : "none";
+  });
+
+  if (isNew) {
+    const userId = getCookie("_shopify_y");
+    submitExperimentUser(
+      userId,
+      experiment.id,
+      assignedVariant.name,
+      appUrl,
+      deviceType,
+    );
   }
+}
+
+// Pick one variant using cumulative traffic allocation weights.
+function weightedRandomSelect(variants) {
+  const rand = Math.random();
+  let cumulative = 0;
+  for (const v of variants) {
+    cumulative += v.trafficAllocation;
+    if (rand < cumulative) return v;
+  }
+  return variants[variants.length - 1];
+}
+
+// --- Cookie helpers ---
+
+function getAssignments() {
+  const raw = getCookie("ab-assignments");
+  if (!raw) return {};
+  try {
+    return JSON.parse(decodeURIComponent(raw));
+  } catch {
+    return {};
+  }
+}
+
+function saveAssignments(assignments) {
+  const encoded = encodeURIComponent(JSON.stringify(assignments));
+  document.cookie = "ab-assignments=" + encoded + "; path=/; max-age=31536000";
+}
+
+// Migrate legacy ab-control-ids / ab-variant-ids cookies into the new format
+// so returning visitors keep their original assignment.
+function migrateOldCookies(assignments, experiments) {
+  const oldControl = getCookie("ab-control-ids");
+  const oldVariant = getCookie("ab-variant-ids");
+  if (!oldControl && !oldVariant) return assignments;
+
+  const expMap = {};
+  experiments.forEach((exp) => {
+    expMap[String(exp.id)] = exp.variants;
+  });
+
+  if (oldControl) {
+    oldControl.split(",").forEach((raw) => {
+      const id = raw.trim();
+      if (!id || assignments[id] != null) return;
+      const variants = expMap[id];
+      if (!variants) return;
+      const control = variants.find((v) => v.isControl);
+      if (control) assignments[id] = control.id;
+    });
+  }
+
+  if (oldVariant) {
+    oldVariant.split(",").forEach((raw) => {
+      const id = raw.trim();
+      if (!id || assignments[id] != null) return;
+      const variants = expMap[id];
+      if (!variants) return;
+      const treatment = variants.find((v) => !v.isControl);
+      if (treatment) assignments[id] = treatment.id;
+    });
+  }
+
+  // Clear legacy cookies
+  document.cookie = "ab-control-ids=; path=/; max-age=0";
+  document.cookie = "ab-variant-ids=; path=/; max-age=0";
+
+  return assignments;
 }
 
 function getCookie(name) {
@@ -123,38 +459,58 @@ function getCookie(name) {
   const ca = document.cookie.split(";");
   for (let i = 0; i < ca.length; i++) {
     let c = ca[i];
-    while (c.charAt(0) === " ") {
-      c = c.substring(1, c.length);
-    }
-    if (c.indexOf(nameEQ) === 0) {
-      return c.substring(nameEQ.length, c.length);
-    }
+    while (c.charAt(0) === " ") c = c.substring(1);
+    if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length);
   }
   return null;
 }
 
-async function submitExperimentUser(user_id, experiment_id, variant, appUrl) {
-  const collectUrl = `${appUrl}/api/collect`;
+function detectDeviceType() {
+  const ua = navigator.userAgent || "";
+
+  if (/ipad|tablet/i.test(ua)) return "tablet";
+  if (/mobi|android|iphone|ipod/i.test(ua)) return "mobile";
+  return "desktop";
+}
+
+async function submitExperimentUser(
+  userId,
+  experimentId,
+  variantName,
+  appUrl,
+  deviceType,
+) {
   const payload = {
     event_type: "experiment_include",
-    client_id: user_id,
-    experiment_id: experiment_id,
-    variant: variant,
+    client_id: userId,
+    experiment_id: experimentId,
+    variant: variantName,
+    device_type: deviceType,
     timestamp: new Date().toISOString(),
   };
-  fetch(collectUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json", // Indicate that the body is JSON
-    },
-    body: JSON.stringify(payload),
-  })
-    .then((res) => {
-      if (!res.ok) {
-        throw new Error("User not attributed to experiment");
-      }
-    })
-    .catch((error) => {
-      console.log(error);
+
+  try {
+    const res = await fetch(`${appUrl}/api/collect`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
+
+    const body = res.ok ? await res.json().catch(() => null) : null;
+    const limitReached =
+      body?.result?.limitReached === true;
+
+    if (limitReached) {
+      // Experiment at max users; assignment was not persisted. Keep showing
+      // the client-assigned variant for consistent UX. Do not retry.
+      return;
+    }
+
+    if (!res.ok) throw new Error("Server responded with " + res.status);
+  } catch (err) {
+    console.error(
+      "[ab-insightful] Failed to submit experiment inclusion:",
+      err,
+    );
+  }
 }

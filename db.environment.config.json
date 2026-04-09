@@ -1,0 +1,5 @@
+{
+  "dev": "file:./dev.sqlite",
+  "test": "file:./test.sqlite",
+  "prod": "file:./prod.sqlite"
+}

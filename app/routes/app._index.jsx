@@ -39,7 +39,8 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 // TODO in the /app/services, add a extension.server.js that will do this "register" part.
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
+  const {admin, session } = await authenticate.admin(request);
+  const shop = session.shop.replace(".myshopify.com", "");
   const { updateWebPixel } = await import("../services/extension.server");
   await updateWebPixel({ request });
 
@@ -48,14 +49,22 @@ export const loader = async ({ request }) => {
   //checks to see if web pixel already exists, used as conditional to web pixel section later
   const { webPixelNotNull} = await import ("../services/session.server");
   
-  const tutorialData = await getTutorialData();
+  //for the love of god handle the nulls
+  const tutorialData = (await getTutorialData()) ?? {
+    generalSettings: false,
+    createExperiment: false,
+    viewedListExperiment: false,
+    viewedReportsPage: false,
+    onSiteTracking: false,
+  };
   const webPixelRes = await webPixelNotNull();
-  
+
   tutorialData.allSetupDone= (
     tutorialData.generalSettings &&
     tutorialData.createExperiment &&
     tutorialData.viewedListExperiment &&
-    tutorialData.viewedReportsPage
+    tutorialData.viewedReportsPage &&
+    tutorialData.onSiteTracking
   );
 
   tutorialData.webPixelStatus = webPixelRes; //true means exists, false means null
@@ -82,7 +91,8 @@ export const loader = async ({ request }) => {
         analyses: []
       }, 
       tableData: [], 
-      tutorialData: tutorialData
+      tutorialData: tutorialData,
+      shop,
     };
   }
   
@@ -115,11 +125,11 @@ export const loader = async ({ request }) => {
   )).filter(Boolean); // now we are dropping rows that are entirely null
   experimentReportData["expId"] = latestExperiment.id
 
-  return {experiment: experimentReportData, tableData, tutorialData};
+  return {experiment: experimentReportData, tableData, tutorialData, shop};
 }
 
 export const action = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
   const actionType = formData.get("action");
 
@@ -128,8 +138,46 @@ export const action = async ({ request }) => {
     const { registerWebPixel } = await import("../services/extension.server");
     const response = await registerWebPixel({ request });
 
-    return response.json();
+    if (response.ok) {
+      return {
+        success: true,
+        message: "Tracking enabled successfully",
+      };
+    } else {
+      return {
+        success: false,
+        message: "Tracking could not be enabled",
+      };
+    }
   }
+
+  if (actionType === "verifyAppEmbed") {
+    const { verifyAppEmbed } = await import("../services/appEmbed.server");
+    const result = await verifyAppEmbed(
+      admin, 
+      "shopify://apps/ab-insightful/blocks/ab-insightful-embed/", 
+      session
+    );
+
+    // if the app embed is enabled, set the on site tracking to true
+    if (result.isEnabled){
+      const { setOnSiteTracking } = await import("../services/tutorialData.server");
+      await setOnSiteTracking(1, true); // sets OnSiteTracking column to true
+      
+      return {
+        success: true, 
+        message: `Successfully verified on theme: ${result.themeName}`,
+        themeName: result.themeName
+      };
+    } else {
+      return {
+        success: false, 
+        themeName: result.themeName,
+        error: `Not found on "${result.themeName}". Did you click 'Save' in the theme editor?`,
+      };
+    }
+  }
+  return { sucess: false, error: "Unknown error occurred" };
 };
 
 export default function Index() {
@@ -137,11 +185,14 @@ export default function Index() {
   const shopify = useAppBridge();
 
   //aquire loader data
-  const {experiment, tableData, tutorialData} = useLoaderData()
+  const {experiment, tableData, tutorialData, shop} = useLoaderData()
 
   const { dateRange } = useDateRange();
   //need to check sorting to ensure this is always baseline
   const baselineName = experiment.variants?.[0]?.id;
+  // To show the mandatory setup guide, either the web pixel is not enabled or the app embed is not enabled
+  const showMandatorySetup = !tutorialData.webPixelStatus || !tutorialData.onSiteTracking;
+  const deepLink = `https://admin.shopify.com/store/${shop}/themes/current/editor?context=apps`;
 
   // State for setup guide
   //ties setupGuide to whether webPixelis contained within session (assumes only 1 session)
@@ -159,6 +210,25 @@ export default function Index() {
   const enableTracking = async () => {
     await fetcher.submit({ action: "enableTracking" }, { method: "POST" });
   };
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data) {
+      const { success, message, error } = fetcher.data;
+
+      if (success) {
+        // Show success toast
+        shopify.toast.show(message || "Operation successful", {
+          duration: 3000,
+        });
+      } else {
+        // Show error toast (red)
+        shopify.toast.show(error || message || "An error occurred", {
+          duration: 5000,
+          isError: true,
+        });
+      }
+    }
+  }, [fetcher.state, fetcher.data, shopify]);
 
   // Update status of Setup guide based on responses
   useEffect(() => {
@@ -232,17 +302,17 @@ export default function Index() {
         variant="primary"
         href="/app/experiments/new"
       >
-        New Experiment
+        Create Experiment
       </s-button>
       <s-button slot="secondary-actions" href="/app/reports">
         Reports
       </s-button>
       <s-button slot="secondary-actions" href="/app/experiments">
-        Manage Experiments
+        Experiments
       </s-button>
 
       {/* Begin Setup guide */}
-      {tutorialData.webPixelNotNull && (
+      {showMandatorySetup && (
         <s-section>
           <s-grid gap="small">
             {/* Header */}
@@ -253,14 +323,10 @@ export default function Index() {
                 alignItems="center"
               >
                 <s-heading>Mandatory Setup</s-heading>
-                {/* Critical steps need to come first. Once they are completed, 
-                the user may choose to dismiss the setup guide */}
                 {progress >= 1 && (
                   <s-button
                     accessibilityLabel="Dismiss Guide"
-                    onClick={() =>
-                      setVisible({ ...visible, setupGuide: false })
-                    }
+                    onClick={() => setVisible({ ...visible, setupGuide: false })}
                     variant="tertiary"
                     tone="neutral"
                     icon="x"
@@ -268,61 +334,86 @@ export default function Index() {
                 )}
               </s-grid>
               <s-paragraph>
-                Please complete the following steps to begin using AB
-                Insightful!
+                Please complete the following steps to begin using AB Insightful!
               </s-paragraph>
             </s-grid>
-            {/* Steps Container */}
-            <s-box
-              borderRadius="base"
-              border="base"
-              background="base"
 
-            >
-              {/* Step 1 */}
-              <s-box>
-                <s-grid
-                  gridTemplateColumns="1fr auto"
-                  gap="base"
-                  padding="small"
-                >
-                  
-                </s-grid>
-                <s-box
-                  padding="small"
-                  paddingBlockStart="none"
-                >
-                  <s-box
-                    padding="base"
-                    background="subdued"
-                    borderRadius="base"
-                  >
-                    <s-grid
-                      gridTemplateColumns="1fr auto"
-                      gap="base"
-                      alignItems="center"
-                    >
-                      <s-grid gap="small-200">
-                        <s-paragraph>
-                          Enable on-site tracking so AB Insightful can collect
-                          information about experiment goal completions.
-                        </s-paragraph>
-                        <s-button variant="primary" onClick={enableTracking}>
-                          Enable Tracking
-                        </s-button>
-                        {trackingStatus && <s-text>{trackingStatus}</s-text>}
-                      </s-grid>
+            {/* Steps Container */}
+            <s-box borderRadius="base" border="base" background="base">
+              
+              {/* Step 1: Enable Tracking */}
+              <s-box padding="small">
+                <s-box padding="base" background="subdued" borderRadius="base">
+                  <s-grid gridTemplateColumns="1fr auto" gap="base" alignItems="center">
+                    <s-grid gap="small-200">
+                      <s-heading>Step 1: Enable Tracking</s-heading>
+                      <s-paragraph>
+                        Enable on-site tracking so AB Insightful can collect information about experiment goal completions.
+                      </s-paragraph>
+                      <s-button 
+                        variant={tutorialData.webPixelStatus ? "secondary" : "primary"} 
+                        onClick={() => fetcher.submit({ action: "enableTracking" }, { method: "POST" })}
+                        disabled={tutorialData.webPixelStatus === true || fetcher.state !== "idle"}
+                      >
+                        {fetcher.state === "submitting" && fetcher.formData?.get("action") === "enableTracking" 
+                          ? "Enabling..." 
+                          : tutorialData.webPixelStatus ? "Tracking Enabled" : "Enable Tracking"}
+                      </s-button>
+                      {trackingStatus && <s-text>{trackingStatus}</s-text>}
                     </s-grid>
-                  </s-box>
+
+                    {/* Status Indicator for Step 1 */}
+                    <s-icon
+                      type={tutorialData.webPixelStatus ? 'check-circle-filled' : 'circle'}
+                      tone={tutorialData.webPixelStatus ? 'success' : 'neutral'}
+                      size='base'
+                    />
+                  </s-grid>
                 </s-box>
               </s-box>
-              {/* Step 2 */}
+
               <s-divider />
-              {/* Add additional steps here... */}
+
+              {/* Step 2: Enable App Embed */}
+              <s-box padding="small">
+                <s-box padding="base" background="subdued" borderRadius="base">
+                  <s-grid gridTemplateColumns="1fr auto" gap="base" alignItems="center">
+                    <s-grid gap="small-200">
+                      <s-heading>Step 2: Enable App Embed</s-heading>
+                      <s-paragraph>
+                        The app embed must be enabled in your theme editor for experiments to run.
+                      </s-paragraph>
+                      
+                      <s-stack direction="inline" gap="base">
+                        <s-button variant="primary" href={deepLink} target="_top">
+                          Open Theme Editor
+                        </s-button>
+                        <s-button 
+                          variant="secondary" 
+                          onClick={() => fetcher.submit({ action: "verifyAppEmbed" }, { method: "POST" })}
+                        >
+                          {fetcher.state === "submitting" ? "Verifying..." : "Verify Installation"}
+                        </s-button>
+                      </s-stack>
+
+                      {fetcher.data?.success && (
+                        <s-text tone="success">Verified! Embed is active.</s-text>
+                      )}
+                    </s-grid>
+
+                    {/* Status Indicator for Step 2 */}
+                    <s-icon
+                      type={tutorialData.onSiteTracking ? 'check-circle-filled' : 'circle'}
+                      tone={tutorialData.onSiteTracking ? 'success' : 'neutral'}
+                      size='base'
+                    />
+                  </s-grid>
+                </s-box>
+              </s-box>
+
             </s-box>
           </s-grid>
         </s-section>
-        
       )}
 
       {/*Will render this section depending on if the setup tutorials have all been viewed*/}
@@ -402,7 +493,7 @@ export default function Index() {
                 icon="view"
                 variant="secondary"
               >
-                Manage Experiments
+                Experiments
               </s-button>
             </s-stack>
 
@@ -438,19 +529,28 @@ export default function Index() {
       {/* End Setup guide */}
       
       <s-grid gridTemplateColumns="3fr 1fr"  gap="base">
-        <s-grid-item>
-      <s-section><s-box><s-heading>Latest Experiment Results</s-heading>
-      {/*graphical section */ }
-      <div style={{ marginBottom: "16px", marginTop: "16px" }}>
-              <DateRangePicker />
-                        
-        </div>
-      <s-section heading="Probability To Be The Best">
-              {isClient ? (
-                <ResponsiveContainer width="100%" height={400}>
-                  <LineChart data={filteredPData}>
+      <s-grid-item>
+      <s-section>
+        <s-box>
+          <s-heading>Latest Experiment Results</s-heading>
+          <div style={{ marginBottom: "16px", marginTop: "16px" }}>
+            <DateRangePicker />
+          </div>
+          
+          <s-section heading="Probability To Be The Best">
+            {isClient ? (
+              <ResponsiveContainer width="100%" height={400}>
+                <LineChart data={filteredPData}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
+                    <XAxis 
+                      dataKey="name"
+                      minTickGap={30}
+                      tick={{ fontSize: 12 }}
+                      tickFormatter={(tick) =>{
+                        const date = new Date(tick);
+                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      }}
+                    />
                     <YAxis
                       width={80}
                       tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
@@ -463,28 +563,31 @@ export default function Index() {
                     />
                     <Tooltip />
                     <Legend />
-                    <Line
-                      type="monotone"
-                      dataKey={experiment.variants[0]?.name ?? "Baseline"}
-                      stroke="#8884d8"
-                      activeDot={{ r: 8 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey={experiment.variants[1]?.name ?? "Variant B"}
-                      stroke="#82ca9d"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+                        {experiment.variants.map((v, index) => {
+                          const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
+                          return (
+                            <Line
+                              key={v.id}
+                              type="monotone"
+                              dataKey={v.name}
+                              stroke={colors[index % colors.length]}
+                              activeDot={{ r: 8 }}
+                              dot={false}
+                            />
+                          );
+                        })}
+                      </LineChart>
+                    </ResponsiveContainer>
               ) : (
-                <div style={{ width: 700, height: 400 }}>Loading chart...</div>
-              )}
+                <div style={{ width: "100%", height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <s-text color="subdued">Loading chart...</s-text>
+                  </div>
+                )}
+              </s-section>
+            </s-box>
             {/*This current button link should theoretically work but cannot be tested since not all of these graphs contain graphing data (causes app crash) and appropriate error handling */}
             {/* Good candidate for unit/integration test */}
             {/* recent experiment additional info section */}
-            
-            </s-section>
-            </s-box>
             <s-table>
               <s-table-header-row>
                 <s-table-header listslot="primary">Name</s-table-header>
@@ -538,66 +641,6 @@ export default function Index() {
         </s-grid-item>
       </s-grid>
       <s-box></s-box>
-      {/* Begin quick links */}
-      {/*added marginTop modifier to div style to ensure gap between sections */}
-      <div style={{ display: "flex", flexDirection: "column", marginTop: "16px",}}>
-        <s-clickable
-          border="base"
-          padding="base"
-          background="subdued"
-          borderRadius="base"
-          href="/app/experiments"
-          maxInlineSize="650px"
-          maxBlockSize="52px"
-        >
-          <s-heading>View Experiments</s-heading>
-        </s-clickable>
-        <s-clickable
-          border="base"
-          padding="base"
-          background="subdued"
-          borderRadius="base"
-          href="/app/experiments/new"
-          maxInlineSize="650px"
-          maxBlockSize="52px"
-        >
-          <s-heading>Create New Experiment</s-heading>
-        </s-clickable>
-        <s-clickable
-          border="base"
-          padding="base"
-          background="subdued"
-          borderRadius="base"
-          href="/app/reports"
-          maxInlineSize="650px"
-          maxBlockSize="52px"
-        >
-          <s-heading>Reports</s-heading>
-        </s-clickable>
-        <s-clickable
-          border="base"
-          padding="base"
-          background="subdued"
-          borderRadius="base"
-          href="/app/settings"
-          maxInlineSize="650px"
-          maxBlockSize="52px"
-        >
-          <s-heading>Settings</s-heading>
-        </s-clickable>
-        <s-clickable
-          border="base"
-          padding="base"
-          background="subdued"
-          borderRadius="base"
-          href="/app/help"
-          maxInlineSize="650px"
-          maxBlockSize="52px"
-        >
-          <s-heading>Help</s-heading>
-        </s-clickable>
-      </div>
-      {/* End Quick Links */}
     </s-page>
   );
 }

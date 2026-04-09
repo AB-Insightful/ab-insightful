@@ -1,9 +1,14 @@
 import { useLoaderData, useFetcher, useRevalidator } from "react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 //import Decimal from 'decimal.js';
 import { formatRuntime } from "../utils/formatRuntime.js";
 import { formatImprovement } from "../utils/formatImprovement.js";
-import { ExperimentStatus } from "@prisma/client";
+import { ExperimentStatus } from "../utils/experimentConstants.js";
+import { allowedStatusIntents } from "./policies/experimentPolicy";
+import { usePagination } from "../hooks/usePagination";
+import Pagination from "../hooks/Pagination";
+import { sortRows, getNextSort } from "../utils/sortExperimentsList";
+import db from "../db.server";
 
 // Server side code
 
@@ -18,12 +23,22 @@ export async function loader() {
   const { getTutorialData } = await import ("../services/tutorialData.server");
   const tutorialData = await getTutorialData();
 
-  // compute improvements on the server
+  // compute improvements, user counts, and effective max on the server
   const enriched = await Promise.all(
-    experiments.map(async (e) => ({
-      ...e,
-      improvement: await getImprovement(e.id),
-    })),
+    experiments.map(async (e) => {
+      const [improvement, userCount] = await Promise.all([
+        getImprovement(e.id),
+        db.allocation.count({ where: { experimentId: e.id } }),
+      ]);
+      const effectiveMax =
+        e.maxUsers ?? e.project?.maxUsersPerExperiment ?? 10000;
+      return {
+        ...e,
+        improvement,
+        userCount,
+        effectiveMax,
+      };
+    }),
   );
 
   return {experiments: enriched, tutorialData }; // resolved data only
@@ -33,7 +48,31 @@ export async function loader() {
 export async function action({ request }) {
   const formData = await request.formData();
   const intent = formData.get("intent");
-  const experimentId = formData.get("experimentId");
+  const experimentIdRaw = formData.get("experimentId");
+  const experimentId = Number(experimentIdRaw);
+
+  const isStatusIntent = ["start", "pause", "resume", "end", "archive", "delete"].includes(intent);
+
+  if (isStatusIntent) {
+    if (!Number.isInteger(experimentId) || experimentId <= 0) {
+      return { ok: false, error: "Invalid experiment id." };
+    }
+
+    const { default: db } = await import("../db.server");
+    const existing = await db.experiment.findUnique({
+      where: { id: experimentId },
+      select: { status: true },
+    });
+
+    if (!existing) {
+      return { ok: false, error: "Experiment not found." };
+    }
+
+    const allowed = allowedStatusIntents(existing.status);
+    if (!allowed.has(intent)) {
+      return { ok: false, error: "Status change not allowed for this experiment." };
+    }
+  }
 
   const { 
     pauseExperiment,
@@ -77,7 +116,7 @@ export async function action({ request }) {
 
         //first, find the project experiment belongs to
         const existing = await db.experiment.findUnique({
-          where: { id: Number(experimentId) },
+          where: { id: experimentId },
           select: { projectId: true },
         });
         //if experiment is not found
@@ -89,7 +128,7 @@ export async function action({ request }) {
           where: {
             projectId: existing.projectId,
             name: newName,
-            NOT: { id: Number(experimentId) },
+            NOT: { id: experimentId },
           },
         });
         //if name already is in the database
@@ -98,7 +137,7 @@ export async function action({ request }) {
         }
         //perform the update
         await db.experiment.update({
-          where: { id: Number(experimentId) },
+          where: { id: experimentId },
           data: { name: newName },
         });
         //error handling
@@ -118,8 +157,8 @@ export async function action({ request }) {
         return {ok: false, error: "Failed to archive experiment"}, { status: 500};
       }
 
-      //performs switch case action upon clicking 'I understand" button for tutorial modal
-      case "tutorial_viewed":
+    //performs switch case action upon clicking 'I understand" button for tutorial modal
+    case "tutorial_viewed":
       try {
         const { setViewedListExp } = await import("../services/tutorialData.server");
         await setViewedListExp(1, true); //always sets the item in tutorialdata to true, selects 1st tuple
@@ -184,6 +223,114 @@ export default function Experimentsindex() {
   const [renameValue, setRenameValue] = useState("");
   const [renameError, setRenameError] = useState(null);
 
+  //track active filter selection (all by default)
+  const [activeFilter, setActiveFilter] = useState("all");
+
+  //track active sort
+  const [sortKey, setSortKey] = useState("createdAt");
+  const [sortDirection, setSortDirection] = useState("desc");
+
+
+  function handleSort(clickedKey) {
+    const nextSort = getNextSort(clickedKey, sortKey, sortDirection);
+    setSortKey(nextSort.sortKey);
+    setSortDirection(nextSort.sortDirection);
+    setCurrentPage(1);
+  }
+
+  function getSortIndicator(columnKey) {
+    if (sortKey !== columnKey) return "";
+    return sortDirection === "asc" ? "↑" : "↓";
+  }
+
+  function getProbabilitySortValue(experiment) {
+    if (!experiment?.analyses || experiment.analyses.length === 0) return null;
+
+    const probabilities = experiment.analyses
+      .map((analysis) => analysis?.probabilityOfBeingBest)
+      .filter((value) => value != null && value >= 0 && value <= 1);
+
+    if (probabilities.length === 0) return null;
+
+    return Math.max(...probabilities);
+  }
+
+  function getProbabilityOfBest(experiment) {
+    if (!experiment?.analyses || experiment.analyses.length === 0) {
+      return "inconclusive";
+    }
+
+    const validAnalyses = experiment.analyses.filter((analysis) => {
+      const value = analysis?.probabilityOfBeingBest;
+      return value != null && value >= 0 && value <= 1;
+    });
+
+    if (validAnalyses.length === 0) {
+      return "inconclusive";
+    }
+
+    const bestAnalysis = validAnalyses.reduce((best, current) => {
+      return current.probabilityOfBeingBest > best.probabilityOfBeingBest
+        ? current
+        : best;
+    });
+
+    const maxTrunc =
+      Math.trunc(bestAnalysis.probabilityOfBeingBest * 10000) / 10000;
+    const maxValueFormatted = (100 * maxTrunc).toFixed(2);
+    const bestName = bestAnalysis?.variant?.name ?? "Unknown";
+
+    return `${bestName} (${maxValueFormatted}%)`;
+  }
+
+  const filteredExperiments = useMemo(() => {
+    return (experiments || []).filter((exp) => {
+      if (activeFilter === "all") return true;
+      return exp.status === activeFilter;
+    });
+  }, [experiments, activeFilter]);
+
+  const sortedExperiments = useMemo(() => {
+    return sortRows(
+      filteredExperiments,
+      (exp) => {
+        switch (sortKey) {
+          case "name":
+            return exp.name ?? "";
+          case "status":
+            return exp.status ?? "";
+          case "runtime":
+            if (!exp.startDate) return null;
+            const start = new Date(exp.startDate).getTime();
+            const end = exp.endDate ? new Date(exp.endDate).getTime() : Date.now();
+            return end - start;
+          case "users":
+            return exp.userCount ?? 0;
+          case "improvement":
+            return exp.improvement ?? null;
+          case "probability":
+            return getProbabilitySortValue(exp);
+          case "createdAt":
+            return exp.createdAt ? new Date(exp.createdAt).getTime() : null;
+          default:
+            return exp.createdAt ? new Date(exp.createdAt).getTime() : null;
+        }
+      },
+      sortDirection
+    );
+  }, [filteredExperiments, sortKey, sortDirection]);
+
+  //pagination elements
+  const { currentPage, setCurrentPage, totalPages, startIndex, paginatedItems: paginatedExperiments } =
+    usePagination(sortedExperiments, 16);
+
+  //firefox fix: frame delay before table update
+  //allow new components to mount before cleanup postMessage is sent (was causing the crash)
+  const [displayedExperiments, setDisplayedExperiments] = useState(paginatedExperiments);
+  useEffect(() => {
+    const id = setTimeout(() => setDisplayedExperiments(paginatedExperiments), 0);
+    return () => clearTimeout(id);
+  }, [paginatedExperiments]);
   //check for errors after rename attempt
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.action === "rename_error") {
@@ -233,6 +380,10 @@ export default function Experimentsindex() {
     }
     
   }, [fetcher.state, fetcher.data, revalidator]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeFilter, sortKey, sortDirection, setCurrentPage]);
 
 
   //function responsible for render of table rows based off db
@@ -304,65 +455,22 @@ export default function Experimentsindex() {
   }
 
   //TODO: restrict based on experiment goal
-  //- re
   function renderTableData(experiments) {
     const rows = [];
 
-    //retrieves the highest probability of best from the experiment and the winning variant's name
-    //PLEASE NOTE: This function does not account for an experiment having multiple entries with different goals. 
-    //It will simply pick the highest probability (apples to oranges comparison). 
-    const getProbabilityOfBest = (experiment) => {
-      //check for analysis data
-      if (experiment.analyses && experiment.analyses.length > 0) {
-        let probabilityOfBestArr = [];
-        let probabilityOfBestName = [];
-        let i = 0;
-        for (i in experiment.analyses) {
-          const analysisInstance = experiment.analyses[i];
-          const nameInstance = experiment.analyses[i].variant;
-          probabilityOfBestArr.push(analysisInstance.probabilityOfBeingBest);
-          probabilityOfBestName.push(nameInstance.name);
-        }
-
-        let maxValue = Math.max(...probabilityOfBestArr);
-        const maxIndex = probabilityOfBestArr.indexOf(maxValue);
-        const maxTrunc = Math.trunc(maxValue * 10000) / 10000; //manual truncation to avoid judicious rounding
-        const bestName = probabilityOfBestName[maxIndex];
-        const maxValueFormatted = (100 * maxTrunc).toFixed(2); //shifts decimals over to string version (e.g. .6789 to 67.89)
-
-        //get the most recent analysis
-        const latestAnalysis =
-          experiment.analyses[experiment.analyses.length - 1]; //assumes there are not multiple analyses
-        //get the conversions and users from analysis
-        const { otherThing, probabilityOfBeingBest } = latestAnalysis;
-
-        //(parseFloat(probabilityOfBeingBest) * 100).toFixed(2)
-        //check for valid data
-        //checks for negative or illogical values (should be between 1 and 0)
-        if (maxValue < 0 || maxValue > 1) {
-          return "N/A";
-        }
-        if (
-          probabilityOfBeingBest !== null &&
-          probabilityOfBeingBest !== undefined
-        ) {
-          return `${bestName} (${maxValueFormatted}%)`;
-        }
-      }
-      return "inconclusive";
-    };
+    if (!experiments || experiments.length === 0) return rows;
 
     for (let i = 0; i < experiments.length; i++) {
       //single tuple of the experiment data
       const curExp = experiments[i];
-
-      const resumeLabel = curExp.startDate ? "Resume" : "Start";
+      const intents = allowedStatusIntents(curExp.status);
 
       // call formatRuntime utility
       const runtime = formatRuntime(
         curExp.startDate,
         curExp.endDate,
         curExp.status,
+        curExp.history ?? [],
       );
 
       const improvement = curExp.improvement; // placeholder for improvement calculation
@@ -420,6 +528,9 @@ export default function Experimentsindex() {
           {/* displays N/A when data is null */}
           <s-table-cell>{renderStatus(curExp.status)}</s-table-cell>
           <s-table-cell> {runtime} </s-table-cell>
+          <s-table-cell>
+            {(curExp.userCount ?? 0).toLocaleString()} / {(curExp.effectiveMax ?? 10000).toLocaleString()}
+          </s-table-cell>
           <s-table-cell>N/A</s-table-cell>
           {/* Improvement Cell */}
           <s-table-cell>{formatImprovement(improvement)}</s-table-cell>
@@ -451,7 +562,7 @@ export default function Experimentsindex() {
                   Rename
                 </s-button>
 
-                {curExp.status === ExperimentStatus.draft && (
+                {intents.has("start") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -471,7 +582,7 @@ export default function Experimentsindex() {
                   </s-button>
                 )}
 
-                {curExp.status === ExperimentStatus.active && (
+                {intents.has("pause") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -491,7 +602,7 @@ export default function Experimentsindex() {
                   </s-button>
                 )}
 
-                {(curExp.status === ExperimentStatus.active || curExp.status === ExperimentStatus.paused) && (
+                {intents.has("end") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -511,7 +622,7 @@ export default function Experimentsindex() {
                   </s-button>
                 )}
 
-                {curExp.status === ExperimentStatus.paused && (
+                {intents.has("resume") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -531,7 +642,7 @@ export default function Experimentsindex() {
                   </s-button>
                 )}
 
-                {curExp.status === ExperimentStatus.completed && (
+                {intents.has("archive") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -551,7 +662,7 @@ export default function Experimentsindex() {
                   </s-button>
                 )}
 
-                {curExp.status === ExperimentStatus.draft && (
+                {intents.has("delete") && (
                   <s-button 
                     variant="tertiary" 
                     commandFor={`popover-${curExp.id}`}
@@ -580,14 +691,25 @@ export default function Experimentsindex() {
     return rows;
   } // end renderTableData function
 
-  if (experiments.length > 0) {
+  if ((experiments || []).length > 0) {
     return (
-      <s-page heading="Experiment Management">
+      <s-page heading="Experiment Management" style={{ maxWidth: "none" }}>
         <s-button
           slot="primary-action"
           variant="primary"
           href="/app/experiments/new"
         >Create Experiment</s-button>
+        <div style={{ margin: "24px 0" }}>
+          <s-button commandFor="activity-filter">Filter By</s-button>
+            <s-menu id="activity-filter" accessibilityLabel="Filter by activity">
+              <s-button onClick={() => {setActiveFilter("all"); setCurrentPage(1);}}>All</s-button>
+              <s-button onClick={() => {setActiveFilter(ExperimentStatus.draft); setCurrentPage(1);}}>Draft</s-button>
+              <s-button icon="gauge" onClick={() => {setActiveFilter(ExperimentStatus.active); setCurrentPage(1);}}>Active</s-button>
+              <s-button icon="check" onClick={() => {setActiveFilter(ExperimentStatus.completed); setCurrentPage(1);}}>Completed</s-button>
+              <s-button icon="pause-circle" onClick={() => {setActiveFilter(ExperimentStatus.paused); setCurrentPage(1);}}>Paused</s-button>
+              <s-button icon="order" onClick={() => {setActiveFilter(ExperimentStatus.archived); setCurrentPage(1);}}>Archived</s-button>
+            </s-menu>
+        </div>
         {/*modal for tutorial popup */}
           <s-modal
             id="tutorial-modal-settings"
@@ -598,7 +720,7 @@ export default function Experimentsindex() {
           >
             <s-stack gap="base">
               <s-paragraph>
-                Here is some tutorial information.
+                Welcome to the Experiments List page. This page displays all experiments you have created and allows you to manage them. You can view experiment statuses, search and filter results, edit draft experiments, and start, pause, or archive active ones. Selecting an experiment will open more detailed information, including experiment settings and performance results.
               </s-paragraph>
             
                 <s-button
@@ -618,7 +740,6 @@ export default function Experimentsindex() {
           </s-modal>
         <s-section>
           {" "}
-          {/*might be broken */}
           <s-heading>Experiment List</s-heading>
           {/* Table Section of experiment list page */}
           <s-box  background="base"
@@ -627,23 +748,72 @@ export default function Experimentsindex() {
                   //overflow="hidden"
                   > 
                   {/*box used to provide a curved edge table */}
+
             <s-table>
               <s-table-header-row>
-                <s-table-header listslot="primary">Name</s-table-header>
-                <s-table-header listSlot="secondary">Status</s-table-header>
-                <s-table-header listSlot="labeled">Runtime</s-table-header>
-                <s-table-header listSlot="labeled" format="numeric">Goal Completion Rate</s-table-header>
-                <s-table-header listSlot="labeled" format="numeric">Improvement (%)</s-table-header>
-                <s-table-header listSlot="labeled" format="numeric">Probability to be the best</s-table-header>
+                <s-table-header listslot="primary">
+                  <s-button variant="tertiary" onClick={() => handleSort("name")}>
+                    Name {getSortIndicator("name")}
+                  </s-button>
+                </s-table-header>
+
+                <s-table-header listSlot="secondary">
+                  <s-button variant="tertiary" onClick={() => handleSort("status")}>
+                    Status {getSortIndicator("status")}
+                  </s-button>
+                </s-table-header>
+
+                <s-table-header listSlot="labeled">
+                  <s-button variant="tertiary" onClick={() => handleSort("runtime")}>
+                    Runtime {getSortIndicator("runtime")}
+                  </s-button>
+                </s-table-header>
+
+                <s-table-header listSlot="labeled" format="numeric">
+                  <s-button variant="tertiary" onClick={() => handleSort("users")}>
+                    Users {getSortIndicator("users")}
+                  </s-button>
+                </s-table-header>
+
+                <s-table-header listSlot="labeled" format="numeric">
+                  <s-button
+                    variant="tertiary"
+                    onClick={() => handleSort("goalCompletionRate")}
+                  >
+                    Goal Completion Rate {getSortIndicator("goalCompletionRate")}
+                  </s-button>
+                </s-table-header>
+
+                <s-table-header listSlot="labeled" format="numeric">
+                  <s-button variant="tertiary" onClick={() => handleSort("improvement")}>
+                    Improvement (%) {getSortIndicator("improvement")}
+                  </s-button>
+                </s-table-header>
+
+                <s-table-header listSlot="labeled" format="numeric">
+                  <s-button variant="tertiary" onClick={() => handleSort("probability")}>
+                    Probability of best {getSortIndicator("probability")}
+                  </s-button>
+                </s-table-header>
+
                 <s-table-header></s-table-header> {/* New empty header for the action column */}
                 {/*Place Quick Access Button here */}
               </s-table-header-row>
               <s-table-body>
-                {renderTableData(experiments)}{" "}
+                {renderTableData(displayedExperiments)}
                 {/* function call that returns the jsx data for table rows */}
               </s-table-body>
             </s-table>
           </s-box>{" "}
+          {/*pagination controls*/}
+          <Pagination
+            currentPage={currentPage}
+            setCurrentPage={setCurrentPage}
+            totalPages={totalPages}
+            startIndex={startIndex}
+            totalItems={sortedExperiments.length}
+            itemsPerPage={16}
+          />
           {/*end of table section*/}
         </s-section>
       </s-page>

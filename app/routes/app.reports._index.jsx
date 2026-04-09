@@ -1,11 +1,15 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useLoaderData, useFetcher } from "react-router";
 import { formatRuntime } from "../utils/formatRuntime.js";
 import { useDateRange } from "../contexts/DateRangeContext";
 import DateRangePicker from "../components/DateRangePicker";
 import SessionsCard from "../components/SessionsCard.jsx";
+import ConversionCard from "../components/ConversionsCard.jsx";
 import shopify from "../shopify.server";
-import { ExperimentStatus } from "@prisma/client";
+import { ExperimentStatus } from "../utils/experimentConstants.js";
+import { usePagination } from "../hooks/usePagination";
+import Pagination from "../hooks/Pagination";
+import { sortRows, getNextSort } from "../utils/sortExperimentsList";
 
 //server side code
 export async function loader({ request }) {
@@ -15,72 +19,158 @@ export async function loader({ request }) {
 
   //get the list of experiments & return them if there are any
   // Promise.all to fetch both experiments and session data in parallel for efficiency
-  const [{ getExperimentsList1 }, { getSessionReportData }] = await Promise.all(
-    [
-      import("../services/experiment.server"),
-      import("../services/analytics.server"),
-    ],
-  );
+  const [
+    { experimentListReport },
+    { getSessionReportData },
+    { getConversionsReportData },
+  ] = await Promise.all([
+    import("../services/experiment.server"),
+    import("../services/analytics.server"),
+    import("../services/conversions.server"),
+  ]);
 
-  const [experiments, sessionData] = await Promise.all([
-    getExperimentsList1(),
-    getSessionReportData(admin), // Pass the authenticated admin here
+  const [experiments, sessionData, conversionsData] = await Promise.all([
+    experimentListReport(),
+    getSessionReportData(admin),
+    getConversionsReportData(admin),
   ]);
 
   //looks up tutorial data
-  const { getTutorialData } = await import ("../services/tutorialData.server");
+  const { getTutorialData } = await import("../services/tutorialData.server");
   const tutorialInfo = await getTutorialData();
 
   // loader now returns a structured object containing both experiments and session data
   // if either is missing, it defaults to an empty array or object to prevent client-side errors
   return {
     experiments: experiments || [],
-    sessionData: sessionData || { sessions: [], total: 0 }, 
-    tutorialData: tutorialInfo
+    sessionData: sessionData || { sessions: [], total: 0 },
+    conversionsData: conversionsData || { sessions: [], total: 0 },
+    tutorialData: tutorialInfo,
   };
 }
 
-
 //client side code (probably -Paul)
 
-export async function action ({request})
-{
+export async function action({ request }) {
   const formData = await request.formData();
   const intent = formData.get("intent");
-  if(intent === "tutorial_viewed")
-  {
+  if (intent === "tutorial_viewed") {
     try {
-        const { setViewedReportsPage } = await import("../services/tutorialData.server");
-        await setViewedReportsPage(1, true); //always sets the item in tutorialdata to true, selects 1st tuple
-        return {ok: true, action: "tutorial_viewed"}; 
-      } catch (error) {
-        console.error("Tutorial Error:", error);
-        return {ok: false, error: "Failed to update viewedListExperiment"}, { status: 500};
-      }
+      const { setViewedReportsPage } = await import(
+        "../services/tutorialData.server"
+      );
+      await setViewedReportsPage(1, true); //always sets the item in tutorialdata to true, selects 1st tuple
+      return { ok: true, action: "tutorial_viewed" };
+    } catch (error) {
+      console.error("Tutorial Error:", error);
+      return (
+        { ok: false, error: "Failed to update viewedListExperiment" },
+        { status: 500 }
+      );
+    }
   }
-  
-  return { ok: false, error: "unknown intent"};
 
+  return { ok: false, error: "unknown intent" };
 }
 export default function Reports() {
   //get list of experiments
-  const { experiments, sessionData, tutorialData } = useLoaderData();
+  const { experiments, sessionData, conversionsData, tutorialData } =
+    useLoaderData();
   const tutorialFetcher = useFetcher(); //performs task for the tutorial popup
-  
-  const modalRef = useRef(null);
-  
 
+  const modalRef = useRef(null);
 
   //get date range from context
   const { dateRange } = useDateRange();
 
-  //state for filtered experiments
-  const [filteredExperiments, setFilteredExperiments] = useState(
-    experiments || [],
-  );
+  //state for all experiments
+  const allActiveExperiments = useMemo(() => {
+    return (experiments || []).filter(
+      (exp) =>
+        exp.status !== ExperimentStatus.archived &&
+        exp.status !== ExperimentStatus.draft,
+    );
+  }, [experiments]);
+
   const [filteredSessionData, setFilteredSessionData] = useState(
     sessionData || { sessions: [], total: 0 },
   );
+  const [filteredConversionsData, setFilteredConversionsData] = useState(
+    conversionsData || { sessions: [], total: 0 },
+  );
+
+  const [sortKey, setSortKey] = useState("createdAt");
+  const [sortDirection, setSortDirection] = useState("desc");
+
+  function handleSort(clickedKey) {
+    const nextSort = getNextSort(clickedKey, sortKey, sortDirection);
+    setSortKey(nextSort.sortKey);
+    setSortDirection(nextSort.sortDirection);
+    setCurrentPage(1);
+  }
+
+  function getSortIndicator(columnKey) {
+    if (sortKey !== columnKey) return "";
+    return sortDirection === "asc" ? "↑" : "↓";
+  }
+
+  const getConversionSortValue = (experiment) => {
+    if (experiment.analyses && experiment.analyses.length > 0) {
+      const latestAnalysis =
+        experiment.analyses[experiment.analyses.length - 1];
+
+      const { totalConversions, totalUsers } = latestAnalysis;
+
+      if (
+        totalConversions !== null &&
+        totalConversions !== undefined &&
+        totalUsers !== null &&
+        totalUsers !== undefined
+      ) {
+        return totalConversions;
+      }
+    }
+
+    return null;
+  };
+
+  const sortedExperiments = useMemo(() => {
+    return sortRows(
+      allActiveExperiments,
+      (exp) => {
+        switch (sortKey) {
+          case "name":
+            return exp.name ?? "";
+
+          case "status":
+            return exp.status ?? "";
+
+          case "runtime":
+            return exp.startDate ?? null;
+
+          case "endCondition":
+            return exp.endCondition ?? "";
+
+          case "conversions":
+            return getConversionSortValue(exp);
+          case "createdAt":
+            return exp.createdAt ? new Date(exp.createdAt).getTime() : null;
+          default:
+            return exp.createdAt ? new Date(exp.createdAt).getTime() : null;
+        }
+      },
+      sortDirection,
+    );
+  }, [allActiveExperiments, sortKey, sortDirection]);
+
+  //pagination elements
+  const {
+    currentPage,
+    setCurrentPage,
+    totalPages,
+    startIndex,
+    paginatedItems: paginatedExperiments,
+  } = usePagination(sortedExperiments, 6);
 
   //calculate runtime using formatRuntime utility
   const getRuntime = (experiment) => {
@@ -88,6 +178,7 @@ export default function Reports() {
       experiment.startDate,
       experiment.endDate,
       experiment.status,
+      experiment.history ?? [],
     );
   };
 
@@ -123,14 +214,10 @@ export default function Reports() {
     return status;
   };
 
-  //render experiment name with link if not active
+  // Render all shown report names as links to the experiment analytics page.
   const renderExperimentName = (experiment) => {
     const name = experiment.name ?? "N/A";
-
-    if (!experiment.status || experiment.status === ExperimentStatus.active) {
-      return name;
-    }
-    return <a href="/404">{name}</a>;
+    return <s-link href={"/app/reports/" + experiment.id}>{name}</s-link>;
   };
 
   //get conversions for experiment
@@ -160,6 +247,8 @@ export default function Reports() {
   function renderTableData(experiments) {
     const rows = [];
 
+    if (!experiments || experiments.length === 0) return rows;
+
     for (let i = 0; i < experiments.length; i++) {
       const curExp = experiments[i];
 
@@ -176,134 +265,108 @@ export default function Reports() {
     return rows;
   }
 
-  //filter experiments based on date range
-  //updated to exclude archived experiments
-  const filterByDateRange = (start, end) => {
-    if (!experiments) return [];
+  const applyDateRange = (range) => {
+    if (!range?.start || !range?.end) {
+      setFilteredSessionData(sessionData || { sessions: [], total: 0 });
+      setFilteredConversionsData(conversionsData || { sessions: [], total: 0 });
+      return;
+    }
 
-    const startDate = new Date(start);
-    const endDate = new Date(end);
+    const start = new Date(range.start + "T00:00:00");
+    const end = new Date(range.end + "T23:59:59");
 
-    return experiments.filter((exp) => {
-      if (!exp.startDate) return false;
-      if (exp.status === ExperimentStatus.archived) return false;
-      const expStartDate = new Date(exp.startDate);
-      return expStartDate >= startDate && expStartDate <= endDate;
+    const updatedSessions = (sessionData?.sessions || []).filter((s) => {
+      const d = new Date(s.date);
+      return d >= start && d <= end;
+    });
+
+    const updatedConversions = (conversionsData?.sessions || []).filter((s) => {
+      const d = new Date(s.date);
+      return d >= start && d <= end;
+    });
+
+    setFilteredSessionData({
+      sessions: updatedSessions,
+      total: updatedSessions.reduce((acc, curr) => acc + curr.count, 0),
+    });
+
+    setFilteredConversionsData({
+      sessions: updatedConversions,
+      total: updatedConversions.reduce((acc, curr) => acc + curr.count, 0),
     });
   };
 
   //handle date range change from DateRangePicker component
   const handleDateRangeChange = (newDateRange) => {
-    setFilteredExperiments(
-      filterByDateRange(newDateRange.start, newDateRange.end),
-    );
-
-    const start = new Date(newDateRange.start + "T00:00:00");
-    const end = new Date(newDateRange.end + "T23:59:59");
-
-    const updatedSessions = sessionData.sessions.filter((s) => {
-      const d = new Date(s.date);
-      return d >= start && d <= end;
-    });
-    setFilteredSessionData({
-      sessions: updatedSessions,
-      total: updatedSessions.reduce((acc, curr) => acc + curr.count, 0),
-    });
+    applyDateRange(newDateRange);
   };
 
   //filter experiments when dateRange from context changes or experiments load
   useEffect(() => {
-
-    //tutorial display conditional 
-    if ((tutorialData.viewedReportsPage == false) && modalRef.current && typeof modalRef.current.showOverlay === 'function') {
+    //tutorial display conditional
+    if (
+      tutorialData.viewedReportsPage == false &&
+      modalRef.current &&
+      typeof modalRef.current.showOverlay === "function"
+    ) {
       modalRef.current.showOverlay();
     }
 
-    if (dateRange && experiments && sessionData) {
-      setFilteredExperiments(filterByDateRange(dateRange.start, dateRange.end));
-
-      const start = new Date(dateRange.start + "T00:00:00");
-      const end = new Date(dateRange.end + "T23:59:59");
-
-      const updatedSession = sessionData.sessions.filter((s) => {
-        const d = new Date(s.date);
-        return d >= start && d <= end;
-      });
-      setFilteredSessionData({
-        sessions: updatedSession,
-        total: updatedSession.reduce((acc, curr) => acc + curr.count, 0),
-      });
+    if (experiments && sessionData && conversionsData) {
+      applyDateRange(dateRange);
     }
-  }, [tutorialData, dateRange, experiments, sessionData]);
+  }, [tutorialData, dateRange, experiments, sessionData, conversionsData]);
 
   return (
     <s-page heading="Reports">
       {/* date range picker component */}
       <DateRangePicker onDateRangeChange={handleDateRangeChange} />
-      
+
       {/*modal popup for tutorial */}
       <s-modal
-            id="tutorial-modal-report"
-            ref={modalRef}
-            heading="Quick tour"
-            padding="base"
-            size="base"
+        id="tutorial-modal-report"
+        ref={modalRef}
+        heading="Quick tour"
+        padding="base"
+        size="base"
+      >
+        <s-stack gap="base">
+          <s-paragraph>
+            Welcome to the Reports Overview page. This page provides a summary
+            of experiment results and overall performance metrics. You can
+            review aggregated data, compare experiments, filter reports by date
+            or status, and access detailed breakdowns for deeper analysis. Use
+            this page to evaluate outcomes, identify trends, and support
+            data-driven decision-making.
+          </s-paragraph>
+
+          <s-button
+            variant="primary"
+            inLineSize="fill"
+            commandFor="tutorial-modal-report"
+            command="--hide"
+            onClick={() => {
+              tutorialFetcher.submit(
+                { intent: "tutorial_viewed" },
+                { method: "post" },
+              );
+            }}
           >
-          <s-stack gap="base">
-            <s-paragraph>
-              Here is some tutorial information.
-            </s-paragraph>
-          
-              <s-button
-              variant="primary"
-              inLineSize = "fill"
-              commandFor="tutorial-modal-report"
-              command="--hide"
-              onClick = {() => {
-                tutorialFetcher.submit(
-                  { intent: "tutorial_viewed"},
-                  {method: "post"}
-                )
-              }}
-              > Understood. Do not show this again.
-              </s-button>
-          </s-stack>
-        </s-modal>
+            {" "}
+            Understood. Do not show this again.
+          </s-button>
+        </s-stack>
+      </s-modal>
 
       {/* Analytics Dashboard Grid Section */}
       <div style={{ margin: "24px 0" }}>
         <s-layout>
           <s-layout-section variant="oneHalf">
-            {/* Placeholder for Conversion Rate Card to match mockup */}
-            <s-card>
-              <div style={{ padding: "16px" }}>
-                <s-text variant="headingMd" as="h2">
-                  Conversion rate
-                </s-text>
-                <div
-                  style={{
-                    fontSize: "28px",
-                    fontWeight: "bold",
-                    margin: "8px 0",
-                  }}
-                >
-                  0.95%
-                </div>
-                {/* Visual placeholder for the conversion chart */}
-                <div
-                  style={{
-                    height: "150px",
-                    background: "#f6f6f7",
-                    borderRadius: "8px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <s-text tone="subdued">Chart Placeholder</s-text>
-                </div>
-              </div>
-            </s-card>
+            <ConversionCard
+              conversionsData={filteredConversionsData}
+              sessionData={filteredSessionData}
+              hasExperiments={allActiveExperiments.length > 0}
+            />
           </s-layout-section>
 
           <s-layout-section variant="oneHalf">
@@ -327,21 +390,48 @@ export default function Reports() {
           <s-table>
             <s-table-header-row>
               <s-table-header listSlot="primary">
-                Experiment Name (Click To View Report)
+                <s-button variant="tertiary" onClick={() => handleSort("name")}>
+                  Experiment Name {getSortIndicator("name")}
+                </s-button>
               </s-table-header>
-              <s-table-header listSlot="secondary">Status</s-table-header>
-              <s-table-header listSlot="labeled">Run Length</s-table-header>
-              <s-table-header listSlot="labeled" format="numeric">
-                End Condition
+
+              <s-table-header listSlot="secondary">
+                <s-button variant="tertiary" onClick={() => handleSort("status")}>
+                  Status {getSortIndicator("status")}
+                </s-button>
               </s-table-header>
+
+              <s-table-header listSlot="labeled">
+                <s-button variant="tertiary" onClick={() => handleSort("runtime")}>
+                  Run Length {getSortIndicator("runtime")}
+                </s-button>
+              </s-table-header>
+
               <s-table-header listSlot="labeled" format="numeric">
-                Conversions
+                <s-button variant="tertiary" onClick={() => handleSort("endCondition")}>
+                  End Condition {getSortIndicator("endCondition")}
+                </s-button>
+              </s-table-header>
+
+              <s-table-header listSlot="labeled" format="numeric">
+                <s-button variant="tertiary" onClick={() => handleSort("conversions")}>
+                  Conversions {getSortIndicator("conversions")}
+                </s-button>
               </s-table-header>
             </s-table-header-row>
             {/* This uses the destructured filteredExperiments array */}
-            <s-table-body>{renderTableData(filteredExperiments)}</s-table-body>
+            <s-table-body>{renderTableData(paginatedExperiments)}</s-table-body>
           </s-table>
         </s-box>
+        {/*pagination controls*/}
+        <Pagination
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+          totalPages={totalPages}
+          startIndex={startIndex}
+          totalItems={sortedExperiments.length}
+          itemsPerPage={6}
+        />
       </s-section>
     </s-page>
   );

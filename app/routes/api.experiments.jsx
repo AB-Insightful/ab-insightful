@@ -25,7 +25,7 @@ export const loader = async ({ request }) => {
       request.headers.get("Access-Control-Request-Headers") ?? "";
     const experiments = await GetFrontendExperimentsData();
 
-    if (!experiments) {
+    if (!experiments || experiments.length === 0) {
       return new Response(
         JSON.stringify({
           error: "No active experiments were found",

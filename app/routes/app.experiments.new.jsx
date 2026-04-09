@@ -17,45 +17,64 @@ import { authenticate } from "../shopify.server";
 import { useFetcher, redirect, useLoaderData } from "react-router";
 import { useState, useEffect, useRef } from "react";
 import db from "../db.server";
-import { ExperimentStatus } from "@prisma/client";
+import { ExperimentStatus } from "../utils/experimentConstants.js";
+import { TimeSelect } from "../utils/timeSelect";
+import { validateStartIsInFuture } from "../utils/validateStartIsInFuture";
+import { validateEndIsAfterStart } from "../utils/validateEndIsAfterStart";
+import { validateMaxUsers } from "../utils/validateMaxUsers";
+import { localDateTimeToISOString } from "../utils/localDateTimeToISOString";
 
 // Server side code
 export const action = async ({ request }) => {
   const formData = await request.formData();
   const intent = formData.get("intent"); //for tutorialData
 
-  //tutorial db update 
-  if(intent === "tutorial_viewed")
-  {
+  //tutorial db update
+  if (intent === "tutorial_viewed") {
     try {
-        const { setCreateExpPage } = await import("../services/tutorialData.server");
-        await setCreateExpPage(1, true); //always sets the item in tutorialdata to true, selects 1st tuple
-        return {ok: true, action: "tutorial_viewed"}; 
-      } catch (error) {
-        console.error("Tutorial Error:", error);
-        return {ok: false, error: "Failed to update viewedListExperiment"}, { status: 500};
-      }
-  }
-  else
-  {
+      const { setCreateExpPage } = await import(
+        "../services/tutorialData.server"
+      );
+      await setCreateExpPage(1, true); //always sets the item in tutorialdata to true, selects 1st tuple
+      return { ok: true, action: "tutorial_viewed" };
+    } catch (error) {
+      console.error("Tutorial Error:", error);
+      return (
+        { ok: false, error: "Failed to update viewedListExperiment" },
+        { status: 500 }
+      );
+    }
+  } else {
     // Authenticate request
     const { session } = await authenticate.admin(request);
 
     // Get POST request form data & create experiment
     const name = (formData.get("name") || "").trim();
     const description = (formData.get("description") || "").trim();
-    const sectionId = (formData.get("sectionId") || "").trim();
     const controlSectionId = (formData.get("controlSectionId") || "").trim();
-    const variantSectionId = (formData.get("variantSectionId") || "").trim();
-    const variantEnabled = formData.get("variant") === "true";
     const goalValue = (formData.get("goal") || "").trim();
-    const endCondition = (formData.get("endCondition") || "").trim();
-    const trafficSplitStr = (formData.get("trafficSplit") || "50").trim(); // Default to "0"
+    const endCondition = (formData.get("endCondition") || "manual").trim();
+
+    let variantInputs;
+    try {
+      variantInputs = JSON.parse(formData.get("variantsJSON") || "[]");
+    } catch {
+      variantInputs = [];
+    }
+    const sectionId = (variantInputs[0]?.sectionId || "").trim();
+    const totalTrafficPct = variantInputs.reduce(
+      (sum, v) => sum + (v.trafficAllocation || 0),
+      0,
+    );
+    const trafficSplitStr = String(totalTrafficPct);
     const probabilityToBeBestStr = (
       formData.get("probabilityToBeBest") || ""
     ).trim();
     const durationStr = (formData.get("duration") || "").trim();
     const timeUnitValue = (formData.get("timeUnit") || "").trim();
+
+    const useAccountDefaultMaxUsers = formData.get("useAccountDefaultMaxUsers") === "true";
+    const maxUsersStr = (formData.get("maxUsers") || "").trim();
 
     // Date/Time Fields (accepts both client-side UTC strings or separate date/time fields)
     const startDateUTC = (formData.get("startDateUTC") || "").trim();
@@ -70,9 +89,12 @@ export const action = async ({ request }) => {
 
     if (!name) errors.name = "Name is required";
     if (!description) errors.description = "Description is required";
-    if (!sectionId) errors.sectionId = "Section Id is required";
-    if (variantEnabled && !variantSectionId)
-      errors.variantSectionId = "Variant Section Id is required"; //only validate if variant is true
+    variantInputs.forEach((v, i) => {
+      if (!(v.sectionId || "").trim()) {
+        errors[`variant_${i}_sectionId`] =
+          `Variant ${String.fromCharCode(65 + i)} Section ID is required`;
+      }
+    });
     if (!startDateStr && !startDateUTC)
       errors.startDate = "Start Date is required";
     if (endCondition === "stableSuccessProbability" && !probabilityToBeBestStr)
@@ -164,6 +186,9 @@ export const action = async ({ request }) => {
       }
     }
 
+    const maxUsersError = validateMaxUsers(useAccountDefaultMaxUsers, maxUsersStr);
+    if (maxUsersError) errors.maxUsers = maxUsersError;
+
     if (Object.keys(errors).length) return { errors };
 
     // Find or create a parent Project for this shop
@@ -190,7 +215,9 @@ export const action = async ({ request }) => {
     });
 
     if (!goalRecord) {
-      return { errors: { goal: "Could not find matching goal in the database" } };
+      return {
+        errors: { goal: "Could not find matching goal in the database" },
+      };
     }
 
     // Convert form data strings to schema-ready types
@@ -209,33 +236,33 @@ export const action = async ({ request }) => {
     const duration = durationStr ? Number(durationStr) : null;
     const timeUnit = timeUnitValue || null;
 
-  // Assembles the final data object for Prisma
-  const experimentData = {
-    name: name,
-    description: description,
-    status: ExperimentStatus.draft,
-    trafficSplit: trafficSplit,
-    endCondition: endCondition,
-    startDate: startDate,
-    endDate: endDate,
-    sectionId: sectionId,
-    controlSectionId: controlSectionId,
-    project: {
-      // Connect to the parent project
-      connect: {
-        id: projectId,
-      },
-    },
-    experimentGoals: {
-      // Create the related goal
-      create: [
-        {
-          goalId: goalId,
-          goalRole: "primary",
+    // Assembles the final data object for Prisma
+    const experimentData = {
+      name: name,
+      description: description,
+      status: ExperimentStatus.draft,
+      trafficSplit: trafficSplit,
+      endCondition: endCondition,
+      startDate: startDate,
+      endDate: endDate,
+      sectionId: sectionId,
+      controlSectionId: controlSectionId,
+      project: {
+        // Connect to the parent project
+        connect: {
+          id: projectId,
         },
-      ],
-    },
-  };
+      },
+      experimentGoals: {
+        // Create the related goal
+        create: [
+          {
+            goalId: goalId,
+            goalRole: "primary",
+          },
+        ],
+      },
+    };
 
     if (isStableSuccessProbability) {
       Object.assign(experimentData, {
@@ -245,15 +272,22 @@ export const action = async ({ request }) => {
       });
     }
 
-  const { createExperiment } = await import("../services/experiment.server");
-  const experiment = await createExperiment(experimentData, {
-    variantEnabled,
-    controlSectionId,
-    primaryVariantSectionId: sectionId,
-    secondaryVariantSectionId: variantSectionId,
-  });
+    if (!useAccountDefaultMaxUsers && maxUsersStr) {
+      experimentData.maxUsers = Number(maxUsersStr);
+    }
 
-    return redirect(`/app/experiments/${experiment.id}`);
+    const treatmentVariants = variantInputs.map((v) => ({
+      sectionId: (v.sectionId || "").trim(),
+      trafficAllocation: (v.trafficAllocation || 0) / 100.0,
+    }));
+
+    const { createExperiment } = await import("../services/experiment.server");
+    const experiment = await createExperiment(experimentData, {
+      controlSectionId,
+      variants: treatmentVariants,
+    });
+
+    return redirect(`/app/experiments/${experiment.id}?isNewlyCreated=true`);
     }
   }; //end async action
 
@@ -264,294 +298,55 @@ export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
   const project = await db.project.findUnique({
     where: { shop: session.shop },
-    select: { defaultGoal: true },
+    select: { defaultGoal: true, maxUsersPerExperiment: true },
   });
 
-    //looks up tutorial data
-  const { getTutorialData } = await import ("../services/tutorialData.server");
+  //looks up tutorial data
+  const { getTutorialData } = await import("../services/tutorialData.server");
   const tutorialInfo = await getTutorialData();
 
-  return { defaultGoal: project?.defaultGoal ?? "completedCheckout",
-           tutorialData: tutorialInfo
-   };
+  return {
+    defaultGoal: project?.defaultGoal ?? "completedCheckout",
+    maxUsersPerExperiment: project?.maxUsersPerExperiment ?? 10000,
+    tutorialData: tutorialInfo,
+    shopDomain: session.shop, // provides shop domain for sectionId Picker Mode
+  };
 };
 
 //--------------------------- client side ----------------------------------------
 
-function TimeSelect({
-  id = "selectTime",
-  label = "Select time",
-  value,
-  onChange,
-  error,
-  invalidMessage = 'Enter a time like "1:30 PM" or "13:30"',
-}) {
-  // controlled display value (human readable like "1:30 PM")
-  const times = [];
-  const popoverId = `${id}-popover`;
-  // build times list once
-  for (let h = 0; h < 24; h++) {
-    for (let m = 0; m < 60; m += 30) {
-      const hour24 = h.toString().padStart(2, "0");
-      const minute = m.toString().padStart(2, "0");
-      const value24 = `${hour24}:${minute}`;
-      const suffix = h >= 12 ? "PM" : "AM";
-      const hour12 = ((h + 11) % 12) + 1;
-      const label12 = `${hour12}:${minute} ${suffix}`;
-      times.push({ value: value24, label: label12 });
-    }
-  }
-
-  const labelFor = (hhmm) => {
-    if (!hhmm) return "";
-    const hit = times.find((t) => t.value === hhmm);
-    if (hit) return hit.label;
-    const [H, M] = hhmm.split(":").map((n) => parseInt(n, 10));
-    const am = H < 12;
-    const h12 = ((H + 11) % 12) + 1;
-    return `${h12}:${String(M).padStart(2, "0")} ${am ? "AM" : "PM"}`;
-  };
-
-  // local display state so we can show the friendly label while remaining controlled
-  const [display, setDisplay] = useState(value ? labelFor(value) : "");
-  useEffect(() => {
-    
-    // sync whenever parent value changes (including when validation sets an error)
-    setDisplay(value ? labelFor(value) : "");
-  }, [value]);
-
-  const openPopover = (el) =>
-    el?.querySelector(`#${popoverId}Trigger`)?.click();
-
-  const commitFromField = (raw) => {
-    const parsed = parseUserTime(raw);
-    if (!parsed) {
-      // notify parent by passing null / empty so parent can set error string
-      onChange("");
-      return;
-    }
-    onChange(parsed);
-    setDisplay(labelFor(parsed));
-  };
-
-  return (
-    <div>
-      {/* This section is what will visually display when the function is called */}
-      <s-text-field
-        label={label}
-        id={`${id}-input`}
-        icon="clock"
-        value={display}
-        placeholder="Choose a time"
-        error={error}
-        onFocus={(e) => openPopover(e.currentTarget.parentElement)}
-        onClick={(e) => openPopover(e.currentTarget.parentElement)}
-        onInput={(e) => setDisplay(e.currentTarget.value)}
-        onBlur={(e) => commitFromField(e.currentTarget.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commitFromField(e.currentTarget.value);
-          }
-        }}
-      >
-        <s-button
-          slot="accessory"
-          variant="tertiary"
-          disclosure="down"
-          commandFor={popoverId}
-          icon="chevron-down"
-          accessibilityLabel="Select time"
-        />
-      </s-text-field>
-
-      {/* This is the popover styling and the button population */}
-      <s-popover id={popoverId} maxBlockSize="200px">
-        <s-stack direction="block">
-          {times.map((t) => (
-            <s-button
-              key={t.value}
-              fullWidth
-              variant="tertiary"
-              commandFor={popoverId}
-              onClick={() => {
-                onChange(t.value);
-                setDisplay(labelFor(t.value));
-              }}
-            >
-              {t.label}
-            </s-button>
-          ))}
-        </s-stack>
-      </s-popover>
-    </div>
-  );
-}
-
-//This function cleans and parses the user input, we only care about numbers and :, everything else is scrubbed
-function parseUserTime(input) {
-  if (!input) return "";
-  let s = String(input)
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "")
-    .replace(/\./g, "");
-  if (s === "noon") return "12:00";
-  if (s === "midnight") return "00:00";
-  let ampm = null;
-  if (s.endsWith("am")) {
-    ampm = "am";
-    s = s.slice(0, -2);
-  } else if (s.endsWith("pm")) {
-    ampm = "pm";
-    s = s.slice(0, -2);
-  }
-  s = s.replace(/[^0-9:]/g, "");
-  let hh = 0,
-    mm = 0;
-  if (s.includes(":")) {
-    const [hStr, mStr = "0"] = s.split(":");
-    if (!/^\d+$/.test(hStr) || !/^\d+$/.test(mStr)) return null;
-    hh = parseInt(hStr, 10);
-    mm = parseInt(mStr.padEnd(2, "0").slice(0, 2), 10);
-  } else {
-    if (!/^\d+$/.test(s)) return null;
-    if (s.length <= 2) {
-      hh = parseInt(s, 10);
-      mm = 0;
-    } else if (s.length === 3) {
-      hh = parseInt(s.slice(0, 1), 10);
-      mm = parseInt(s.slice(1), 10);
-    } else {
-      hh = parseInt(s.slice(0, -2), 10);
-      mm = parseInt(s.slice(-2), 10);
-    }
-  }
-
-  //error handling for if minutes are out of bounds
-  if (isNaN(hh) || isNaN(mm) || mm < 0 || mm > 59) return null;
-
-  //error handling for if user types in am/pm to check that hours are within bounds
-  if (ampm) {
-    if (hh < 1 || hh > 12) return null;
-    if (ampm === "am") {
-      if (hh === 12) hh = 0;
-    } else {
-      if (hh !== 12) hh += 12;
-    }
-  } else {
-    if (hh < 0 || hh > 23) return null;
-  }
-  //This is what we care about most, returns a string in 24hr format with hh:mm
-  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-}
-
-function validateStartIsInFuture(startDateStr, startTimeStr = "00:00") {
-  let dateError = "";
-  let timeError = "";
-
-  if (!startDateStr) {
-    return { dateError, timeError };
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const selectedDate = new Date(`${startDateStr}T00:00:00`);
-
-  if (selectedDate < today) {
-    dateError = "Start date cannot be in the past";
-    return { dateError, timeError: "" };
-  }
-
-  const isToday = selectedDate.getTime() === today.getTime();
-
-  if (isToday) {
-    const startDateTime = new Date(
-      `${startDateStr}T${startTimeStr || "00:00"}`,
-    );
-    const now = new Date(); // The *actual* current time
-
-    if (startDateTime <= now) {
-      timeError = "Start time must be in the future";
-    }
-  }
-  return { dateError, timeError };
-}
-
-function validateEndIsAfterStart(
-  startDateStr,
-  startTimeStr = "00:00",
-  endDateStr,
-  endTimeStr,
-) {
-  // return both a date-level error and a time-level error so UI can show the right one
-  let dateError = "";
-  let timeError = "";
-
-  if (!startDateStr || !endDateStr) {
-    return { dateError, timeError };
-  }
-
-  const effectiveEndTime = endTimeStr || "23:59";
-  const startDateTime = new Date(`${startDateStr}T${startTimeStr || "00:00"}`);
-  const endDateTime = new Date(`${endDateStr}T${effectiveEndTime}`);
-
-  if (endDateTime <= startDateTime) {
-    const startDateOnly = new Date(`${startDateStr}T00:00:00`);
-    const endDateOnly = new Date(`${endDateStr}T00:00:00`);
-    // if end date precedes start date -> show error on date
-    if (endDateOnly.getTime() < startDateOnly.getTime()) {
-      dateError = "End date must be after the start date";
-    } else {
-      // same day but time invalid -> show error on time
-      timeError = "End time must be after the start time";
-    }
-  }
-  return { dateError, timeError };
-}
-
-// convert a local date (YYYY-MM-DD) and local time (HH:MM) into a UTC ISO string
-function localDateTimeToISOString(dateStr, timeStr = "00:00") {
-  if (!dateStr) return "";
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const [hh = 0, mm = 0] = (timeStr || "00:00").split(":").map(Number);
-  // construct a local Date from components (guaranteed local interpretation)
-  const local = new Date(y, m - 1, d, hh || 0, mm || 0, 0, 0);
-  return local.toISOString(); // canonical UTC instant
-}
-
 export default function CreateExperiment() {
   //fetcher stores the data in the fields into a form that can be retrieved
   const fetcher = useFetcher();
-  const { defaultGoal, tutorialData} = useLoaderData();
+  const { defaultGoal, maxUsersPerExperiment, tutorialData, shopDomain } = useLoaderData();
   const tutorialFetcher = useFetcher();
   const modalRef = useRef(null);
 
-
- 
   const [tutorialDismissed, setTutorialDismissed] = useState(false); //this page needs to track tutorial display locally and on db
   //state variables (special variables that remember across re-renders (e.g. user input, counters))
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState(null);
   const [description, setDescription] = useState("");
   const [emptyDescriptionError, setDescriptionError] = useState(null);
-  const [sectionId, setSectionId] = useState("");
+  const MAX_VARIANTS = 4;
+  const VARIANT_LABELS = ["A", "B", "C", "D"];
+
+  const [variants, setVariants] = useState([
+    { sectionId: "", trafficAllocation: 50 },
+  ]);
+  const [variantSectionErrors, setVariantSectionErrors] = useState([null]);
   const [addControlSection, setAddControlSection] = useState(false);
   const [controlSectionId, setControlSectionId] = useState("");
-  const [emptySectionIdError, setSectionIdError] = useState(null);
-  const [emptySectionIdVariantError, setSectionIdVariantError] = useState(null);
   const [emptyStartDateError, setEmptyStartDateError] = useState(null);
   const [emptyEndDateError, setEmptyEndDateError] = useState(null);
   const [endDate, setEndDate] = useState("");
   const [endDateError, setEndDateError] = useState("");
-  const [experimentChance, setExperimentChance] = useState(50);
   const [endCondition, setEndCondition] = useState("manual");
   const [goalSelected, setGoalSelected] = useState(defaultGoal);
   const [customerSegment, setCustomerSegment] = useState("allSegments");
-  const [variant, setVariant] = useState(false);
-  const [variantDisplay, setVariantDisplay] = useState("none");
-  const [variantSectionId, setVariantSectionId] = useState("");
-  const [variantExperimentChance, setVariantExperimentChance] = useState(50);
+  const [useAccountDefaultMaxUsers, setUseAccountDefaultMaxUsers] = useState(true);
+  const [maxUsers, setMaxUsers] = useState("");
+  const [maxUsersError, setMaxUsersError] = useState("");
   const [startDate, setStartDate] = useState("");
   const [startDateError, setStartDateError] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -559,14 +354,68 @@ export default function CreateExperiment() {
   const [startTimeError, setStartTimeError] = useState("");
   const [endTimeError, setEndTimeError] = useState("");
 
-   //tutorial display conditional 
-  useEffect(() =>
-  {
-    if (!tutorialDismissed && (tutorialData.createExperiment == false) && modalRef.current && typeof modalRef.current.showOverlay === 'function') {
+  const pickingTargetRef = useRef({type: null, index:null});
+
+  const handleLaunchPicker = (type, index = null) => {
+    pickingTargetRef.current = { type, index };
+    window.open(`https://${shopDomain}?ab_insightful_picker=true`, "_blank");
+  };
+  
+  // Message bridge listener 
+  useEffect(() => {
+    const handleMessage = (event) => {
+      // Verify the message is the type we expect
+      if (event.data && event.data.type === "AB_INSIGHTFUL_SECTION_PICKED") {
+        const pickedId = event.data.sectionId; // Loads selected sectionId on live site
+        const target = pickingTargetRef.current;
+
+        if (target.type === "variant" && target.index !== null) {
+          // Update the specific variant sectionID picked 
+          setVariants((prev) =>
+            prev.map((v, i) =>
+              i === target.index ? { ...v, sectionId: pickedId } : v
+            )
+          );
+          
+          // Clear any visual errors for this section
+          setVariantSectionErrors((prev) => {
+            const next = [...prev];
+            next[target.index] = null;
+            return next;
+          });
+        } else if (target.type === "control") {
+          setControlSectionId(pickedId);
+        }
+
+        // Reset the tracker
+        pickingTargetRef.current = { type: null, index: null };
+        
+        // Shopify App Bridge success toast
+        if (typeof shopify !== "undefined" && shopify.toast) {
+          shopify.toast.show("Section ID copied!");
+        }
+
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  //tutorial display conditional
+  useEffect(() => {
+    if (
+      !tutorialDismissed &&
+      tutorialData.createExperiment == false &&
+      modalRef.current &&
+      typeof modalRef.current.showOverlay === "function"
+    ) {
       modalRef.current.showOverlay();
     }
   }, [tutorialData]);
-    
+
+
+
   useEffect(() => {
     // keep all date/time errors in sync whenever any date/time value changes
     const errors = validateAllDateTimes(startDate, startTime, endDate, endTime);
@@ -580,7 +429,6 @@ export default function CreateExperiment() {
       setEndTimeError(errors.endTimeError);
 
     //checks for tutorial data
-
   }, [startDate, startTime, endDate, endTime, endCondition]);
 
   // clear end fields / errors when user switches end condition away from "endDate"
@@ -604,22 +452,25 @@ export default function CreateExperiment() {
 
   const errors = fetcher.data?.errors || {}; // looks for error data, if empty instantiate errors as empty object
 
-  //Check if there were any errors on the form
+  const controlAllocation = Math.max(
+    0,
+    100 - variants.reduce((sum, v) => sum + v.trafficAllocation, 0),
+  );
+
   const hasClientErrors =
     !!nameError ||
     !!errors.name ||
     !!emptyDescriptionError ||
     !!errors.description ||
-    !!emptySectionIdError ||
-    !!errors.sectionId ||
-    (variant && !!emptySectionIdVariantError) ||
-    (variant && !!errors.variantSectionId) ||
+    variantSectionErrors.some((e) => !!e) ||
     !!probabilityToBeBestError ||
     !!errors.probabilityToBeBest ||
     !!durationError ||
     !!errors.duration ||
     !!timeUnitError ||
     !!errors.timeUnit ||
+    !!maxUsersError ||
+    !!errors.maxUsers ||
     !!startDateError ||
     !!errors.startDate ||
     !!startTimeError ||
@@ -641,26 +492,24 @@ export default function CreateExperiment() {
       ? localDateTimeToISOString(endDate, effectiveEndTime)
       : "";
 
-    const experimentData = {
-      name: name,
-      description: description,
-      sectionId: sectionId,
-      controlSectionId: controlSectionId,
-      variantSectionId: variantSectionId,
-      variant: String(variant),
-      goal: goalSelected, // holds the "view-page" value
-      endCondition: endCondition, // holds "Manual", "End Data"
-      startDateUTC: startDateUTC, // The date string from s-date-field
-      endDateUTC: endDateUTC, // The date string from s-date-field
-      endDate: endDate, // The date string from s-date-field
-      trafficSplit: experimentChance, // 0-100 value
-      probabilityToBeBest: probabilityToBeBest, //holds validated value 51-100
-      duration: duration, //length of time for experiment run
-      timeUnit: timeUnit,
-    };
+    const formData = new FormData();
+    formData.set("name", name);
+    formData.set("description", description);
+    formData.set("controlSectionId", controlSectionId);
+    formData.set("variantsJSON", JSON.stringify(variants));
+    formData.set("goal", goalSelected);
+    formData.set("endCondition", endCondition);
+    formData.set("startDateUTC", startDateUTC);
+    formData.set("endDateUTC", endDateUTC);
+    formData.set("endDate", endDate);
+    formData.set("probabilityToBeBest", probabilityToBeBest);
+    formData.set("duration", duration);
+    formData.set("timeUnit", timeUnit);
+    formData.set("useAccountDefaultMaxUsers", String(useAccountDefaultMaxUsers));
+    formData.set("maxUsers", useAccountDefaultMaxUsers ? "" : String(maxUsers));
 
     try {
-      await fetcher.submit(experimentData, { method: "POST" });
+      await fetcher.submit(formData, { method: "POST" });
     } catch (error) {
       console.error("Error during fetcher.submit", error);
     }
@@ -683,20 +532,20 @@ export default function CreateExperiment() {
     }
   };
 
-  const handleSectionIdBlur = () => {
-    if (!sectionId.trim()) {
-      setSectionIdError("Section ID is a required field");
-    } else {
-      setSectionIdError(null); //clears error once user fixes
-    }
+  const updateVariant = (index, field, value) => {
+    setVariants((prev) =>
+      prev.map((v, i) => (i === index ? { ...v, [field]: value } : v)),
+    );
   };
 
-  const handleSectionIdVariantBlur = () => {
-    if (variant && !variantSectionId.trim()) {
-      setSectionIdVariantError("Section ID is a required field");
-    } else {
-      setSectionIdVariantError(null); //clears error once user fixes
-    }
+  const handleVariantSectionIdBlur = (index) => {
+    setVariantSectionErrors((prev) => {
+      const next = [...prev];
+      next[index] = !variants[index].sectionId.trim()
+        ? "Section ID is a required field"
+        : null;
+      return next;
+    });
   };
 
   const handleStartDateBlur = () => {
@@ -884,30 +733,39 @@ export default function CreateExperiment() {
     setEndTimeError(errors.endTimeError);
   };
 
-  const handleVariant = () => {
-    setVariant(true);
-    setVariantDisplay("auto");
-    setVariantExperimentChance(50);
+  const handleAddVariant = () => {
+    if (variants.length >= MAX_VARIANTS) return;
+    const newCount = variants.length + 1;
+    const evenSplit = Math.floor(100 / (newCount + 1));
+    setVariants((prev) => [
+      ...prev.map((v) => ({ ...v, trafficAllocation: evenSplit })),
+      { sectionId: "", trafficAllocation: evenSplit },
+    ]);
+    setVariantSectionErrors((prev) => [...prev, null]);
   };
 
-  const handleVariantUndo = () => {
-    setVariant(false);
-    setVariantDisplay("none");
-    setVariantSectionId("");
-    setVariantExperimentChance();
+  const handleRemoveVariant = () => {
+    if (variants.length <= 1) return;
+    const newCount = variants.length - 1;
+    const evenSplit = Math.floor(100 / (newCount + 1));
+    setVariants((prev) =>
+      prev.slice(0, -1).map((v) => ({ ...v, trafficAllocation: evenSplit })),
+    );
+    setVariantSectionErrors((prev) => prev.slice(0, -1));
   };
 
   const handleDiscard = () => {
     setName("");
     setDescription("");
-    setSectionId("");
-    setVariant(false);
-    setVariantDisplay("none");
-    setVariantSectionId("");
-    setExperimentChance(50);
-    setVariantExperimentChance(50);
+    setVariants([{ sectionId: "", trafficAllocation: 50 }]);
+    setVariantSectionErrors([null]);
+    setAddControlSection(false);
+    setControlSectionId("");
     setGoalSelected(defaultGoal);
     setCustomerSegment("allSegments");
+    setUseAccountDefaultMaxUsers(true);
+    setMaxUsers("");
+    setMaxUsersError("");
     setEndCondition("manual");
     setStartDate("");
     setStartTime("12:00");
@@ -919,8 +777,6 @@ export default function CreateExperiment() {
 
     setNameError(null);
     setDescriptionError(null);
-    setSectionIdError(null);
-    setSectionIdVariantError(null);
     setEmptyStartDateError(null);
     setEmptyEndDateError(null);
     setStartDateError("");
@@ -932,7 +788,6 @@ export default function CreateExperiment() {
     setTimeUnitError("");
   };
 
-  
   const descriptionError = errors.description;
 
   // map internal values to a label + icon
@@ -949,16 +804,6 @@ export default function CreateExperiment() {
     mobileVisitors: "Mobile Visitors",
   };
 
-  const variationMap = {
-    false: "Single Variation",
-    true: "Multiple Variations",
-  };
-
-  const variantMap = {
-    false: "none",
-    true: "auto",
-  };
-
   // derive current badge info and icon from selected goal
   const { label, icon } = goalMap[goalSelected] ?? {
     label: "—",
@@ -968,35 +813,35 @@ export default function CreateExperiment() {
 
   return (
     <s-page heading="Create Experiment" variant="headingLg">
+      <s-link slot="breadcrumb-actions" href="/app/experiments">Experiments</s-link>
       {/*modal popup for tutorial */}
       <s-modal
-            id="tutorial-modal-create-exp"
-            ref={modalRef}
-            heading="Quick tour"
-            padding="base"
-            size="base"
+        id="tutorial-modal-create-exp"
+        ref={modalRef}
+        heading="Quick tour"
+        padding="base"
+        size="base"
+      >
+        <s-stack gap="base">
+          <s-paragraph>Welcome to the Create Experiments page. This page allows you to set up and configure new experiments within the application. You can enter a name and description, define parameters and variables, configure test conditions, and select the appropriate evaluation criteria. Be sure to complete all required fields before saving. Once created, your experiment will appear in the Experiments List page where you can manage and monitor its progress.</s-paragraph>
+          <s-button
+            variant="primary"
+            inLineSize="fill"
+            commandFor="tutorial-modal-create-exp"
+            command="--hide"
+            onClick={() => {
+              setTutorialDismissed(true);
+              tutorialFetcher.submit(
+                { intent: "tutorial_viewed" },
+                { method: "post" },
+              );
+            }}
           >
-          <s-stack gap="base">
-            <s-paragraph>
-              Here is some tutorial information.
-            </s-paragraph>
-          
-              <s-button
-              variant="primary"
-              inLineSize = "fill"
-              commandFor="tutorial-modal-create-exp"
-              command="--hide"
-              onClick = {() => {
-                setTutorialDismissed(true)
-                tutorialFetcher.submit(
-                  { intent: "tutorial_viewed"},
-                  {method: "post"}
-                )
-              }}
-              > Understood. Do not show this again.
-              </s-button>
-          </s-stack>
-        </s-modal>
+            {" "}
+            Understood. Do not show this again.
+          </s-button>
+        </s-stack>
+      </s-modal>
       <s-button
         slot="primary-action"
         variant="primary"
@@ -1009,7 +854,7 @@ export default function CreateExperiment() {
         Discard
       </s-button>
       <s-button slot="secondary-actions" href="/app/experiments">
-        Back to Experiment List
+        Experiments
       </s-button>
       {(errors.form || errors.goal) && (
         <s-box padding="base">
@@ -1028,35 +873,35 @@ export default function CreateExperiment() {
           alignSelf: "flex-start",
         }}
       >
-        <s-section heading={name ? name : "no experiment name set"}>
+        <s-section heading={name ? name : "Unnamed Experiment"}>
           <s-stack gap="small">
             <s-badge icon={icon}>{label}</s-badge>
-            <s-badge
-              tone={sectionId ? "" : "warning"}
-              icon={sectionId ? "code" : "alert-circle"}
-            >
-              {sectionId || "Section not selected"}
-            </s-badge>
-            <s-stack display={variantDisplay}>
+            {variants.map((v, i) => (
               <s-badge
-                tone={variantSectionId ? "" : "warning"}
-                icon={variantSectionId ? "code" : "alert-circle"}
+                key={i}
+                tone={v.sectionId ? "" : "warning"}
+                icon={v.sectionId ? "code" : "alert-circle"}
               >
-                {variantSectionId || "Section not selected"}
+                Variant {VARIANT_LABELS[i]}:{" "}
+                {v.sectionId ? v.sectionId.slice(0, 30) + (v.sectionId.length > 30 ? "..." : "") : "Section not selected"}
               </s-badge>
-            </s-stack>
+            ))}
 
             <s-text font-weight="heavy">Experiment Details</s-text>
 
-            {/* DYNAMIC BULLET LIST */}
             <s-text>• {customerSegments}</s-text>
-            <s-text>• {variationMap[variant] || "—"}</s-text>
-            <s-text>• {experimentChance}% Chance to show Variant 1</s-text>
-            <s-stack display={variantDisplay}>
-              <s-text>
-                • {variantExperimentChance}% Chance to show Variant 2
+            <s-text>
+              •{" "}
+              {variants.length === 1
+                ? "Single Variation"
+                : `${variants.length} Variations`}
+            </s-text>
+            {variants.map((v, i) => (
+              <s-text key={i}>
+                • {v.trafficAllocation}% Variant {VARIANT_LABELS[i]}
               </s-text>
-            </s-stack>
+            ))}
+            <s-text>• {controlAllocation}% Control</s-text>
             <s-text>
               • Active from{" "}
               {startDate
@@ -1164,133 +1009,119 @@ export default function CreateExperiment() {
       <s-section heading="Experiment Details">
         <s-form>
           <s-stack direction="block" gap="base" paddingBlock="base">
-            <s-stack direction="block" gap="small">
-              <s-stack display={variantDisplay}>
-                <s-heading>Variant 1</s-heading>
+            {variants.map((variant, i) => (
+              <s-stack
+                key={i}
+                direction="block"
+                gap="small"
+                paddingBlock={i > 0 ? "base" : undefined}
+              >
+                <s-heading>Variant {VARIANT_LABELS[i]}</s-heading>
+                <s-stack direction="inline" gap="small" alignItems="end">
+                  <div style={{ flex: 1 }}>
+                    <s-text-field
+                      placeholder="shopify-section-sections--25210977943842__header"
+                      value={variant.sectionId}
+                      label="Section ID to be tested"
+                      required
+                      onFocus={() => {
+                        setVariantSectionErrors((prev) => {
+                          const next = [...prev];
+                          next[i] = null;
+                          return next;
+                        });
+                        if (fetcher.data?.errors?.[`variant_${i}_sectionId`]) {
+                          fetcher.data = {
+                            ...fetcher.data,
+                            errors: {
+                              ...fetcher.data.errors,
+                              [`variant_${i}_sectionId`]: undefined,
+                            },
+                          };
+                        }
+                      }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        updateVariant(i, "sectionId", val);
+                        if (variantSectionErrors[i] && val.trim()) {
+                          setVariantSectionErrors((prev) => {
+                            const next = [...prev];
+                            next[i] = null;
+                            return next;
+                          });
+                        }
+                      }}
+                      onBlur={() => handleVariantSectionIdBlur(i)}
+                      error={variantSectionErrors[i] || errors[`variant_${i}_sectionId`]}
+                      details="The associated Shopify section ID to be tested. Must be visible on production site"
+                    />
+                  </div>
+                  <div style={{ paddingBottom: '24px' }}>
+                    <s-button 
+                      variant="secondary"
+                      onClick={() => handleLaunchPicker("variant", i)}
+                    >
+                      Select Visually
+                    </s-button>
+                  </div>
+                </s-stack>
+                <s-number-field
+                  label={`Traffic allocation for Variant ${VARIANT_LABELS[i]}`}
+                  value={variant.trafficAllocation}
+                  inputMode="numeric"
+                  onChange={(e) => {
+                    const othersTotal = variants.reduce(
+                      (sum, v, idx) => (idx !== i ? sum + v.trafficAllocation : sum),
+                      0,
+                    );
+                    const maxAllowed = 100 - othersTotal;
+                    const value = Math.max(0, Math.min(maxAllowed, Number(e.target.value)));
+                    updateVariant(i, "trafficAllocation", value);
+                  }}
+                  min={0}
+                  max={100 - variants.reduce((sum, v, idx) => (idx !== i ? sum + v.trafficAllocation : sum), 0)}
+                  step={1}
+                  suffix="%"
+                />
               </s-stack>
-              {/*Custom Label Row (SectionID + help link)*/}
-              <s-link href="#" target="_blank">
-                How do I find my section?
-              </s-link>
-              <s-text-field
-                placeholder="shopify-section-sections--25210977943842__header"
-                value={sectionId}
-                label="Section ID to be tested"
-                required
-                onFocus={() => {
-                  setSectionIdError(null);
-                  if (fetcher.data?.errors?.sectionId) {
-                    //clear server-side errors by resetting fetcher data
-                    fetcher.data = {
-                      ...fetcher.data,
-                      errors: { ...fetcher.data.errors, sectionId: undefined },
-                    };
-                  }
-                }}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setSectionId(v);
-                  if (emptySectionIdError && v.trim()) setSectionIdError(null);
-                }}
-                onBlur={handleSectionIdBlur}
-                error={errors.sectionId || emptySectionIdError}
-                details="The associated Shopify section ID to be tested. Must be visible on production site"
-              />
-            </s-stack>
+            ))}
+
             <s-checkbox
               label="Add a control section ID"
               details="If you want the variant section to replace the control section, add a control section ID"
-              onChange={(e) => {
+              onChange={() => {
                 setAddControlSection(!addControlSection);
               }}
             />
-            {/* There is no error checking for this section intentionally. If a user supplies a control ID, that's great */}
-            {/* But, you don't need it and may not want it, so it can be blank. */}
             {addControlSection && (
-              <s-text-field
-                placeholder="shopify-section-sections--25210972849284__header"
-                value={controlSectionId}
-                label="Control Section ID"
-                required
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setControlSectionId(v);
-                }}
-                details="The control section ID that will be replaced by the variant for users who are in the experiment. Must be visible on production site"
-              />
-            )}
-            <s-number-field
-              label="Chance to show experiment"
-              value={experimentChance}
-              inputMode="numeric"
-              onChange={(e) => {
-                const value = Math.max(
-                  0,
-                  Math.min(100, Number(e.target.value)),
-                );
-                setExperimentChance(value);
-              }}
-              min={0}
-              max={100}
-              step={1}
-              suffix="%"
-            />
-            {/* Variant 2 fields */}
-            <s-stack display={variantDisplay} paddingBlock="base">
-              <s-heading>Variant 2</s-heading>
-
-              <s-stack direction="block" gap="small" paddingBlock="base">
-                {/*Custom Label Row (SectionID + help link)*/}
-                <s-link href="#" target="_blank">
-                  How do I find my section?
-                </s-link>
-                <s-text-field
-                  placeholder="shopify-section-sections--25210977943842__header"
-                  value={variantSectionId}
-                  label="Section ID to be tested"
-                  required
-                  onFocus={() => {
-                    setSectionIdVariantError(null);
-                    if (fetcher.data?.errors?.variantSectionId) {
-                      //clear server-side errors by resetting fetcher data
-                      fetcher.data = {
-                        ...fetcher.data,
-                        errors: {
-                          ...fetcher.data.errors,
-                          variantSectionId: undefined,
-                        },
-                      };
-                    }
-                  }}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setVariantSectionId(v);
-                    if (emptySectionIdVariantError && v.trim())
-                      setSectionIdVariantError(null);
-                  }}
-                  onBlur={handleSectionIdVariantBlur}
-                  error={errors.variantSectionId || emptySectionIdVariantError}
-                  details="The associated Shopify section ID to be tested. Must be visible on production site"
-                />
+              <s-stack direction="inline" gap="small" alignItems="end">
+                <div style={{ flex: 1 }}>
+                  <s-text-field
+                    placeholder="shopify-section-sections--25210972849284__header"
+                    value={controlSectionId}
+                    label="Control Section ID"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setControlSectionId(v);
+                    }}
+                    details="The control section ID that will be replaced by the variant for users who are in the experiment. Must be visible on production site."
+                  />
+                </div>
+                <div style={{ paddingBottom: '44px' }}> 
+                  <s-button 
+                    variant="secondary"
+                    onClick={() => handleLaunchPicker("control")}
+                  >
+                    Select Visually
+                  </s-button>
+                </div>
               </s-stack>
+            )}
+            <s-text font-weight="heavy">
+              Control allocation: {controlAllocation}%. Control allocation is
+              calculated from the remaining percentage after all variants.
+            </s-text>
 
-              <s-number-field
-                label="Chance to show experiment"
-                value={variantExperimentChance}
-                inputMode="numeric"
-                onChange={(e) => {
-                  const value = Math.max(
-                    0,
-                    Math.min(100, Number(e.target.value)),
-                  );
-                  setExperimentChance(value);
-                }}
-                min={0}
-                max={100}
-                step={1}
-                suffix="%"
-              />
-            </s-stack>
             <s-select
               label="Customer segment to test"
               value={customerSegment}
@@ -1303,6 +1134,52 @@ export default function CreateExperiment() {
               <s-option value="desktopVisitors">Desktop Visitors</s-option>
               <s-option value="mobileVisitors">Mobile Visitors</s-option>
             </s-select>
+
+            <s-checkbox
+              label="Use account default max users"
+              checked={useAccountDefaultMaxUsers}
+              onChange={() => {
+                setUseAccountDefaultMaxUsers(!useAccountDefaultMaxUsers);
+                if (useAccountDefaultMaxUsers) {
+                  setMaxUsers(String(maxUsersPerExperiment ?? 10000));
+                } else {
+                  setMaxUsers("");
+                  setMaxUsersError("");
+                }
+              }}
+              details={`When enabled, uses the account default (${(maxUsersPerExperiment ?? 10000).toLocaleString()} users). Uncheck to set a custom max for this experiment.`}
+            />
+            {!useAccountDefaultMaxUsers && (
+              <s-number-field
+                label="Max users"
+                value={maxUsers}
+                inputMode="numeric"
+                min={1}
+                max={1000000}
+                step={1}
+                error={maxUsersError || errors.maxUsers}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setMaxUsers(v);
+                  const num = Number(v);
+                  if (v === "" || v === null || v === undefined) {
+                    setMaxUsersError("Max users is required when not using account default");
+                  } else if (!Number.isInteger(num) || num < 1) {
+                    setMaxUsersError("Must be at least 1");
+                  } else if (num > 1000000) {
+                    setMaxUsersError("Must be at most 1,000,000");
+                  } else {
+                    setMaxUsersError("");
+                  }
+                }}
+                onBlur={() => {
+                  if (!useAccountDefaultMaxUsers && !maxUsers.trim()) {
+                    setMaxUsersError("Max users is required when not using account default");
+                  }
+                }}
+                details="Maximum number of users to include in this experiment. Leave account default checked to use your account setting."
+              />
+            )}
           </s-stack>
         </s-form>
       </s-section>
@@ -1315,17 +1192,17 @@ export default function CreateExperiment() {
       >
         <s-button
           icon="minus"
-          accessibilityLabel="Remove item"
-          disabled={!variant}
-          onClick={handleVariantUndo}
+          accessibilityLabel="Remove variant"
+          disabled={variants.length <= 1}
+          onClick={handleRemoveVariant}
         >
-          Remove Another Variant
+          Remove Variant
         </s-button>
         <s-button
           icon="plus"
-          accessibilityLabel="Add item"
-          disabled={variant}
-          onClick={handleVariant}
+          accessibilityLabel="Add variant"
+          disabled={variants.length >= MAX_VARIANTS}
+          onClick={handleAddVariant}
         >
           Add Another Variant
         </s-button>
@@ -1334,6 +1211,7 @@ export default function CreateExperiment() {
       {/*Active dates/end conditions portion of code */}
       <s-section heading="Active Dates">
         <s-form>
+        <input type="hidden" name="endCondition" value={endCondition} />
           <s-stack direction="block" gap="base">
             <s-stack direction="inline" gap="base">
               <s-box flex="1" minInlineSize="220px" inlineSize="stretch">
@@ -1567,15 +1445,14 @@ export default function CreateExperiment() {
       </s-section>
       <div style={{ marginBottom: "250px" }}>
         <s-stack direction="inline" gap="small" justifyContent="end">
-          <s-button 
-            onClick={handleDiscard}
-            variant="secondary">
+          <s-button onClick={handleDiscard} variant="secondary">
             Discard
           </s-button>
-          <s-button 
-            variant="primary" 
-            disabled={hasClientErrors || isSubmitting} 
-            onClick={handleExperimentCreate}>
+          <s-button
+            variant="primary"
+            disabled={hasClientErrors || isSubmitting}
+            onClick={handleExperimentCreate}
+          >
             Save Draft
           </s-button>
         </s-stack>

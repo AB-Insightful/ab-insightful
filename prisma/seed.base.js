@@ -11,10 +11,11 @@ export async function seedBase(prisma) {
   // ----- Project -----
   const project = await prisma.project.upsert({
     where: { shop: 'dev-example.myshopify.com' },
-    update: { name: 'Dev Example Project' },
+    update: { name: 'Dev Example Project', maxUsersPerExperiment: 10000 },
     create: {
       shop: 'dev-example.myshopify.com',
       name: 'Dev Example Project',
+      maxUsersPerExperiment: 10000,
     },
   });
 
@@ -210,6 +211,9 @@ export async function seedBase(prisma) {
     const exp = experiments[i];
     const base = variantConfigs[i];
 
+    const controlAllocation = 1.0 - exp.trafficSplit;
+    const variantAllocation = exp.trafficSplit;
+
     await prisma.variant.upsert({
       where: { id: base.idStart },
       update: {
@@ -217,6 +221,7 @@ export async function seedBase(prisma) {
         description: 'Control variant',
         configData: base.control,
         experimentId: exp.id,
+        trafficAllocation: controlAllocation,
       },
       create: {
         id: base.idStart,
@@ -224,6 +229,7 @@ export async function seedBase(prisma) {
         description: 'Control variant',
         configData: base.control,
         experimentId: exp.id,
+        trafficAllocation: controlAllocation,
       },
     });
 
@@ -234,6 +240,7 @@ export async function seedBase(prisma) {
         description: 'Treatment variant',
         configData: base.variant,
         experimentId: exp.id,
+        trafficAllocation: variantAllocation,
       },
       create: {
         id: base.idStart + 1,
@@ -241,6 +248,7 @@ export async function seedBase(prisma) {
         description: 'Treatment variant',
         configData: base.variant,
         experimentId: exp.id,
+        trafficAllocation: variantAllocation,
       },
     });
   }
@@ -276,18 +284,20 @@ export async function seedBase(prisma) {
 
   // ----- TutorialData -----
   await prisma.tutorialData.upsert({
-    where: { sessionId: session.id },
+    where: { id: 1 }, 
     update: {
-      generalSettings: true,
-      createExperiment: true,
+      sessionId: session.id,
+      generalSettings: false,
+      createExperiment: false,
       viewedListExperiment: false,
       viewedReportsPage: false,
       onSiteTracking: false,
     },
     create: {
+      id: 1,
       sessionId: session.id,
-      generalSettings: true,
-      createExperiment: true,
+      generalSettings: false,
+      createExperiment: false,
       viewedListExperiment: false,
       viewedReportsPage: false,
       onSiteTracking: false,

@@ -43,11 +43,13 @@ export async function updateLatestSession(userdata) {
       shopifyCustomerID: userdata.client_id,
     },
     update: {
-      latestSession: userdata.timestamp,
+      latestSession: new Date(userdata.latestSession),
+      deviceType: userdata.deviceType ?? undefined,
     },
     create: {
       shopifyCustomerID: userdata.client_id,
-      deviceType: userdata.device_type,
+      latestSession: new Date(userdata.latestSession),
+      deviceType: userdata.deviceType ?? null,
     },
   });
   return result;

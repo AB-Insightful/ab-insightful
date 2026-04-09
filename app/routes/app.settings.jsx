@@ -1,8 +1,7 @@
 //imports
 import { authenticate } from "../shopify.server";
 import { useLoaderData, useFetcher } from "react-router"
-import { useEffect, useRef } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import db from "../db.server";
 
 //loader for default goal, contact email and contact phone
@@ -14,6 +13,11 @@ export const loader = async ({ request }) => {
     create: { shop: session.shop, name: `${session.shop} Project`, defaultGoal: "completedCheckout" },
     select: {
       defaultGoal: true,
+      smsNotifEnabled: true,
+      emailNotifEnabled: true,
+      enableExperimentStart: true,
+      enableExperimentEnd: true,
+      maxUsersPerExperiment: true,
       contactEmails: { select: { id: true, email: true } },
       contactPhones: { select: { id: true, phoneNumber: true } },
     },
@@ -23,12 +27,16 @@ export const loader = async ({ request }) => {
   const { getTutorialData } = await import ("../services/tutorialData.server");
   const tutorialInfo = await getTutorialData();
 
-           
   return {
     defaultGoal: project.defaultGoal,
+    enableExperimentStart: project.enableExperimentStart,
+    enableExperimentEnd: project.enableExperimentEnd,
+    maxUsersPerExperiment: project.maxUsersPerExperiment,
     contactEmails: project.contactEmails,
     contactPhones: project.contactPhones,
-    tutorialData: tutorialInfo
+    tutorialData: tutorialInfo,
+    emailNotifEnabled: project.emailNotifEnabled,
+    smsNotifEnabled: project.smsNotifEnabled
   };
 };
 
@@ -48,7 +56,79 @@ export const action = async ({ request }) => {
     });
     return { ok: true, intent: "updateDefaultGoal", defaultGoal };
   }
-  
+  else if (intent === "set_sms_notif_true")
+  {
+    console.log("performed sms true action");
+    try {
+      const {setSMSNotifToggle} = await import ("../services/project.server");
+      await setSMSNotifToggle(true);
+    } catch (error)
+    {
+      console.error("SMS toggle value change was invalid: ", error);
+      return { ok: false, error: "failed to change sms toggle to true" };
+    }
+    await db.project.update({
+      where: { shop: session.shop },
+      data: { smsNotifEnabled: true },
+    });
+    return { ok: true, intent: "set_sms_notif_true" };
+  }
+  else if (intent == "set_sms_notif_false")
+  {
+    console.log("performed sms false action");
+    try {
+      const {setSMSNotifToggle} = await import ("../services/project.server");
+      await setSMSNotifToggle(false);
+    } catch (error)
+    {
+      console.error("SMS toggle value change was invalid: ", error);
+      return { ok: false, error: "failed to sms toggle to false" };
+    }
+    await db.project.update({
+      where: { shop: session.shop },
+      data: { smsNotifEnabled: false },
+    });
+    return { ok: true, intent: "set_sms_notif_false" };
+  }
+  else if( intent === "set_email_notif_false")
+  {
+    try {
+        const { setEmailNotifToggle} = await import ("../services/project.server");
+        await setEmailNotifToggle(false)
+    } catch (error) {
+      console.error("Email toggle value change was invalid: ", error)
+      return { ok: false, error: "failed to change email toggle" }; 
+    }
+
+    await db.project.update({
+      where: { shop: session.shop },
+      data: { emailNotifEnabled: false },
+    });
+    return { ok: true, intent: "set_email_notif_false" };
+
+  }
+  else if (intent === "set_email_notif_true")
+  {
+      
+    //actual notification toggle update
+    try {
+      const { setEmailNotifToggle} = await import ("../services/project.server");
+      await setEmailNotifToggle(true)
+      
+    } catch (error) {
+      console.error("Email toggle value change was invalid: ", error)
+      return {ok: false, error: "failed to change email toggle"};
+    }
+    //function and commands that send email on experiment start (for testing purposes)
+
+    //db query update to adjust proper store associated
+    await db.project.update({
+      where: { shop: session.shop },
+      data: { emailNotifEnabled: true },
+    });
+      return { ok: true, intent: "set_email_notif_true" };
+  }
+
   if(intent === "tutorial_viewed")
   {
     try {
@@ -57,12 +137,14 @@ export const action = async ({ request }) => {
         return {ok: true, action: "tutorial_viewed"}; 
       } catch (error) {
         console.error("Tutorial Error:", error);
-        return {ok: false, error: "Failed to update viewedListExperiment"}, { status: 500};
+        return {ok: false, error: "Failed to update viewedListExperiment"};
       }
   }
 
   //add an email to the list
+  //sends subscriber email 
   if (intent === "addEmail") {
+
     const email = (formData.get("email") || "").trim().toLowerCase();
 
     //check if empty
@@ -84,11 +166,21 @@ export const action = async ({ request }) => {
     if (existing) return { error: "Provided email is already saved", field: "email" };
 
     await db.contactEmail.create({ data: { email, projectId: project.id } });
+
+    //adds email to aws
+    const {subscribeEmail} = await import ("../services/notifications.server");
+    const emailSubStatus= await subscribeEmail(email);
+    console.log("email subscribed: " + emailSubStatus);
+
     return { ok: true };
   }
 
   //delete an email from the list
   if (intent === "deleteEmail") {
+    const email = formData.get("email");
+    const {unsubscribeEmail} = await import ("../services/notifications.server");
+    await unsubscribeEmail(email);
+
     const id = parseInt(formData.get("id"), 10);
     await db.contactEmail.delete({ where: { id } });
     return { ok: true };
@@ -120,14 +212,86 @@ export const action = async ({ request }) => {
     if (existing) return { error: "Provided phone number is already saved", field: "phone" };
 
     await db.contactPhone.create({ data: { phoneNumber, projectId: project.id } });
+
+    //add the valid phone number to aws reporting
+    const {subscribePhoneNum} = await import ("../services/notifications.server");
+    await subscribePhoneNum(phoneNumber);
+
     return { ok: true };
   }
 
   //delete a phone number from the list
   if (intent === "deletePhone") {
+    //unsubscribes number from aws
+    const unsubNum = formData.get("phoneNumber"); // double check syntax
+    const {unsubscribePhoneNum} = await import ("../services/notifications.server");
+    await unsubscribePhoneNum(unsubNum);
+
     const id = parseInt(formData.get("id"), 10);
     await db.contactPhone.delete({ where: { id } });
     return { ok: true };
+  }
+
+  if (intent === "deleteAll") {
+    //performs notification function to unsubscribe everyone associated with the email topic
+    const {unsubscribeAll, unsubscribeAllPhoneNums} = await import ("../services/notifications.server");
+    const res = await unsubscribeAll();
+    const res2 = await unsubscribeAllPhoneNums()
+
+    //locate the project
+    const project = await db.project.findUnique({
+      where: { shop: session.shop },
+      select: { id: true },
+    });
+
+    await db.contactEmail.deleteMany({ where: { projectId: project.id } });
+    await db.contactPhone.deleteMany({ where: { projectId: project.id } });
+    return { ok: true };
+  }
+
+  if (intent === "updateExperimentStart") {
+    const value = formData.get("value") === "true";
+    await db.project.update({
+      where: { shop: session.shop },
+      data: { enableExperimentStart: value },
+    });
+    return { ok: true, intent: "updateExperimentStart" };
+  }
+
+  if (intent === "updateExperimentEnd") {
+    const value = formData.get("value") === "true";
+    await db.project.update({
+      where: { shop: session.shop },
+      data: { enableExperimentEnd: value },
+    });
+    return { ok: true, intent: "updateExperimentEnd" };
+  }
+
+  if (intent === "updateMaxUsersPerExperiment") {
+    const raw = formData.get("maxUsersPerExperiment");
+    const parsed = raw === "" || raw === null ? NaN : parseInt(String(raw), 10);
+    if (Number.isNaN(parsed)) {
+      return { ok: false, intent: "updateMaxUsersPerExperiment", error: "Must be a valid integer", field: "maxUsersPerExperiment" };
+    }
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      return { ok: false, intent: "updateMaxUsersPerExperiment", error: "Must be at least 1", field: "maxUsersPerExperiment" };
+    }
+    if (parsed > 1_000_000) {
+      return { ok: false, intent: "updateMaxUsersPerExperiment", error: "Must be at most 1,000,000", field: "maxUsersPerExperiment" };
+    }
+    await db.project.update({
+      where: { shop: session.shop },
+      data: { maxUsersPerExperiment: parsed },
+    });
+    return { ok: true, intent: "updateMaxUsersPerExperiment", maxUsersPerExperiment: parsed };
+  }
+
+  if (intent === "disableNotifications") {
+    await db.project.update({
+      where: { shop: session.shop },
+      data: { enableExperimentStart: false, enableExperimentEnd: false },
+    });
+    return { ok: true, intent: "disableNotifications" };
   }
 
   //error state
@@ -143,9 +307,11 @@ function formatPhone(digits) {
 }
 
 export default function Settings() {
-  const { defaultGoal, contactEmails, contactPhones, tutorialData } = useLoaderData();
+  const { defaultGoal, enableExperimentStart, enableExperimentEnd, maxUsersPerExperiment, contactEmails, contactPhones, tutorialData, emailNotifEnabled, smsNotifEnabled } = useLoaderData();
   const fetcher = useFetcher();
   const goalFetcher = useFetcher();
+  const maxUsersFetcher = useFetcher();
+  const notifFetcher = useFetcher();
   const tutorialFetcher = useFetcher(); // for tutorial actions
   const modalRef = useRef(null);
 
@@ -153,10 +319,18 @@ export default function Settings() {
   const [emailInput, setEmailInput] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
   const [selectedDefaultGoal, setSelectedDefaultGoal] = useState(defaultGoal);
+  const [selectedExperimentStart, setEnableExperimentStart] = useState(enableExperimentStart ?? false);
+  const [selectedExperimentEnd, setEnableExperimentEnd] = useState(enableExperimentEnd ?? false);
   const [savedDefaultGoal, setSavedDefaultGoal] = useState(defaultGoal);
+  const [maxUsersInput, setMaxUsersInput] = useState(String(maxUsersPerExperiment ?? 10000));
+  const [savedMaxUsers, setSavedMaxUsers] = useState(maxUsersPerExperiment ?? 10000);
   const [showGoalSaveSuccess, setShowGoalSaveSuccess] = useState(false);
+  const [showMaxUsersSaveSuccess, setShowMaxUsersSaveSuccess] = useState(false);
+  const [showStartSaveSuccess, setShowStartSaveSuccess] = useState(false);
+  const [showEndSaveSuccess, setShowEndSaveSuccess] = useState(false);
   const [isGoalSaveHovered, setIsGoalSaveHovered] = useState(false);
   const [isGoalSavePressed, setIsGoalSavePressed] = useState(false);
+  const [showDisableSaveSuccess, setShowDisableSaveSuccess] = useState(false);
   //chip id on hover
   const [hoveredEmailId, setHoveredEmailId] = useState(null);
   const [hoveredPhoneId, setHoveredPhoneId] = useState(null);
@@ -166,6 +340,69 @@ export default function Settings() {
 
   const hasPendingGoalChanges = selectedDefaultGoal !== savedDefaultGoal;
   const isSavingGoal = goalFetcher.state !== "idle";
+  const hasPendingMaxUsersChanges = maxUsersInput !== String(savedMaxUsers);
+  const isSavingMaxUsers = maxUsersFetcher.state !== "idle";
+  const maxUsersError = maxUsersFetcher.data?.field === "maxUsersPerExperiment" ? maxUsersFetcher.data.error : null;
+
+  //notification toggle fields
+  const [emailEnabled, setEmailEnabled] = useState(emailNotifEnabled);
+  const [smsEnabled, setSMSEnabled] = useState(smsNotifEnabled);
+  //string show ties in with emailEnabled variable
+  const emailNotifToggleDetails = emailEnabled
+    ? 'Notifications enabled'
+    : 'Notifications disabled';
+  const smsNotifToggleDetails = smsEnabled
+    ? 'Notifications enabled'
+    : 'Notifications disabled';
+
+
+  function handleEmailNotificationToggle(event){
+    const notifToggleType = event.currentTarget.checked;
+    setEmailEnabled(event.currentTarget.checked);
+    if (notifToggleType)
+    {
+      //Shoud be put since it is a notification change? 
+      fetcher.submit(
+        {intent: "set_email_notif_true"},
+        {method: "put"}
+      )
+      console.log('enabled e-mail notifications');
+      //call complex function here
+    }
+    else
+    {
+      console.log('disabled email notifications')
+      fetcher.submit(
+        {intent: "set_email_notif_false"},
+        {method: "put"}
+      )
+    }
+  }
+
+  
+  function handleSMSNotificationToggle(event){
+    const notifToggleType = event.currentTarget.checked;
+    setSMSEnabled(event.currentTarget.checked);
+    if (notifToggleType)
+    {
+      //Shoud be put since it is a notification change? 
+      console.log('disabled SMS Notifications')
+      fetcher.submit(
+        {intent: "set_sms_notif_true"},
+        {method: "put"}
+      )
+      console.log('enabled e-mail notifications');
+      //call complex function here
+    }
+    else
+    {
+      console.log('disabled SMS Notifications')
+      fetcher.submit(
+        {intent: "set_sms_notif_false"},
+        {method: "put"}
+      )
+    }
+  }
 
   useEffect(() => {
     setSelectedDefaultGoal(defaultGoal);
@@ -173,16 +410,56 @@ export default function Settings() {
   }, [defaultGoal]);
 
   useEffect(() => {
+    const value = maxUsersPerExperiment ?? 10000;
+    setMaxUsersInput(String(value));
+    setSavedMaxUsers(value);
+  }, [maxUsersPerExperiment]);
+
+  useEffect(() => {
+    setEnableExperimentStart(enableExperimentStart ?? false);
+    setEnableExperimentEnd(enableExperimentEnd ?? false);
+  }, [enableExperimentStart, enableExperimentEnd]);
+
+  useEffect(() => {
     if (
       goalFetcher.state === "idle" &&
-      goalFetcher.data?.ok &&
+      goalFetcher.data?.ok && 
       goalFetcher.data?.intent === "updateDefaultGoal"
     ) {
-      setSavedDefaultGoal(goalFetcher.data.defaultGoal);
-      setSelectedDefaultGoal(goalFetcher.data.defaultGoal);
-      setShowGoalSaveSuccess(true);
+        setSavedDefaultGoal(goalFetcher.data.defaultGoal);
+        setSelectedDefaultGoal(goalFetcher.data.defaultGoal);
+        setShowGoalSaveSuccess(true);
     }
   }, [goalFetcher.state, goalFetcher.data]);
+
+  useEffect(() => {
+    if (
+      maxUsersFetcher.state === "idle" &&
+      maxUsersFetcher.data?.ok &&
+      maxUsersFetcher.data?.intent === "updateMaxUsersPerExperiment"
+    ) {
+      setSavedMaxUsers(maxUsersFetcher.data.maxUsersPerExperiment);
+      setMaxUsersInput(String(maxUsersFetcher.data.maxUsersPerExperiment));
+      setShowMaxUsersSaveSuccess(true);
+    }
+  }, [maxUsersFetcher.state, maxUsersFetcher.data]);
+
+  //notifications success popups
+  useEffect(() => {
+  if (notifFetcher.state === "idle" && notifFetcher.data?.ok) {
+    if (notifFetcher.data?.intent === "updateExperimentStart") {
+      setShowStartSaveSuccess(true);
+      setShowDisableSaveSuccess(false);
+    } else if (notifFetcher.data?.intent === "updateExperimentEnd") {
+      setShowEndSaveSuccess(true);
+      setShowDisableSaveSuccess(false);
+    } else if (notifFetcher.data?.intent === "disableNotifications") {
+      setShowDisableSaveSuccess(true);
+      setShowStartSaveSuccess(false);
+      setShowEndSaveSuccess(false);
+    }
+  }
+}, [notifFetcher.state, notifFetcher.data]);
 
   useEffect(() => {
     if (hasPendingGoalChanges) {
@@ -190,15 +467,33 @@ export default function Settings() {
     }
   }, [hasPendingGoalChanges]);
 
+  useEffect(() => {
+    if (hasPendingMaxUsersChanges) {
+      setShowMaxUsersSaveSuccess(false);
+    }
+  }, [hasPendingMaxUsersChanges]);
+
   //handler functions
   const handleAddEmail = () => {fetcher.submit({ intent: "addEmail", email: emailInput }, { method: "post" });};
-  const handleDeleteEmail = (id) => {fetcher.submit({ intent: "deleteEmail", id: String(id) }, { method: "post" });};
   const handleAddPhone = () => {fetcher.submit({ intent: "addPhone", phone: phoneInput }, { method: "post" });};
-  const handleDeletePhone = (id) => {fetcher.submit({ intent: "deletePhone", id: String(id) }, { method: "post" });};
+  const handleDeletePhone = (id, phoneNumber) => {fetcher.submit({ intent: "deletePhone", id: String(id), phoneNumber}, { method: "post" });};
+  const handleDeleteAllContact = () => {fetcher.submit({ intent: "deleteAll" }, { method: "post" });};  
+  const handleDeleteEmail = (id, email) => {
+    fetcher.submit({ intent: "deleteEmail", id: String(id), email }, { method: "post" });
+  };
+
   const handleSaveDefaultGoal = () => {
     if (!hasPendingGoalChanges || isSavingGoal) return;
     goalFetcher.submit(
       { intent: "updateDefaultGoal", defaultGoal: selectedDefaultGoal },
+      { method: "post" },
+    );
+  };
+
+  const handleSaveMaxUsersPerExperiment = () => {
+    if (!hasPendingMaxUsersChanges || isSavingMaxUsers) return;
+    maxUsersFetcher.submit(
+      { intent: "updateMaxUsersPerExperiment", maxUsersPerExperiment: maxUsersInput },
       { method: "post" },
     );
   };
@@ -221,7 +516,7 @@ export default function Settings() {
       >
         <s-stack gap="base">
           <s-paragraph>
-            Here is some tutorial information.
+            Welcome to the Settings page. This page allows you to manage your email notifications and other application settings. You can adjust default experiment settings, manage notifications, configure integrations, and control user permissions. Changes made here will affect how the application behaves, so remember to save your updates before leaving the page.
           </s-paragraph>
         
             <s-button
@@ -242,135 +537,239 @@ export default function Settings() {
 
       {/*notification settings*/}
       <s-section heading="Notification Settings">
-
-        {/*email*/}
-        <s-stack direction="block" gap="small">
-          <s-stack direction="inline" gap="small" alignItems="end">
-            <s-box inlineSize="300px">
-              <s-email-field
-                label="Email"
-                placeholder="username@example.com"
-                value={emailInput}
-                onInput={(e) => setEmailInput(e.target.value)}
-                error={emailError ?? undefined}
-              />
-            </s-box>
-            <s-button
-              variant="primary"
-              onClick={handleAddEmail}
-              disabled={fetcher.state !== "idle"}
-            >
-              Save
-            </s-button>
-          </s-stack>
-
-          {/*email chips*/}
-          {contactEmails.length > 0 && (
-            <s-stack direction="inline" gap="extraSmall" wrap>
-              {contactEmails.map((entry) => (
-                <s-clickable-chip
-                  key={entry.id}
-                  onClick={() => handleDeleteEmail(entry.id)}
-                  onMouseEnter={() => setHoveredEmailId(entry.id)}
-                  onMouseLeave={() => setHoveredEmailId(null)}
-                >
-                  <span style={{ position: "relative", display: "inline-block" }}>
-                    <span style={{ visibility: "hidden" }}>
-                      {entry.email.length > "Delete".length ? entry.email : "Delete"}
-                    </span>
-                    <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {hoveredEmailId === entry.id ? "Delete" : entry.email}
-                    </span>
-                  </span>
-                </s-clickable-chip>
-              ))}
+          {/*left side: phone/email fields*/}
+              {/*grid to fit both notifications options */}
+        <s-grid
+          gridTemplateColumns="2fr 1fr"
+          >
+          <s-grid-item>
+            <s-stack direction="block" gap="large">
+                  <s-stack direction="inline" gap="small" alignItems="end">
+                  {/*entry field*/}
+                    <s-box inlineSize="400px">
+                      <s-email-field
+                        label="Email"
+                        placeholder="username@example.com"
+                        value={emailInput}
+                        onInput={(e) => setEmailInput(e.target.value)}
+                        error={emailError ?? undefined}
+                      />
+                    </s-box>
+                  {/*save button*/}
+                    <s-button
+                      variant="primary"
+                      onClick={handleAddEmail}
+                      disabled={fetcher.state !== "idle"}
+                    >
+                      Save
+                    </s-button>
+                  </s-stack>
+                  {/*email chips*/}
+                  {contactEmails.length > 0 && (
+                      <s-stack direction="inline" gap="extraSmall" wrap>
+                        {contactEmails.map((entry) => (
+                          <s-clickable-chip
+                            key={entry.id}
+                            onClick={() => handleDeleteEmail(entry.id, entry.email)}
+                            onMouseEnter={() => setHoveredEmailId(entry.id)}
+                            onMouseLeave={() => setHoveredEmailId(null)}
+                          >
+                            <span style={{ position: "relative", display: "inline-block" }}>
+                              <span style={{ visibility: "hidden" }}>
+                                {entry.email.length > "Delete".length ? entry.email : "Delete"}
+                              </span>
+                              <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                {hoveredEmailId === entry.id ? "Delete" : entry.email}
+                              </span>
+                            </span>
+                          </s-clickable-chip>
+                        ))}
+                      </s-stack>
+                  )}
+          
+            <s-stack direction="inline" gap="small" alignItems="end">           
             </s-stack>
-          )}
-        </s-stack>
-
-        {/*phone*/}
-        <s-stack direction="block" gap="small">
-          <s-stack direction="inline" gap="small" alignItems="end">
-            <s-box inlineSize="300px">
-              <s-text-field
-                label="Phone Number"
-                placeholder="555-555-5555"
-                value={phoneInput}
-                onInput={(e) => setPhoneInput(e.target.value)}
-                error={phoneError ?? undefined}
-              />
-            </s-box>
-            <s-button
-              variant="primary"
-              onClick={handleAddPhone}
-              disabled={fetcher.state !== "idle"}
-            >
-              Save
-            </s-button>
-          </s-stack>
-
-          {/*phone chips*/}
-          {contactPhones.length > 0 && (
-            <s-stack direction="inline" gap="extraSmall" wrap>
-              {contactPhones.map((entry) => (
-                <s-clickable-chip
-                  key={entry.id}
-                  onClick={() => handleDeletePhone(entry.id)}
-                  onMouseEnter={() => setHoveredPhoneId(entry.id)}
-                  onMouseLeave={() => setHoveredPhoneId(null)}
-                >
-                  <span style={{ position: "relative", display: "inline-block" }}>
-                    <span style={{ visibility: "hidden" }}>
-                      {formatPhone(entry.phoneNumber).length > "Delete".length ? formatPhone(entry.phoneNumber) : "Delete"}
-                    </span>
-                    <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {hoveredPhoneId === entry.id ? "Delete" : formatPhone(entry.phoneNumber)}
-                    </span>
-                  </span>
-                </s-clickable-chip>
-              ))}
-            </s-stack>
-          )}
-        </s-stack>
-
+            {/*phone*/}
+                <s-stack direction="block" gap="large">
+                  <s-stack direction="inline" gap="small" alignItems="end">
+                  {/*entry field*/}
+                    <s-box inlineSize="400px">
+                      <s-text-field
+                        label="Phone Number"
+                        placeholder="555-555-5555"
+                        value={phoneInput}
+                        onInput={(e) => setPhoneInput(e.target.value)}
+                        error={phoneError ?? undefined}
+                      />
+                    </s-box>
+                  {/*save button*/}
+                    <s-button
+                      variant="primary"
+                      onClick={handleAddPhone}
+                      disabled={fetcher.state !== "idle"}
+                    >
+                      Save
+                    </s-button>
+                  </s-stack>
+                  {/*phone chips*/}
+                  {contactPhones.length > 0 && (
+                  <div style={{ maxWidth: "400px", overflowX: "auto" }}>
+                      <s-stack direction="inline" gap="extraSmall" wrap>
+                        {contactPhones.map((entry) => (
+                          <s-clickable-chip
+                            key={entry.id}
+                            onClick={() => handleDeletePhone(entry.id, entry.phoneNumber)}
+                            onMouseEnter={() => setHoveredPhoneId(entry.id)}
+                            onMouseLeave={() => setHoveredPhoneId(null)}
+                          >
+                            <span style={{ position: "relative", display: "inline-block" }}>
+                              <span style={{ visibility: "hidden" }}>
+                                {formatPhone(entry.phoneNumber).length > "Delete".length ? formatPhone(entry.phoneNumber) : "Delete"}
+                              </span>
+                              <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                {hoveredPhoneId === entry.id ? "Delete" : formatPhone(entry.phoneNumber)}
+                              </span>
+                            </span>
+                          </s-clickable-chip>
+                        ))}
+                      </s-stack>
+                  </div>
+                  )}
+                </s-stack>
+              </s-stack>
+            </s-grid-item>
+            <s-grid-item>
+              <s-switch
+                  id="SMS-notif-toggle"
+                  label="Enable SMS Notifications"
+                  details= {smsNotifToggleDetails}
+                  checked={smsEnabled}
+                  onChange={handleSMSNotificationToggle}
+                  error = "SMS Notifications for AWS may not have been configured. Enabling may cause errors."
+                  >
+              </s-switch>
+              <s-switch
+                    id="email-notif-toggle"
+                    label="Enable E-mail Notifications"
+                    details= {emailNotifToggleDetails}
+                    checked={emailEnabled}
+                    onChange={handleEmailNotificationToggle}
+                    >
+              </s-switch>
+              <s-stack direction="block" gap="base">
+                {/*right side, button cluster*/}
+                <div style={{ margin: "10px 0" }}>
+                  <s-checkbox
+                    label="Notify when an experiment starts"
+                    checked={selectedExperimentStart}
+                    onChange={(e) => {
+                      setEnableExperimentStart(e.target.checked);
+                      fetcher.submit({ intent: "updateExperimentStart", value: String(e.target.checked) }, { method: "post" });
+                      notifFetcher.submit({ intent: "updateExperimentStart", value: String(e.target.checked) }, { method: "post" });
+                    }}
+                  />
+                  {showStartSaveSuccess ? <s-text tone="success">Save success!</s-text> : null}
+                  <s-checkbox
+                    label="Notify when an experiment ends"
+                    checked={selectedExperimentEnd}
+                    onChange={(e) => {
+                      setEnableExperimentEnd(e.target.checked);
+                      fetcher.submit({ intent: "updateExperimentEnd", value: String(e.target.checked) }, { method: "post" });
+                      notifFetcher.submit({ intent: "updateExperimentEnd", value: String(e.target.checked) }, { method: "post" });
+                    }}
+                  />
+                  {showEndSaveSuccess ? <s-text tone="success">Save success!</s-text> : null}
+                  <div style={{ margin: "10px 0" }}>
+                    <s-button
+                      inLineSize="fill"
+                      onClick={() => {
+                        setEnableExperimentStart(false);
+                        setEnableExperimentEnd(false);
+                        setShowDisableSaveSuccess(false);
+                        notifFetcher.submit({ intent: "disableNotifications" }, { method: "post" });
+                      }}
+                    >
+                      Disable Notifications
+                    </s-button>
+                    {showDisableSaveSuccess ? <s-text tone="success">Notifications disabled!</s-text> : null}
+                  </div>
+                  <div style={{ margin: "10px 0" }} >
+                    <s-button 
+                      inLineSize = "fill" 
+                      tone = "critical" 
+                      onClick={() => handleDeleteAllContact()}
+                    >
+                      Delete All Contact Information
+                    </s-button>
+                  </div>
+                </div>
+              </s-stack>
+          </s-grid-item>
+        </s-grid> {/* end of vertical grid */}
       </s-section>
 
       {/*experiment configuration*/}
       <s-section heading="Experiment Configuration">
         <div>
-          <s-stack direction="block" gap="base">
-            <s-select
-              label="Select a new default goal for creating new experiments"
-              name="defaultGoal"
-              value={selectedDefaultGoal}
-              onChange={(e) => setSelectedDefaultGoal(e.target.value)}
-            >
-              <s-option value="completedCheckout">Completed Checkout</s-option>
-              <s-option value="viewPage">Viewed Page</s-option>
-              <s-option value="startCheckout">Started Checkout</s-option>
-              <s-option value="addToCart">Added Product to Cart</s-option>
-            </s-select>
-            <s-stack direction="inline" gap="small" alignItems="center">
-              <s-button
-                variant="primary"
-                disabled={!hasPendingGoalChanges || isSavingGoal}
-                onClick={handleSaveDefaultGoal}
-                onMouseEnter={() => setIsGoalSaveHovered(true)}
-                onMouseLeave={() => {
-                  setIsGoalSaveHovered(false);
-                  setIsGoalSavePressed(false);
-                }}
-                onMouseDown={() => setIsGoalSavePressed(true)}
-                onMouseUp={() => setIsGoalSavePressed(false)}
-                style={{
-                  opacity: isGoalSaveHovered ? "0.95" : "1",
-                  transform: isGoalSavePressed ? "translateY(1px)" : "translateY(0)",
-                  transition: "opacity 120ms ease, transform 120ms ease",
-                }}
+          <s-stack direction="block" gap="large">
+            <s-stack direction="block" gap="base">
+              <s-select
+                label="Select a new default goal for creating new experiments"
+                name="defaultGoal"
+                value={selectedDefaultGoal}
+                onChange={(e) => setSelectedDefaultGoal(e.target.value)}
               >
-                Save
-              </s-button>
-              {showGoalSaveSuccess ? <s-text tone="success">Save success!</s-text> : null}
+                <s-option value="completedCheckout">Completed Checkout</s-option>
+                <s-option value="viewPage">Viewed Page</s-option>
+                <s-option value="startCheckout">Started Checkout</s-option>
+                <s-option value="addToCart">Added Product to Cart</s-option>
+              </s-select>
+              <s-stack direction="inline" gap="small" alignItems="center">
+                <s-button
+                  variant="primary"
+                  disabled={!hasPendingGoalChanges || isSavingGoal}
+                  onClick={handleSaveDefaultGoal}
+                  onMouseEnter={() => setIsGoalSaveHovered(true)}
+                  onMouseLeave={() => {
+                    setIsGoalSaveHovered(false);
+                    setIsGoalSavePressed(false);
+                  }}
+                  onMouseDown={() => setIsGoalSavePressed(true)}
+                  onMouseUp={() => setIsGoalSavePressed(false)}
+                  style={{
+                    opacity: isGoalSaveHovered ? "0.95" : "1",
+                    transform: isGoalSavePressed ? "translateY(1px)" : "translateY(0)",
+                    transition: "opacity 120ms ease, transform 120ms ease",
+                  }}
+                >
+                  Save
+                </s-button>
+                {showGoalSaveSuccess ? <s-text tone="success">Save success!</s-text> : null}
+              </s-stack>
+            </s-stack>
+            <s-stack direction="block" gap="base">
+              <s-number-field
+                label="Maximum users per experiment (default)"
+                value={maxUsersInput}
+                onInput={(e) => setMaxUsersInput(e.target.value)}
+                onChange={(e) => setMaxUsersInput(e.target.value)}
+                min={1}
+                max={1000000}
+                step={1}
+                inputMode="numeric"
+                error={maxUsersError ?? undefined}
+                details="Default limit for new experiments. Can be overridden per experiment."
+              />
+              <s-stack direction="inline" gap="small" alignItems="center">
+                <s-button
+                  variant="primary"
+                  disabled={!hasPendingMaxUsersChanges || isSavingMaxUsers}
+                  onClick={handleSaveMaxUsersPerExperiment}
+                >
+                  Save
+                </s-button>
+                {showMaxUsersSaveSuccess ? <s-text tone="success">Save success!</s-text> : null}
+              </s-stack>
             </s-stack>
           </s-stack>
         </div>

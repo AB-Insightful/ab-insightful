@@ -117,6 +117,7 @@ register(({ analytics, browser, init, settings }) => {
       timestamp: event.timestamp,
       products: event.data.checkout.lineItems,
       device_type: device_type,
+      total_price: event.data.checkout.totalPrice?.amount,
     };
     console.log("checkout completed about to fire!");
     sendData(payload);

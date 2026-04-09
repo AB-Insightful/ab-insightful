@@ -13,6 +13,7 @@ database.sqlite
 .vscode
 .env
 .env.*
+.e2e-cookies.json
 coverage
 prisma/seed.test.local.js
 .secrets

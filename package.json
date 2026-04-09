@@ -20,6 +20,9 @@
     "typecheck": "react-router typegen && tsc --noEmit",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
+    "test:e2e": "vitest run --config vitest.e2e.config.js",
+    "test:e2e:headed": "HEADED=true vitest run --config vitest.e2e.config.js",
+    "test:e2e:setup": "bash e2e/setup-login.sh",
     "seed:dev": "node prisma/seed.js --environment=dev",
     "seed:test": "node prisma/seed.js --environment=test",
     "seed:demo": "node prisma/seed.js --environment=demo"
@@ -77,6 +80,7 @@
     "jsdom": "^27.1.0",
     "prettier": "^3.6.2",
     "prisma": "^6.18.0",
+    "selenium-webdriver": "^4.41.0",
     "typescript": "^5.9.3",
     "vite": "^6.3.6",
     "vitest": "^4.0.6"

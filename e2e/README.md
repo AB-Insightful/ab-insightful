@@ -60,7 +60,7 @@ When cookies expire (you'll see an error telling you), repeat step 2.
 
 | Command                   | Description                                           |
 | ------------------------- | ----------------------------------------------------- |
-| `npm run test:e2e:setup`  | Opens Chrome for manual Shopify login                 |
+| `npm run test:e2e:setup`  | Opens Chrome for manual Shopify login (cross-platform) |
 | `npm run test:e2e:headed` | Connects to running Chrome, saves cookies, runs tests |
 | `npm run test:e2e`        | Runs tests headless using saved cookies               |
 
@@ -162,6 +162,12 @@ await jsClick(driver, element);
 
 ```bash
 CHROME_PATH=/usr/bin/google-chrome npm run test:e2e:setup
+```
+
+On Windows (PowerShell), example:
+
+```powershell
+$env:CHROME_PATH="C:\Program Files\Google\Chrome\Application\chrome.exe"; npm run test:e2e:setup
 ```
 
 **Tests are slow** — Each page navigation takes ~5-7s (URL reload + iframe switch + React hydration). Test multiple assertions per page load when possible.

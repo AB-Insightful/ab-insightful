@@ -6,17 +6,33 @@ export async function registerWebPixel({ request }) {
   const { admin, session } = await authenticate.admin(request);
 
   // First check to see if the web pixel is already registered
-  const webPixelId = await getWebPixelId(session);
+  let webPixelId = await getWebPixelId(session);
 
   if (webPixelId) {
-    return new Response(
-      JSON.stringify({
-        message:
-          "App pixel registered successfully. You can mark this step as complete!",
-        action: "enableTracking",
-      }),
-      { status: 200 },
-    );
+    const shopifyId = await fetchWebPixelIdFromShopify(admin);
+    if (shopifyId === webPixelId) {
+      return new Response(
+        JSON.stringify({
+          message:
+            "App pixel registered successfully. You can mark this step as complete!",
+          action: "enableTracking",
+        }),
+        { status: 200 },
+      );
+    }
+    if (shopifyId) {
+      await storeWebPixelId(session, shopifyId);
+      return new Response(
+        JSON.stringify({
+          message:
+            "App pixel registered successfully. You can mark this step as complete!",
+          action: "enableTracking",
+        }),
+        { status: 200 },
+      );
+    }
+    await clearWebPixelId(session);
+    webPixelId = null;
   }
 
   const settings = {
@@ -130,8 +146,99 @@ export async function updateWebPixel({ request }) {
     appUrl: process.env.SHOPIFY_APP_URL,
   };
 
-  console.log(`Updating web pixel ${webPixelId} with appUrl: ${settings.appUrl}`);
+  let recoveredFromNotFound = false;
 
+  for (;;) {
+    console.log(`Updating web pixel ${webPixelId} with appUrl: ${settings.appUrl}`);
+
+    const responseAsJSON = await performWebPixelUpdate(
+      admin,
+      webPixelId,
+      settings,
+    );
+    const userErrors = responseAsJSON.data?.webPixelUpdate?.userErrors ?? [];
+    const notFound = userErrors.some((e) => e.code === "NOT_FOUND");
+
+    if (notFound && !recoveredFromNotFound) {
+      recoveredFromNotFound = true;
+      console.log(
+        "Web pixel ID not found on Shopify; clearing stale ID and re-resolving...",
+      );
+      await clearWebPixelId(session);
+      const fromShopify = await fetchWebPixelIdFromShopify(admin);
+      if (fromShopify) {
+        await storeWebPixelId(session, fromShopify);
+        webPixelId = fromShopify;
+        continue;
+      }
+      await registerWebPixel({ request });
+      webPixelId = await getWebPixelId(session);
+      if (!webPixelId) {
+        console.error("Unable to obtain web pixel ID after NOT_FOUND recovery.");
+        return new Response(
+          JSON.stringify({
+            message:
+              "App pixel could not be updated — unable to find or create the web pixel. Try deleting ab-insightful from Shopify Admin -> Settings -> Customer events and re-registering.",
+            action: "updateWebPixel",
+          }),
+          { status: 500 },
+        );
+      }
+      continue;
+    }
+
+    if (userErrors.length > 0) {
+      console.error(
+        "An error occurred while trying to update the Web Pixel App Extension:",
+        userErrors,
+      );
+      return new Response(
+        JSON.stringify({
+          message: "App pixel was unable to update.",
+          action: "updateWebPixel",
+        }),
+        { status: 500 },
+      );
+    }
+
+    const newWebPixelSettings =
+      responseAsJSON.data?.webPixelUpdate?.webPixel?.settings;
+    console.log(`Web pixel updated. New settings: ${newWebPixelSettings}`);
+    return new Response(
+      JSON.stringify({
+        message: "App pixel updated successfully.",
+        action: "updateWebPixel",
+      }),
+      { status: 200 },
+    );
+  }
+}
+
+// Function for getting Web Pixel ID from database
+async function getWebPixelId(session) {
+  const currentSession = await db.session.findUnique({
+    where: {
+      id: session.id,
+    },
+  });
+  return currentSession?.webPixelId ?? null;
+}
+
+async function storeWebPixelId(session, webPixelId) {
+  await db.session.update({
+    where: { id: session.id },
+    data: { webPixelId },
+  });
+}
+
+async function clearWebPixelId(session) {
+  await db.session.update({
+    where: { id: session.id },
+    data: { webPixelId: null },
+  });
+}
+
+async function performWebPixelUpdate(admin, webPixelId, settings) {
   const response = await admin.graphql(
     `#graphql
         mutation($id: ID!, $settings: JSON!) {
@@ -155,49 +262,7 @@ export async function updateWebPixel({ request }) {
       },
     },
   );
-
-  const responseAsJSON = await response.json();
-  if (responseAsJSON.data?.webPixelUpdate?.userErrors?.length > 0) {
-    console.error(
-      "An error occurred while trying to update the Web Pixel App Extension:",
-      responseAsJSON.data.webPixelUpdate.userErrors,
-    );
-    return new Response(
-      JSON.stringify({
-        message: "App pixel was unable to update.",
-        action: "updateWebPixel",
-      }),
-      { status: 500 },
-    );
-  }
-
-  const newWebPixelSettings =
-    responseAsJSON.data?.webPixelUpdate?.webPixel?.settings;
-  console.log(`Web pixel updated. New settings: ${newWebPixelSettings}`);
-  return new Response(
-    JSON.stringify({
-      message: "App pixel updated successfully.",
-      action: "updateWebPixel",
-    }),
-    { status: 200 },
-  );
-}
-
-// Function for getting Web Pixel ID from database
-async function getWebPixelId(session) {
-  const currentSession = await db.session.findUnique({
-    where: {
-      id: session.id,
-    },
-  });
-  return currentSession?.webPixelId ?? null;
-}
-
-async function storeWebPixelId(session, webPixelId) {
-  await db.session.update({
-    where: { id: session.id },
-    data: { webPixelId },
-  });
+  return response.json();
 }
 
 // Query Shopify for the existing web pixel (works without an ID since API 2023-04)

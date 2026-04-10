@@ -34,7 +34,6 @@ export async function loader({ request }) {
     getSessionReportData(admin),
     getConversionsReportData(admin),
   ]);
-
   //looks up tutorial data
   const { getTutorialData } = await import("../services/tutorialData.server");
   const tutorialInfo = await getTutorialData();
@@ -223,24 +222,29 @@ export default function Reports() {
   //get conversions for experiment
   const getConversionRate = (experiment) => {
     //check for analysis data
+    //aggregate information
     if (experiment.analyses && experiment.analyses.length > 0) {
       //get the most recent analysis
-      const latestAnalysis =
-        experiment.analyses[experiment.analyses.length - 1];
-      //get the conversions and users from analysis
-      const { totalConversions, totalUsers } = latestAnalysis;
+      let summedUsers = 0;
+      let summedConversions = 0; 
+      for (let i = 0; i < experiment.analyses.length; i++) { 
+        let latestAnalysis = experiment.analyses[i];
+        let {totalConversions, totalUsers} = latestAnalysis;
+        summedUsers += totalUsers;
+        summedConversions += totalConversions;
+      }
 
       //check for valid data
       if (
-        totalConversions !== null &&
-        totalConversions !== undefined &&
-        totalUsers !== null &&
-        totalUsers !== undefined
+        summedConversions !== null &&
+        summedConversions !== undefined &&
+        summedUsers !== null &&
+        summedUsers !== undefined
       ) {
-        return `${totalConversions}/${totalUsers}`;
+        return `${summedConversions}/${summedUsers}`;
       }
     }
-    return "N/A";
+    return "N/A"; //no experiment data
   };
 
   //function responsible for render of table rows based off db

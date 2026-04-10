@@ -12,6 +12,9 @@ import {
   getCandidatesForScheduledEnd,
   getCandidatesForScheduledStart,
   getExperimentReportData,
+  getExperimentsWithAnalyses,
+  getMostRecentExperiment,
+  getNameOfExpGoal,
   isExperimentActive,
   getCandidatesForStableSuccessEnd,
 } from "../services/experiment.server";
@@ -21,10 +24,12 @@ vi.mock("../db.server", () => {
     default: {
       experiment: {
         findMany: vi.fn(),
+        findFirst: vi.fn(),
         findUnique: vi.fn(),
       },
       analysis: {
         findMany: vi.fn(),
+        findFirst: vi.fn(),
         findUnique: vi.fn(),
       },
     },
@@ -299,6 +304,111 @@ describe("getExperimentReportData", () => {
       },
     });
   });
+
+  test("returns null when experiment is not found", async () => {
+    db.experiment.findUnique.mockResolvedValueOnce(null);
+
+    const result = await getExperimentReportData(404, "all");
+
+    expect(result).toBeNull();
+  });
+});
+
+describe("getMostRecentExperiment", () => {
+  test("returns the newest active experiment", async () => {
+    const row = { id: 5, name: "Latest", status: "active" };
+    db.experiment.findFirst.mockResolvedValueOnce(row);
+
+    const result = await getMostRecentExperiment();
+
+    expect(db.experiment.findFirst).toHaveBeenCalledWith({
+      where: { status: ExperimentStatus.active },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(result).toEqual(row);
+  });
+
+  test("returns null when no active experiment exists", async () => {
+    db.experiment.findFirst.mockResolvedValueOnce(null);
+
+    const result = await getMostRecentExperiment();
+
+    expect(result).toBeNull();
+  });
+});
+
+describe("getNameOfExpGoal", () => {
+  test("returns analysis row with goal for experiment id", async () => {
+    const row = {
+      id: 1,
+      experimentId: 42,
+      goal: { id: 7, name: "Purchase" },
+    };
+    db.analysis.findFirst.mockResolvedValueOnce(row);
+
+    const result = await getNameOfExpGoal(42);
+
+    expect(db.analysis.findFirst).toHaveBeenCalledWith({
+      where: { experimentId: 42, deviceSegment: "all" },
+      include: { goal: true },
+    });
+    expect(result).toEqual(row);
+  });
+
+  test("returns null when no analysis exists", async () => {
+    db.analysis.findFirst.mockResolvedValueOnce(null);
+
+    const result = await getNameOfExpGoal(99);
+
+    expect(result).toBeNull();
+  });
+});
+
+describe("getExperimentsWithAnalyses", () => {
+  test("returns experiments that have analyses with project and nested relations", async () => {
+    const rows = [
+      {
+        id: 1,
+        project: { id: 10, maxUsersPerExperiment: 1000 },
+        analyses: [
+          {
+            id: 100,
+            variant: { id: 1, name: "Control" },
+            goal: { id: 7, name: "Checkout" },
+          },
+        ],
+      },
+    ];
+    db.experiment.findMany.mockResolvedValueOnce(rows);
+
+    const result = await getExperimentsWithAnalyses();
+
+    expect(db.experiment.findMany).toHaveBeenCalledWith({
+      where: {
+        analyses: { some: {} },
+      },
+      include: {
+        project: true,
+        analyses: {
+          include: {
+            variant: true,
+            goal: true,
+          },
+          orderBy: { calculatedWhen: "desc" },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(result).toEqual(rows);
+  });
+
+  test("returns empty array when no experiments have analyses", async () => {
+    db.experiment.findMany.mockResolvedValueOnce([]);
+
+    const result = await getExperimentsWithAnalyses();
+
+    expect(result).toEqual([]);
+  });
 });
 
 describe("isExperimentActive", () => {
@@ -390,7 +500,26 @@ describe("experimentListReport", () => {
       endDate: true,
       endCondition: true,
     });
-    expect(arg.select.analyses).toBeDefined();
+    expect(arg.select.history).toEqual({
+      select: {
+        prevStatus: true,
+        newStatus: true,
+        changedAt: true,
+      },
+      orderBy: {
+        changedAt: "asc",
+      },
+    });
+    expect(arg.select.analyses).toEqual({
+      select: {
+        totalConversions: true,
+        totalUsers: true,
+        calculatedWhen: true,
+      },
+      orderBy: {
+        calculatedWhen: "asc",
+      },
+    });
     expect(arg.orderBy).toEqual({ createdAt: "desc" });
     expect(result).toEqual(mockExperiments);
   });

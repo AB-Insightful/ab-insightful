@@ -516,8 +516,11 @@ describe("experimentListReport", () => {
         totalUsers: true,
         calculatedWhen: true,
       },
+      where: {
+        deviceSegment: "all",
+      },
       orderBy: {
-        calculatedWhen: "asc",
+        calculatedWhen: "desc",
       },
     });
     expect(arg.orderBy).toEqual({ createdAt: "desc" });

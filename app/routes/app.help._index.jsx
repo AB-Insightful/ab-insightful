@@ -101,29 +101,36 @@ export default function Help() {
         <s-menu id="filterComponent" accessibilityLabel="Filter actions">
           <s-button
             icon="flag"
+            accessibilityLabel="GettingStarted"
             onClick={() => handleFilterChange("getting-started")}
           >
             Getting Started
           </s-button>
           <s-button
             icon="measurement-volume"
+            accessibilityLabel="ManageExperiments"
             onClick={() => handleFilterChange("manage-experiments")}
           >
             Manage Experiments
           </s-button>
           <s-button
             icon="chart-vertical"
+            accessibilityLabel="Statistics"
             onClick={() => handleFilterChange("statistics")}
           >
             Statistics
           </s-button>
           <s-button
             icon="page-report"
+            accessibilityLabel="Reporting"
             onClick={() => handleFilterChange("reporting")}
           >
             Reporting
           </s-button>
-          <s-button onClick={() => handleFilterChange("all")}>
+          <s-button 
+            icon="text-align-left"
+            accessibilityLabel="ShowAll"
+            onClick={() => handleFilterChange("all")}>
             Show All
           </s-button>
         </s-menu>

@@ -74,7 +74,7 @@ export default function ConversionsCard({ conversionsData, sessionData, hasExper
                   <s-text color="subdued">No conversion data to display yet.</s-text>
                 </div>
               ) : (
-              <ResponsiveContainer width="100%" height="100%" minWidth="0px">
+              <ResponsiveContainer width="100%" height={250} minWidth={0}>
                 <AreaChart data={chartData} debounce={50} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorConversions" x1="0" y1="0" x2="0" y2="1">

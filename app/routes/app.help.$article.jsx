@@ -30,13 +30,13 @@ export default function Test() {
   const { article } = useLoaderData();
 
   return (
-    <s-page heading="Article">
-      <s-button slot="primary-action" variant="primary" href="/app/help">
+    <s-page heading="Article" suppressHydrationWarning>
+      <s-button slot="primary-action" variant="primary" href="/app/help" suppressHydrationWarning>
         All Help Articles
       </s-button>
       <s-section>
         <Markdown>{article}</Markdown>
-        <s-button variant="primary" href="/app/help">
+        <s-button variant="primary" href="/app/help" suppressHydrationWarning>
           All Help Articles
         </s-button>
       </s-section>

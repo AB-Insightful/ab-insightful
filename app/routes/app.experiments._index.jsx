@@ -438,7 +438,7 @@ export default function Experimentsindex() {
       );
     }
 
-    return <s-badge icon="draft-orders">Draft</s-badge>;
+    return <s-badge icon="order-draft">Draft</s-badge>;
   };
   //validates & submit rename
   function submitRename(experimentId) {
@@ -693,21 +693,22 @@ export default function Experimentsindex() {
 
   if ((experiments || []).length > 0) {
     return (
-      <s-page heading="Experiment Management" style={{ maxWidth: "none" }}>
+      <s-page heading="Experiment Management" suppressHydrationWarning>
         <s-button
           slot="primary-action"
           variant="primary"
           href="/app/experiments/new"
+          suppressHydrationWarning
         >Create Experiment</s-button>
         <div style={{ margin: "24px 0" }}>
           <s-button commandFor="activity-filter">Filter By</s-button>
             <s-menu id="activity-filter" accessibilityLabel="Filter by activity">
-              <s-button onClick={() => {setActiveFilter("all"); setCurrentPage(1);}}>All</s-button>
-              <s-button onClick={() => {setActiveFilter(ExperimentStatus.draft); setCurrentPage(1);}}>Draft</s-button>
-              <s-button icon="gauge" onClick={() => {setActiveFilter(ExperimentStatus.active); setCurrentPage(1);}}>Active</s-button>
-              <s-button icon="check" onClick={() => {setActiveFilter(ExperimentStatus.completed); setCurrentPage(1);}}>Completed</s-button>
-              <s-button icon="pause-circle" onClick={() => {setActiveFilter(ExperimentStatus.paused); setCurrentPage(1);}}>Paused</s-button>
-              <s-button icon="order" onClick={() => {setActiveFilter(ExperimentStatus.archived); setCurrentPage(1);}}>Archived</s-button>
+              <s-button icon="chart-popular" accessibilityLabel="All Experiments" onClick={() => {setActiveFilter("all"); setCurrentPage(1);}}>All</s-button>
+              <s-button icon="order-draft" accessibilityLabel="Draft experiments" onClick={() => {setActiveFilter(ExperimentStatus.draft); setCurrentPage(1);}}>Draft</s-button>
+              <s-button icon="gauge" accessibilityLabel="Active experiments" onClick={() => {setActiveFilter(ExperimentStatus.active); setCurrentPage(1);}}>Active</s-button>
+              <s-button icon="check" accessibilityLabel="Completed experiments" onClick={() => {setActiveFilter(ExperimentStatus.completed); setCurrentPage(1);}}>Completed</s-button>
+              <s-button icon="pause-circle" accessibilityLabel="Paused experiments" onClick={() => {setActiveFilter(ExperimentStatus.paused); setCurrentPage(1);}}>Paused</s-button>
+              <s-button icon="order" accessibilityLabel="Archived experiments" onClick={() => {setActiveFilter(ExperimentStatus.archived); setCurrentPage(1);}}>Archived</s-button>
             </s-menu>
         </div>
         {/*modal for tutorial popup */}
@@ -717,6 +718,7 @@ export default function Experimentsindex() {
             heading="Quick tour"
             padding="base"
             size="base"
+            accessibilityLabel="ExperimentListQuickTour"
           >
             <s-stack gap="base">
               <s-paragraph>
@@ -751,7 +753,7 @@ export default function Experimentsindex() {
 
             <s-table>
               <s-table-header-row>
-                <s-table-header listslot="primary">
+                <s-table-header listSlot="primary">
                   <s-button variant="tertiary" onClick={() => handleSort("name")}>
                     Name {getSortIndicator("name")}
                   </s-button>

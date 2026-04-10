@@ -27,6 +27,8 @@
     "seed:dev": "node prisma/seed.js --environment=dev",
     "seed:test": "node prisma/seed.js --environment=test",
     "seed:demo": "node prisma/seed.js --environment=demo",
+    "seed:base": "node prisma/seed.js --environment=base",
+    "seed:prod": "node prisma/seed.js --environment=prod",
     "db:dev": "node scripts/switch-db.js --environment=dev",
     "db:test": "node scripts/switch-db.js --environment=test",
     "db:prod": "node scripts/switch-db.js --environment=prod",
@@ -39,7 +41,9 @@
   "prisma": {
     "seed:dev": "node prisma/seed.js --environment=dev",
     "seed:test": "node prisma/seed.js --environment=test",
-    "seed:demo": "node prisma/seed.js --environment=demo"
+    "seed:demo": "node prisma/seed.js --environment=demo",
+    "seed:base": "node prisma/seed.js --environment=base",
+    "seed:prod": "node prisma/seed.js --environment=prod"
   },
   "type": "module",
   "engines": {

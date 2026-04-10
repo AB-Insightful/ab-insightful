@@ -333,6 +333,7 @@ export default function Reports() {
         heading="Quick tour"
         padding="base"
         size="base"
+        accessibilityLabel="ReportsQuickTour"
       >
         <s-stack gap="base">
           <s-paragraph>

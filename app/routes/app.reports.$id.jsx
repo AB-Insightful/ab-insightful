@@ -1,3 +1,18 @@
+//suppress react hydration warnings
+//known issue between polaris web components and React hydration
+if (typeof window !== "undefined") {
+  const originalError = console.error;
+  console.error = (...args) => {
+    if (
+      typeof args[0] === "string" &&
+      args[0].includes("Extra attributes from the server")
+    ) {
+      return;
+    }
+    originalError.call(console, ...args);
+  };
+}
+
 // Report page for an individual experiment
 
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -458,6 +473,7 @@ export default function Report() {
       {/* Action button */}
       <s-button 
         slot="primary-action" 
+        variant="primary"
         href={`/app/experiments/${experiment.id}`}
         disabled={isLocked}>
         Edit Experiment

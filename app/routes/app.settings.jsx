@@ -513,6 +513,7 @@ export default function Settings() {
             heading="Quick tour"
             padding="base"
             size="base"
+            accessibilityLabel="SettingsQuickTour"
       >
         <s-stack gap="base">
           <s-paragraph>
@@ -782,7 +783,7 @@ export default function Settings() {
 
       {/*language*/}
       <s-section heading="Language">
-        <s-select name="language">
+        <s-select name="language" label="language">
           <s-option value="English">English</s-option>
         </s-select>
       </s-section>

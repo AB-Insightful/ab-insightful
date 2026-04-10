@@ -590,13 +590,13 @@ export default function Index() {
             {/* recent experiment additional info section */}
             <s-table>
               <s-table-header-row>
-                <s-table-header listslot="primary">Name</s-table-header>
+                <s-table-header listSlot="primary">Name</s-table-header>
                 <s-table-header listSlot="secondary">Status</s-table-header>
                 <s-table-header listSlot="labeled" format="numeric">Goal Completion Rate</s-table-header>
                 <s-table-header listSlot="labeled" format="numeric">Improvement (%)</s-table-header>
                 <s-table-header listSlot="labeled" format="numeric">Probability to be the best</s-table-header>                
               </s-table-header-row>
-                <s-table-body>
+              <s-table-body>
                 {tableData.map((row, index) => (
                   <s-table-row key={row.variantId ?? index}>
                     <s-table-cell>{row.variantName ?? "No Name"}</s-table-cell>
@@ -616,8 +616,9 @@ export default function Index() {
                   </s-table-row>
                 ))}
               </s-table-body>
-              </s-table>
-             <s-button href={"/app/reports/" + experiment.expId}>More Info for {experiment.name}</s-button></s-section>
+            </s-table>
+            <s-button href={"/app/reports/" + experiment.expId}>More Info for {experiment.name}</s-button>
+          </s-section>
         {/*Additional aside details for latest active experiment */}
         </s-grid-item>
         <s-grid-item>

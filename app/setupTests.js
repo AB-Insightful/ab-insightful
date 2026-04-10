@@ -28,12 +28,13 @@ vi.mock('../shopify.server', () => ({
 
 // Register custom elements so jsdom doesn't choke
 function defineOnce(tag) {
-  if (typeof customElements === "undefined") return; // ← add this guard
+  if (typeof customElements === "undefined") return;
   if (!customElements.get(tag)) {
     customElements.define(tag, class extends HTMLElement {});
   }
 }
 
+// Original tags
 defineOnce("s-text-field");
 defineOnce("s-button");
 defineOnce("s-popover");
@@ -45,6 +46,32 @@ defineOnce("s-paragraph");
 defineOnce("s-text");
 defineOnce("s-button-group");
 defineOnce("s-link");
+
+// Additional tags needed by app.experiments.new.jsx fiber-based tests
+defineOnce("s-text-area");
+defineOnce("s-select");
+defineOnce("s-checkbox");
+defineOnce("s-date-field");
+defineOnce("s-number-field");
+defineOnce("s-card");
+defineOnce("s-layout");
+defineOnce("s-layout-section");
+defineOnce("s-inline-stack");
+defineOnce("s-block-stack");
+defineOnce("s-box");
+defineOnce("s-banner");
+defineOnce("s-modal");
+defineOnce("s-icon");
+defineOnce("s-divider");
+defineOnce("s-badge");
+defineOnce("s-tooltip");
+defineOnce("s-form-layout");
+defineOnce("s-form-layout-group");
+defineOnce("s-choice-list");
+defineOnce("s-radio-button");
+defineOnce("s-tag");
+defineOnce("s-thumbnail");
+defineOnce("s-drop-zone");
 
 // Patch document.createElement so <s-text-field> acts like a real input for tests
 if (typeof document !== "undefined") {

@@ -5,6 +5,8 @@ import { PrismaClient } from '@prisma/client'
 import { seedDev } from './seed.dev.js'
 import { seedTest } from './seed.test.js'
 import { seedDemo } from './seed.demo.js'
+import { seedBase } from './seed.base.js'
+import { seedProd } from './seed.prod.js'
 
 const options = { // define the options your script supports
   environment: { type: 'string' },
@@ -19,6 +21,12 @@ async function main() {
 
   switch (environment) { // add a case for each environment you want to support.
 
+    case 'base':
+      await seedBase(prisma);
+      break;
+    case 'prod':
+      await seedProd(prisma);
+      break;
     case 'dev':
       /** data for your development */
       await seedDev(prisma);
@@ -30,7 +38,7 @@ async function main() {
       await seedDemo(prisma);
       break;
     default:
-      throw new error("Invalid environment. Use --environment=dev|test|demo");
+      throw new Error("Invalid environment. Use --environment=dev|test|demo");
   }
 }
 

@@ -95,6 +95,21 @@ describe("experiment.server segmented analysis", () => {
 
       expect(result).toBeNull();
     });
+
+    it('defaults to deviceSegment "all" when segment is omitted', async () => {
+      db.analysis.findFirst.mockResolvedValue({
+        conversionRate: 0.18,
+      });
+
+      const result = await getVariantConversionRate(2003, 3006);
+
+      expect(result).toBe(0.18);
+      expect(db.analysis.findFirst).toHaveBeenCalledWith({
+        where: { experimentId: 2003, variantId: 3006, deviceSegment: "all" },
+        orderBy: { calculatedWhen: "desc" },
+        include: { goal: true },
+      });
+    });
   });
 
   describe("getImprovement", () => {

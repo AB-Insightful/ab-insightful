@@ -60,6 +60,20 @@ describe("GetFrontendExperimentsData", () => {
     expect(result[0].variants[0].sectionId).toBeNull();
   });
 
+  it("sets sectionId to null when configData exists but sectionId is missing", async () => {
+    db.experiment.findMany.mockResolvedValue([
+      {
+        id: 4,
+        variants: [
+          { id: 40, name: "Control", configData: {}, trafficAllocation: "1.0" },
+        ],
+      },
+    ]);
+
+    const result = await GetFrontendExperimentsData();
+    expect(result[0].variants[0].sectionId).toBeNull();
+  });
+
   it("converts trafficAllocation strings to numbers", async () => {
     db.experiment.findMany.mockResolvedValue([
       {

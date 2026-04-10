@@ -179,7 +179,7 @@ export async function loader({ params, request }) {
 export default function Report() {
   // Load report information
   const { experiment, analysis, deviceSegment } = useLoaderData();
-  const safeAnalysis = (analysis ?? []).filter(Boolean);
+  const safeAnalysis = (analysis ?? []).filter(Boolean); //based off safeAnalysis
 
   //status manager refresher
   const fetcher = useFetcher();

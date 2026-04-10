@@ -222,6 +222,7 @@ export default function Reports() {
   //get conversions for experiment
   const getConversionRate = (experiment) => {
     //check for analysis data
+    //aggregate information
     if (experiment.analyses && experiment.analyses.length > 0) {
       //get the most recent analysis
       let summedUsers = 0;
@@ -232,9 +233,6 @@ export default function Reports() {
         summedUsers += totalUsers;
         summedConversions += totalConversions;
       }
-      
-      
-      //get the conversions and users from analysis
 
       //check for valid data
       if (
@@ -246,7 +244,7 @@ export default function Reports() {
         return `${summedConversions}/${summedUsers}`;
       }
     }
-    return "N/A";
+    return "N/A"; //no experiment data
   };
 
   //function responsible for render of table rows based off db

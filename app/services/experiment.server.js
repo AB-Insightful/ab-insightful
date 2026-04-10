@@ -254,7 +254,7 @@ export async function getExperimentsList() {
 //NOTE:currently scoped to live in the app.reports_index page, which means it is not scoped
 //to perform device filters elsewhere without some kind of action based update functionality.  
 export async function experimentListReport(filterDevSeg = "all") {
-  const experiments = await db.experiment.findMany({
+  const experiments = (await db.experiment.findMany({
     select: {
       id: true,
       name: true,
@@ -292,10 +292,10 @@ export async function experimentListReport(filterDevSeg = "all") {
     orderBy: {
       createdAt: "desc",
     },
-  });
+  })) ?? []; //returns empty array if null
 
   //returns the mapped version of the experiment with only latest analyses.
-  //will returns empty array if nothing is found. 
+  //will returns empty array if nothing is found.
   return experiments.map(function (experiment) {
     var latestCalculatedWhen = null;
 
@@ -305,7 +305,7 @@ export async function experimentListReport(filterDevSeg = "all") {
     }
 
     var latestAnalyses = [];
-
+    if (!experiments) return [];
     //function returns all the valid analysis that match given time. 
     if (latestCalculatedWhen) {
       latestAnalyses = experiment.analyses.filter(function (analysis) {

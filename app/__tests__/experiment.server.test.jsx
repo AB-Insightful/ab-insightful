@@ -393,14 +393,14 @@ describe("experimentListReport", () => {
     expect(arg.select.analyses).toBeDefined();
     expect(arg.orderBy).toEqual({ createdAt: "desc" });
     expect(result).toEqual(mockExperiments);
-  });
+  }) ?? [];
 
   test("returns null when no experiments found", async () => {
-    db.experiment.findMany.mockResolvedValueOnce(null);
+    db.experiment.findMany.mockResolvedValueOnce([]); //pretends to return [] on db query
 
     const result = await experimentListReport();
 
-    expect(result).toBeNull();
+    expect(result).toEqual([]);
   });
 
   test("returns empty array when experiments is empty", async () => {

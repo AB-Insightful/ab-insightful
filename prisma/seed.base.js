@@ -8,7 +8,6 @@
 
 export async function seedBase(prisma) {
 
-
   // ----- Project -----
   const project = await prisma.project.upsert({
     where: { shop: 'dev-example.myshopify.com' },
@@ -197,63 +196,8 @@ export async function seedBase(prisma) {
     },
   });
 
-  const experiment2Mobile = await prisma.experiment.upsert({
-  where: { id: 2012 },
-  update: {
-    name: 'Product Page - Mobile Only',
-    description: 'Test mobile-only checkout optimization.',
-    status: 'active',
-    trafficSplit: 1.0,
-    sectionId: 'product-page',
-    deviceSegment: 'mobile',  // <- Add this
-    projectId: project.id,
-  },
-  create: {
-    id: 2012,
-    name: 'Product Page - Mobile Only',
-    description: 'Test mobile-only checkout optimization.',
-    status: 'active',
-    trafficSplit: 1.0,
-    sectionId: 'product-page',
-    deviceSegment: 'mobile',  // <- Add this
-    projectId: project.id,
-  },
-});
-
-const experiment3Desktop = await prisma.experiment.upsert({
-  where: { id: 2013 },
-  update: {
-    name: 'Button Test - Desktop Only',
-    description: 'Desktop-specific button color test.',
-    status: 'active',
-    trafficSplit: 1.0,
-    sectionId: 'button-test',
-    deviceSegment: 'desktop',  // <- Add this
-    projectId: project.id,
-  },
-  create: {
-    id: 2013,
-    name: 'Button Test - Desktop Only',
-    description: 'Desktop-specific button color test.',
-    status: 'active',
-    trafficSplit: 1.0,
-    sectionId: 'button-test',
-    deviceSegment: 'desktop',  // <- Add this
-    projectId: project.id,
-  },
-});
-
   // ----- Variants for All Experiments -----
-  const experiments = [
-    experiment,
-    experiment2,
-    experiment3,
-    experiment4,
-    experiment5,
-    experiment6,
-    experiment2Mobile,
-    experiment3Desktop,
-  ];
+  const experiments = [experiment, experiment2, experiment3, experiment4, experiment5, experiment6];
   const variantConfigs = [
     { idStart: 3001, control: { layout: 'current' }, variant: { layout: 'cta' } },
     { idStart: 3003, control: { layout: 'default' }, variant: { layout: 'sticky_cta' } },
@@ -261,8 +205,6 @@ const experiment3Desktop = await prisma.experiment.upsert({
     { idStart: 3007, control: { showDiscount: false }, variant: { showDiscount: true } },
     { idStart: 3009, control: { steps: 3 }, variant: { steps: 1 } },
     { idStart: 3011, control: { delay: 10 }, variant: { delay: 30 } },
-    { idStart: 3013, control: { layout: 'default_mobile' }, variant: { layout: 'compressed_mobile' } },
-    { idStart: 3015, control: { color: 'blue' }, variant: { color: 'black' } },
   ];
 
   for (let i = 0; i < experiments.length; i++) {

@@ -61,6 +61,33 @@ describe("ConversionsCard", () => {
     expect(screen.getByText("0.00%")).toBeInTheDocument();
   });
 
+  it("shows the no-data state when all merged conversion points resolve to zero", async () => {
+    render(
+      <ConversionsCard
+        conversionsData={{
+          sessions: [
+            { date: "2026-01-01", count: 0 },
+            { date: "2026-01-02", count: 5 },
+          ],
+        }}
+        sessionData={{
+          sessions: [
+            { date: "2026-01-01", count: 0 },
+            { date: "2026-01-02", count: 0 },
+          ],
+        }}
+        hasExperiments
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("No conversion data to display yet.")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("area-chart")).not.toBeInTheDocument();
+    expect(screen.getByText("0.00%")).toBeInTheDocument();
+  });
+
   it("renders chart and computes conversion rates with sorted merged dates", async () => {
     render(
       <ConversionsCard

@@ -2,6 +2,10 @@ import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
+const hasNonZeroSessionData = (sessions) => {
+  return sessions.some((row) => Number(row?.count) > 0);
+};
+
 export default function SessionsCard({ sessionData }) {
   // Recharts requires the window object to calculate dimensions
   // We use this state variable to ensure the chart only renders on the client side
@@ -11,6 +15,7 @@ export default function SessionsCard({ sessionData }) {
 
   // Safely destructure sessions and total from sessionData, providing defaults to prevent errors if sessionData is undefined
   const { sessions, total } = sessionData || { sessions: [], total: 0 };
+  const hasChartData = hasNonZeroSessionData(sessions);
 
   const handleFullReport = () => {
     // Cleaner navigation to the native Shopify Analytics report 
@@ -37,7 +42,7 @@ export default function SessionsCard({ sessionData }) {
         }}>
           <div style={{ height: "250px", width: "100%" , minHeight: "250px", position: "relative"}}>
             {isClient ? (
-                sessions.length === 0 ? (
+                !hasChartData ? (
                   <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <s-text color="subdued">No session data to display yet.</s-text>
                   </div>

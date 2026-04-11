@@ -38,6 +38,34 @@ import { isLockedStatus, allowedStatusIntents } from "./policies/experimentPolic
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
+const hasChartData = (data) => {
+  return data.some((point) =>
+    Object.entries(point).some(
+      ([key, value]) => key !== "name" && value !== null && value !== undefined,
+    ),
+  );
+};
+
+const hasNonZeroAnalysisMetrics = (analyses, dateRange) => {
+  if (!Array.isArray(analyses) || !dateRange?.start || !dateRange?.end) {
+    return false;
+  }
+
+  const startDate = new Date(dateRange.start + "T00:00:00");
+  const endDate = new Date(dateRange.end + "T23:59:59");
+
+  return analyses.some((analysis) => {
+    if (!analysis?.calculatedWhen) return false;
+
+    const calculatedWhen = new Date(analysis.calculatedWhen);
+    if (calculatedWhen < startDate || calculatedWhen > endDate) {
+      return false;
+    }
+
+    return Number(analysis.totalUsers) > 0 && Number(analysis.totalConversions) > 0;
+  });
+};
+
 export const action = async ({ request, params }) => {
   await authenticate.admin(request);
 
@@ -427,7 +455,12 @@ export default function Report() {
   const expectedLossDataMap = {};
 
   experiment.analyses.forEach((analysis) => {
-    const dateKey = analysis.calculatedWhen.toLocaleDateString("en-US");
+    if (!analysis?.calculatedWhen || !analysis?.variant?.name) return;
+
+    const calculatedWhen = new Date(analysis.calculatedWhen);
+    if (Number.isNaN(calculatedWhen.getTime())) return;
+
+    const dateKey = calculatedWhen.toLocaleDateString("en-US");
     if (!probabilityDataMap[dateKey]) {
       probabilityDataMap[dateKey] = { name: dateKey };
     }
@@ -465,6 +498,10 @@ export default function Report() {
       })
       .sort((a, b) => new Date(a.name) - new Date(b.name));
   }, [expectedLossData, dateRange]);
+
+  const hasReportMetrics = hasNonZeroAnalysisMetrics(experiment.analyses, dateRange);
+  const hasProbabilityChartData = hasReportMetrics && hasChartData(filteredPData);
+  const hasExpectedLossChartData = hasReportMetrics && hasChartData(filteredELData);
 
   const heading = experiment?.name ? `Report - ${experiment.name}` : "Report";
   return (
@@ -702,7 +739,7 @@ export default function Report() {
       </s-section>
       {/* Probability Chart Section */}
       <s-section heading="Probability To Be The Best">
-        {isClient ? (
+        {isClient && hasProbabilityChartData ? (
           <ResponsiveContainer width="100%" height={400}>
             <LineChart data={filteredPData}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -748,6 +785,10 @@ export default function Report() {
               })}
             </LineChart>
           </ResponsiveContainer>
+        ) : isClient ? (
+          <div style={{ width: "100%", height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+             <s-text color="subdued">No graph data available for the selected date range.</s-text>
+          </div>
         ) : (
           <div style={{ width: "100%", height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
              <s-text color="subdued">Loading chart...</s-text>
@@ -757,7 +798,7 @@ export default function Report() {
 
       {/* Expected Loss Chart Section */}
       <s-section heading="Expected Loss">
-        {isClient ? (
+        {isClient && hasExpectedLossChartData ? (
           <ResponsiveContainer width="100%" height={400}>
             <LineChart data={filteredELData}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -797,6 +838,10 @@ export default function Report() {
               })}
             </LineChart>
           </ResponsiveContainer>
+        ) : isClient ? (
+          <div style={{ width: "100%", height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <s-text color="subdued">No graph data available for the selected date range.</s-text>
+          </div>
         ) : (
           <div style={{ width: "100%", height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <s-text color="subdued">Loading chart...</s-text>

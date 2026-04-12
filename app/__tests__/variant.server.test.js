@@ -1,14 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const mocks = vi.hoisted(() => ({
+  findMany: vi.fn(),
+}));
+
 vi.mock("../db.server", () => ({
   default: {
     variant: {
-      findMany: vi.fn(),
+      findMany: mocks.findMany,
     },
   },
 }));
 
-import db from "../db.server";
 import { getVariants } from "../services/variant.server";
 
 describe("getVariants", () => {
@@ -22,40 +25,40 @@ describe("getVariants", () => {
       { id: 2, experimentId: 2001, name: "Variant A" },
     ];
 
-    db.variant.findMany.mockResolvedValue(rows);
+    mocks.findMany.mockResolvedValue(rows);
 
     const result = await getVariants(2001);
 
-    expect(db.variant.findMany).toHaveBeenCalledWith({
+    expect(mocks.findMany).toHaveBeenCalledWith({
       where: { experimentId: 2001 },
     });
     expect(result).toEqual(rows);
   });
 
   it("returns an empty array when no variants exist", async () => {
-    db.variant.findMany.mockResolvedValue([]);
+    mocks.findMany.mockResolvedValue([]);
 
     const result = await getVariants(9999);
 
-    expect(db.variant.findMany).toHaveBeenCalledWith({
+    expect(mocks.findMany).toHaveBeenCalledWith({
       where: { experimentId: 9999 },
     });
     expect(result).toEqual([]);
   });
 
   it("passes through undefined expId to the db query shape", async () => {
-    db.variant.findMany.mockResolvedValue([]);
+    mocks.findMany.mockResolvedValue([]);
 
     const result = await getVariants(undefined);
 
-    expect(db.variant.findMany).toHaveBeenCalledWith({
+    expect(mocks.findMany).toHaveBeenCalledWith({
       where: { experimentId: undefined },
     });
     expect(result).toEqual([]);
   });
 
   it("throws when db.variant.findMany rejects", async () => {
-    db.variant.findMany.mockRejectedValue(new Error("db failure"));
+    mocks.findMany.mockRejectedValue(new Error("db failure"));
 
     await expect(getVariants(2001)).rejects.toThrow("db failure");
   });

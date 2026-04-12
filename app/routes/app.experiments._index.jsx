@@ -93,7 +93,7 @@ export async function action({ request }) {
         return { ok: true, action: ExperimentStatus.paused };
       } catch (error) {
         console.error("Pause Error:", error);
-        return { ok: false, error: "Failed to pause experiment" }, { status: 500 };
+        return { ok: false, error: "Failed to pause experiment", status: 500 };
       }
 
     case "resume":
@@ -102,7 +102,7 @@ export async function action({ request }) {
         return { ok: true, action: ExperimentStatus.active };
       } catch (error) {
         console.error("Resume Error:", error);
-        return { ok: false, error: "Failed to resume experiment" }, { status: 500 };
+        return { ok: false, error: "Failed to resume experiment", status: 500 };
       }
 
     case "rename": {
@@ -154,7 +154,7 @@ export async function action({ request }) {
         return {ok: true, action: ExperimentStatus.archived}; 
       } catch (error) {
         console.error("Archive Error:", error);
-        return {ok: false, error: "Failed to archive experiment"}, { status: 500};
+        return {ok: false, error: "Failed to archive experiment", status: 500};
       }
 
     //performs switch case action upon clicking 'I understand" button for tutorial modal
@@ -165,7 +165,7 @@ export async function action({ request }) {
         return {ok: true, action: "tutorial_viewed"}; 
       } catch (error) {
         console.error("Tutorial Error:", error);
-        return {ok: false, error: "Failed to update viewedListExperiment"}, { status: 500};
+        return {ok: false, error: "Failed to update viewedListExperiment", status: 500};
       }
     
     case "delete":
@@ -174,7 +174,7 @@ export async function action({ request }) {
         return { ok: true, action: "deleteExperiment" };
       } catch (error) {
         console.error("Delete Error:", error);
-        return { ok: false, error: "Failed to delete experiment"}, {status: 500}
+        return { ok: false, error: "Failed to delete experiment", status: 500}
       }
 
     case "start":
@@ -183,7 +183,7 @@ export async function action({ request }) {
         return { ok: true, action: ExperimentStatus.active };
       } catch (error) {
         console.error("Start Error:", error);
-        return { ok: false, error: "Failed to start experiment"}, {status: 500}
+        return { ok: false, error: "Failed to start experiment", status: 500}
       }
 
     case "end":
@@ -192,7 +192,7 @@ export async function action({ request }) {
         return { ok: true, action: ExperimentStatus.completed };
       } catch (error) {
         console.error("End Error:", error);
-        return { ok: false, error: "Failed to end experiment"}, {status: 500}
+        return { ok: false, error: "Failed to end experiment", status: 500}
       }
 
     default:
@@ -203,7 +203,7 @@ export async function action({ request }) {
       return { ok: true, action: "analysis_updated" };
     } catch (error) {
       console.error("Analysis Error:", error);
-      return { ok: false, error: "Stats calculation failed" }, { status: 500 };
+      return { ok: false, error: "Stats calculation failed", status: 500 };
     }
   }
 }

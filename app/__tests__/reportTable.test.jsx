@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { waitFor } from "@testing-library/react";
 import { useLoaderData } from "react-router";
 
 vi.mock("react-router", () => ({
@@ -36,14 +37,14 @@ vi.mock("../contexts/DateRangeContext", () => ({
 }));
 
 vi.mock("recharts", () => ({
-  LineChart: () => null,
+  LineChart: ({ children }) => <div data-testid="line-chart">{children}</div>,
   Line: () => null,
   XAxis: () => null,
   YAxis: () => null,
   CartesianGrid: () => null,
   Tooltip: () => null,
   Legend: () => null,
-  ResponsiveContainer: () => null,
+  ResponsiveContainer: ({ children }) => <div data-testid="responsive-container">{children}</div>,
   ReferenceLine: () => null,
 }));
 
@@ -135,6 +136,73 @@ describe("Report - renderTableData", () => {
     const { container } = render(<Report />);
     const tableBody = container.querySelector("s-table-body");
     expect(tableBody?.children.length ?? 0).toBe(0);
+  });
+
+  it("shows a no-data indicator instead of charts when no chartable report data exists", async () => {
+    useLoaderData.mockReturnValue(buildLoaderData([]));
+
+    render(<Report />);
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("No graph data available for the selected date range.").length,
+      ).toBe(2);
+    });
+
+    expect(screen.queryByTestId("line-chart")).not.toBeInTheDocument();
+  });
+
+  it("shows the placeholder when report rows have zero conversions or sessions", async () => {
+    const analysis = [
+      makeAnalysisRow({
+        id: 1,
+        variantName: "Control",
+        totalConversions: 0,
+        totalUsers: 300,
+      }),
+      makeAnalysisRow({
+        id: 2,
+        variantName: "Variant A",
+        totalConversions: 12,
+        totalUsers: 0,
+        improvement: 5,
+      }),
+    ];
+
+    useLoaderData.mockReturnValue({
+      ...buildLoaderData(analysis),
+      experiment: {
+        ...buildLoaderData(analysis).experiment,
+        analyses: [
+          {
+            calculatedWhen: "2026-01-02T00:00:00Z",
+            probabilityOfBeingBest: 0,
+            expectedLoss: 0,
+            totalConversions: 0,
+            totalUsers: 300,
+            variant: { name: "Control" },
+          },
+          {
+            calculatedWhen: "2026-01-02T00:00:00Z",
+            probabilityOfBeingBest: 0,
+            expectedLoss: 0,
+            totalConversions: 12,
+            totalUsers: 0,
+            variant: { name: "Variant A" },
+          },
+        ],
+      },
+    });
+
+    render(<Report />);
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("No graph data available for the selected date range.").length,
+      ).toBe(2);
+    });
+
+    expect(screen.queryByTestId("line-chart")).not.toBeInTheDocument();
   });
 
   it("displays conversions/users for each row", () => {

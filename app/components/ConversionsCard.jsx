@@ -2,6 +2,10 @@ import { useState, useEffect, useMemo } from "react";
 import PropTypes from "prop-types";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
+const hasNonZeroConversionData = (data) => {
+  return data.some((point) => Number(point?.conversionRate) > 0);
+};
+
 export default function ConversionsCard({ conversionsData, sessionData, hasExperiments }) {
   // Recharts requires the window object to calculate dimensions
   // We use this state variable to ensure the chart only renders on the client side
@@ -40,6 +44,8 @@ export default function ConversionsCard({ conversionsData, sessionData, hasExper
     });
   }, [conversionSessions, trafficSessions, hasExperiments]);
 
+  const hasChartData = hasNonZeroConversionData(chartData);
+
   const totalConversions = conversionSessions.reduce((acc, curr) => acc + (Number(curr.count) || 0), 0);
   const totalSessions = trafficSessions.reduce((acc, curr) => acc + (Number(curr.count) || 0), 0);
   const conversionRate = hasExperiments && totalSessions > 0 ? (totalConversions / totalSessions) * 100 : 0;
@@ -69,7 +75,7 @@ export default function ConversionsCard({ conversionsData, sessionData, hasExper
         }}>
           <div style={{ height: "250px", width: "100%" , minHeight: "250px", position: "relative"}}>
             {isClient ? (
-              chartData.length === 0 ? (
+              !hasChartData ? (
                 <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <s-text color="subdued">No conversion data to display yet.</s-text>
                 </div>

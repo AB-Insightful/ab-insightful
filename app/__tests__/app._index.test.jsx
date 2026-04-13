@@ -9,6 +9,21 @@ const hoisted = vi.hoisted(() => ({
   authenticateAdminMock: vi.fn(),
 }));
 
+vi.mock("recharts", () => ({
+  LineChart: ({ children }) => <div data-testid="line-chart">{children}</div>,
+  Line: () => null,
+  XAxis: () => null,
+  YAxis: () => null,
+  CartesianGrid: () => null,
+  Tooltip: () => null,
+  Legend: () => null,
+  ResponsiveContainer: ({ children }) => (
+    <div className="recharts-responsive-container" data-testid="recharts-responsive-container">
+      {children}
+    </div>
+  ),
+}));
+
 vi.mock("../shopify.server", () => ({
   default: {
     authenticate: { admin: hoisted.authenticateAdminMock },
@@ -545,6 +560,8 @@ describe("Index Component - Happy Path", () => {
         analyses: [
           {
             calculatedWhen: new Date("2026-01-10"),
+            totalConversions: 5,
+            totalUsers: 100,
             variant: { name: "V" },
             probabilityOfBeingBest: 0.5,
             expectedLoss: 0.02,
@@ -560,7 +577,7 @@ describe("Index Component - Happy Path", () => {
 
     render(<Index />);
     await waitFor(() => {
-      expect(document.querySelector(".recharts-responsive-container")).toBeInTheDocument();
+      expect(screen.getByTestId("recharts-responsive-container")).toBeInTheDocument();
     });
   });
 

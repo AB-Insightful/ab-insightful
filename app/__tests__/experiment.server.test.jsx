@@ -9,12 +9,16 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import db from "../db.server";
 import {
   experimentListReport,
+  getAnalysis,
   getCandidatesForScheduledEnd,
   getCandidatesForScheduledStart,
+  getExperimentById,
   getExperimentReportData,
+  getExperimentsList,
   getExperimentsWithAnalyses,
   getMostRecentExperiment,
   getNameOfExpGoal,
+  getVariant,
   isExperimentActive,
   getCandidatesForStableSuccessEnd,
 } from "../services/experiment.server";
@@ -31,6 +35,9 @@ vi.mock("../db.server", () => {
         findMany: vi.fn(),
         findFirst: vi.fn(),
         findUnique: vi.fn(),
+      },
+      variant: {
+        findFirst: vi.fn(),
       },
     },
   };
@@ -314,6 +321,193 @@ describe("getExperimentReportData", () => {
   });
 });
 
+describe("getExperimentsList", () => {
+  const listInclude = {
+    include: {
+      analyses: {
+        include: {
+          variant: true,
+        },
+      },
+      project: {
+        select: { maxUsersPerExperiment: true },
+      },
+      history: true,
+    },
+  };
+
+  test("happy path: returns experiments with analyses, project, and history included", async () => {
+    const rows = [
+      {
+        id: 1,
+        name: "Exp A",
+        analyses: [{ id: 10, variant: { id: 1, name: "Control" } }],
+        project: { maxUsersPerExperiment: 500 },
+        history: [],
+      },
+    ];
+    db.experiment.findMany.mockResolvedValueOnce(rows);
+
+    const result = await getExperimentsList();
+
+    expect(db.experiment.findMany).toHaveBeenCalledTimes(1);
+    expect(db.experiment.findMany).toHaveBeenCalledWith(listInclude);
+    expect(result).toEqual(rows);
+  });
+
+  test("empty results: returns [] when findMany returns no experiment rows", async () => {
+    db.experiment.findMany.mockResolvedValueOnce([]);
+
+    const result = await getExperimentsList();
+
+    expect(db.experiment.findMany).toHaveBeenCalledWith(listInclude);
+    expect(result).toEqual([]);
+  });
+
+  test("not found / edge: passes through null when findMany resolves to null", async () => {
+    db.experiment.findMany.mockResolvedValueOnce(null);
+
+    const result = await getExperimentsList();
+
+    expect(db.experiment.findMany).toHaveBeenCalledWith(listInclude);
+    expect(result).toBeNull();
+  });
+});
+
+describe("getVariant", () => {
+  test("happy path: returns variant id and name for experiment and name", async () => {
+    const row = { id: 2, name: "Variant A" };
+    db.variant.findFirst.mockResolvedValueOnce(row);
+
+    const result = await getVariant(42, "Variant A");
+
+    expect(db.variant.findFirst).toHaveBeenCalledWith({
+      where: { experimentId: 42, name: "Variant A" },
+      select: { id: true, name: true },
+    });
+    expect(result).toEqual(row);
+  });
+
+  test("empty results: returns null when no variant row matches the filter", async () => {
+    db.variant.findFirst.mockResolvedValueOnce(null);
+
+    const result = await getVariant(42, "Variant A");
+    expect(db.variant.findFirst).toHaveBeenCalledWith({
+      where: { experimentId: 42, name: "Variant A" },
+      select: { id: true, name: true },
+    });
+    expect(result).toBeNull();
+  });
+
+  test("not found: returns null when variant name does not exist for that experiment", async () => {
+    db.variant.findFirst.mockResolvedValueOnce(null);
+
+    const result = await getVariant(42, "Nonexistent");
+
+    expect(db.variant.findFirst).toHaveBeenCalledWith({
+      where: { experimentId: 42, name: "Nonexistent" },
+      select: { id: true, name: true },
+    });
+    expect(result).toBeNull();
+  });
+});
+
+describe("getAnalysis", () => {
+  const analysisQuery = {
+    orderBy: { calculatedWhen: "desc" },
+    include: { goal: true },
+  };
+
+  test("happy path: returns latest analysis with goal and respects deviceSegment (default all)", async () => {
+    const row = {
+      id: 100,
+      experimentId: 1,
+      variantId: 2,
+      deviceSegment: "mobile",
+      conversionRate: 0.12,
+      goal: { id: 7, name: "Purchase" },
+    };
+    db.analysis.findFirst.mockResolvedValueOnce(row);
+
+    const result = await getAnalysis(1, 2, "mobile");
+
+    expect(db.analysis.findFirst).toHaveBeenCalledWith({
+      where: { experimentId: 1, variantId: 2, deviceSegment: "mobile" },
+      ...analysisQuery,
+    });
+    expect(result).toEqual(row);
+
+    db.analysis.findFirst.mockResolvedValueOnce({ id: 1, goal: { id: 1, name: "A" } });
+    await getAnalysis(5, 3);
+
+    expect(db.analysis.findFirst).toHaveBeenCalledWith({
+      where: { experimentId: 5, variantId: 3, deviceSegment: "all" },
+      ...analysisQuery,
+    });
+  });
+
+  test("empty results: returns null when no analysis row exists for variant and segment", async () => {
+    db.analysis.findFirst.mockResolvedValueOnce(null);
+
+    const result = await getAnalysis(1, 2, "mobile");
+
+    expect(db.analysis.findFirst).toHaveBeenCalledWith({
+      where: { experimentId: 1, variantId: 2, deviceSegment: "mobile" },
+      ...analysisQuery,
+    });
+    expect(result).toBeNull();
+  });
+
+  test("not found: returns null when ids or segment do not match any stored analysis", async () => {
+    db.analysis.findFirst.mockResolvedValueOnce(null);
+
+    const result = await getAnalysis(999, 888, "desktop");
+
+    expect(db.analysis.findFirst).toHaveBeenCalledWith({
+      where: {
+        experimentId: 999,
+        variantId: 888,
+        deviceSegment: "desktop",
+      },
+      ...analysisQuery,
+    });
+    expect(result).toBeNull();
+  });
+});
+
+describe("getExperimentById", () => {
+  test("happy path: returns experiment when found", async () => {
+    const experiment = { id: 7, name: "Homepage" };
+    db.experiment.findUnique.mockResolvedValueOnce(experiment);
+
+    const result = await getExperimentById(7);
+
+    expect(db.experiment.findUnique).toHaveBeenCalledWith({
+      where: { id: 7 },
+    });
+    expect(result).toEqual(experiment);
+  });
+
+  test("empty / missing id: returns null without querying when id is falsy", async () => {
+    expect(await getExperimentById(null)).toBeNull();
+    expect(await getExperimentById(undefined)).toBeNull();
+    expect(await getExperimentById(0)).toBeNull();
+
+    expect(db.experiment.findUnique).not.toHaveBeenCalled();
+  });
+
+  test("not found: returns null when id is valid but no experiment exists", async () => {
+    db.experiment.findUnique.mockResolvedValueOnce(null);
+
+    const result = await getExperimentById(404);
+
+    expect(db.experiment.findUnique).toHaveBeenCalledWith({
+      where: { id: 404 },
+    });
+    expect(result).toBeNull();
+  });
+});
+
 describe("getMostRecentExperiment", () => {
   test("returns the newest active experiment", async () => {
     const row = { id: 5, name: "Latest", status: "active" };
@@ -525,7 +719,7 @@ describe("experimentListReport", () => {
     });
     expect(arg.orderBy).toEqual({ createdAt: "desc" });
     expect(result).toEqual(mockExperiments);
-  }) ?? [];
+  });
 
   test("returns null when no experiments found", async () => {
     db.experiment.findMany.mockResolvedValueOnce([]); //pretends to return [] on db query

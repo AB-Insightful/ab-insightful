@@ -78,7 +78,7 @@ export async function getSessionReportData(admin, start, end) {
 }
 
 // Helper function to generate mock session data for a given date range
-function generateMockSessions(start, end) {
+export function generateMockSessions(start, end) {
   const sessions = [];
   let currentDate = new Date(start + "T12:00:00");
   const stopDate = new Date(end + "T12:00:00");

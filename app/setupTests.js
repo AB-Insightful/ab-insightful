@@ -72,6 +72,7 @@ defineOnce("s-radio-button");
 defineOnce("s-tag");
 defineOnce("s-thumbnail");
 defineOnce("s-drop-zone");
+defineOnce("s-date-picker");
 
 // Patch document.createElement so <s-text-field> acts like a real input for tests
 if (typeof document !== "undefined") {

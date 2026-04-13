@@ -388,7 +388,7 @@ export default function Index() {
                       </s-paragraph>
                       <s-button 
                         variant={tutorialData.webPixelStatus ? "secondary" : "primary"} 
-                        onClick={() => fetcher.submit({ action: "enableTracking" }, { method: "POST" })}
+                        onClick={() => { void enableTracking(); }}
                         disabled={tutorialData.webPixelStatus === true || fetcher.state !== "idle"}
                       >
                         {fetcher.state === "submitting" && fetcher.formData?.get("action") === "enableTracking" 

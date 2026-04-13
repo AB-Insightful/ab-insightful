@@ -75,6 +75,9 @@ export const action = async ({ request }) => {
 
     const useAccountDefaultMaxUsers = formData.get("useAccountDefaultMaxUsers") === "true";
     const maxUsersStr = (formData.get("maxUsers") || "").trim();
+    // Read the device audience the merchant selected in the form.
+    // Defaults to "allSegments" when the field is absent (e.g. submitted by an older client).
+    const customerSegmentRaw = (formData.get("customerSegment") || "allSegments").trim();
 
     // Date/Time Fields (accepts both client-side UTC strings or separate date/time fields)
     const startDateUTC = (formData.get("startDateUTC") || "").trim();
@@ -275,6 +278,15 @@ export const action = async ({ request }) => {
     if (!useAccountDefaultMaxUsers && maxUsersStr) {
       experimentData.maxUsers = Number(maxUsersStr);
     }
+
+    // Translate the UI option value to the DeviceSegment enum stored in the database.
+    // The storefront embed later reads this value to decide which visitors are eligible
+    // for a test variant.
+    //   "allSegments"      → "all"     — every visitor is eligible (default behaviour)
+    //   "mobileVisitors"   → "mobile"  — only mobile visitors are assigned to variants
+    //   "desktopVisitors"  → "desktop" — only desktop visitors are assigned to variants
+    const segmentToDbMap = { allSegments: "all", mobileVisitors: "mobile", desktopVisitors: "desktop" };
+    experimentData.deviceSegment = segmentToDbMap[customerSegmentRaw] ?? "all"; // unknown values fall back to "all"
 
     const treatmentVariants = variantInputs.map((v) => ({
       sectionId: (v.sectionId || "").trim(),
@@ -507,6 +519,9 @@ export default function CreateExperiment() {
     formData.set("timeUnit", timeUnit);
     formData.set("useAccountDefaultMaxUsers", String(useAccountDefaultMaxUsers));
     formData.set("maxUsers", useAccountDefaultMaxUsers ? "" : String(maxUsers));
+    // Include the currently selected device audience so the server action can persist it.
+    // Values: "allSegments" | "mobileVisitors" | "desktopVisitors"
+    formData.set("customerSegment", customerSegment);
 
     try {
       await fetcher.submit(formData, { method: "POST" });

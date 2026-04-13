@@ -189,7 +189,7 @@ export const action = async ({ request, params }) => {
         return { ok: true, action: ExperimentStatus.paused };
       } catch (error) {
         console.error("Pause Error:", error);
-        return { ok: false, error: "Failed to pause experiment" }, { status: 500 };
+        return { ok: false, error: "Failed to pause experiment", status: 500 };
       }
 
     case "resume":
@@ -198,7 +198,7 @@ export const action = async ({ request, params }) => {
         return { ok: true, action: ExperimentStatus.active };
       } catch (error) {
         console.error("Resume Error:", error);
-        return { ok: false, error: "Failed to resume experiment" }, { status: 500 };
+        return { ok: false, error: "Failed to resume experiment", status: 500 };
       }
 
     case "archive":
@@ -207,7 +207,7 @@ export const action = async ({ request, params }) => {
         return {ok: true, action: ExperimentStatus.archived}; 
       } catch (error) {
         console.error("Archive Error:", error);
-        return {ok: false, error: "Failed to archive experiment"}, { status: 500};
+        return {ok: false, error: "Failed to archive experiment", status: 500};
       }
     
     case "delete":
@@ -216,7 +216,7 @@ export const action = async ({ request, params }) => {
         return { ok: true, action: "deleteExperiment" };
       } catch (error) {
         console.error("Delete Error:", error);
-        return { ok: false, error: "Failed to delete experiment"}, {status: 500}
+        return { ok: false, error: "Failed to delete experiment", status: 500};
       }
 
     case "start":
@@ -225,7 +225,7 @@ export const action = async ({ request, params }) => {
         return { ok: true, action: ExperimentStatus.active };
       } catch (error) {
         console.error("Start Error:", error);
-        return { ok: false, error: "Failed to start experiment"}, {status: 500}
+        return { ok: false, error: "Failed to start experiment", status: 500};
       }
 
     case "end":
@@ -234,7 +234,7 @@ export const action = async ({ request, params }) => {
         return { ok: true, action: ExperimentStatus.completed };
       } catch (error) {
         console.error("End Error:", error);
-        return { ok: false, error: "Failed to end experiment"}, {status: 500}
+        return { ok: false, error: "Failed to end experiment", status: 500};
       }
 
     default:

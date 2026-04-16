@@ -36,7 +36,7 @@ describe("Experiments", () => {
 
     // The table includes these column headers
     expect(text).toContain("Goal Completion Rate");
-    expect(text).toContain("Probability to be the best");
+    expect(text).toContain("Probability of best");
   });
 
   it("should navigate to the create new experiment page", async () => {

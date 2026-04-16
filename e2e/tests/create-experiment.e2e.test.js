@@ -4,75 +4,12 @@ import { createDriver, quitDriver } from "../helpers/driver.js";
 import { loginToShopifyAdmin, navigateToAppRoute } from "../helpers/auth.js";
 import { switchToAppIframe, waitForAppReady } from "../helpers/iframe.js";
 import { getTextContent } from "../helpers/shadow.js";
-
-async function setFieldValueByLabel(driver, tagName, label, value) {
-  const changed = await driver.executeScript(
-    `
-      const [tagName, label, value] = arguments;
-      const target = [...document.querySelectorAll(tagName)].find(
-        (el) => el.getAttribute("label") === label,
-      );
-      if (!target) return false;
-
-      target.value = value;
-      target.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
-      target.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
-      target.dispatchEvent(new Event("blur", { bubbles: true, composed: true }));
-      return true;
-    `,
-    tagName,
-    label,
-    value,
-  );
-
-  expect(changed).toBe(true);
-}
-
-async function clickButtonByText(driver, text) {
-  const clicked = await driver.executeScript(
-    `
-      const text = arguments[0];
-      const button = [...document.querySelectorAll("s-button")].find(
-        (el) => (el.textContent || "").trim() === text,
-      );
-      if (!button) return false;
-      button.click();
-      return true;
-    `,
-    text,
-  );
-
-  expect(clicked).toBe(true);
-}
-
-async function getButtonDisabledByText(driver, text) {
-  return driver.executeScript(
-    `
-      const text = arguments[0];
-      const button = [...document.querySelectorAll("s-button")].find(
-        (el) => (el.textContent || "").trim() === text,
-      );
-      if (!button) return null;
-      return button.disabled || button.hasAttribute("disabled");
-    `,
-    text,
-  );
-}
-
-async function getFieldValueByLabel(driver, tagName, label) {
-  return driver.executeScript(
-    `
-      const [tagName, label] = arguments;
-      const target = [...document.querySelectorAll(tagName)].find(
-        (el) => el.getAttribute("label") === label,
-      );
-      if (!target) return null;
-      return target.value ?? "";
-    `,
-    tagName,
-    label,
-  );
-}
+import {
+  setFieldValueByLabel,
+  clickButtonByText,
+  getButtonDisabledByText,
+  getFieldValueByLabel,
+} from "../helpers/form.js";
 
 describe("Create Experiment", () => {
   let driver;

@@ -7,6 +7,7 @@ import { Prisma, ExperimentStatus } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import db from "../db.server";
+import * as experimentServer from "../services/experiment.server";
 import {
   experimentListReport,
   getAnalysis,
@@ -21,6 +22,13 @@ import {
   getVariant,
   isExperimentActive,
   getCandidatesForStableSuccessEnd,
+  getVariantConversionRate,
+  getImprovement,
+  createExperiment,
+  pauseExperiment,
+  resumeExperiment,
+  startExperiment,
+  deleteExperiment,
 } from "../services/experiment.server";
 
 vi.mock("../db.server", () => {
@@ -30,6 +38,9 @@ vi.mock("../db.server", () => {
         findMany: vi.fn(),
         findFirst: vi.fn(),
         findUnique: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
       },
       analysis: {
         findMany: vi.fn(),
@@ -38,6 +49,7 @@ vi.mock("../db.server", () => {
       },
       variant: {
         findFirst: vi.fn(),
+        findMany: vi.fn(),
       },
     },
   };
@@ -55,6 +67,9 @@ vi.mock("@prisma/client", () => {
     ExperimentStatus: {
       active: "active",
       draft: "draft",
+      paused: "paused",
+      completed: "completed",
+      archived: "archived",
     },
   };
 });
@@ -735,5 +750,554 @@ describe("experimentListReport", () => {
     const result = await experimentListReport();
 
     expect(result).toEqual([]);
+  });
+});
+
+describe("getVariantConversionRate", () => {
+  test("returns null when no analysis row exists", async () => {
+    db.analysis.findFirst.mockResolvedValueOnce(null);
+
+    const result = await getVariantConversionRate(1, 2, "all");
+
+    expect(result).toBeNull();
+    expect(db.analysis.findFirst).toHaveBeenCalledWith({
+      where: { experimentId: 1, variantId: 2, deviceSegment: "all" },
+      orderBy: { calculatedWhen: "desc" },
+      include: { goal: true },
+    });
+  });
+
+  test("returns conversionRate when analysis exists", async () => {
+    db.analysis.findFirst.mockResolvedValueOnce({
+      id: 123,
+      experimentId: 1,
+      variantId: 2,
+      deviceSegment: "mobile",
+      conversionRate: 0.23,
+      goal: { id: 1, name: "Purchase" },
+    });
+
+    const result = await getVariantConversionRate(1, 2, "mobile");
+
+    expect(result).toBe(0.23);
+    expect(db.analysis.findFirst).toHaveBeenCalledWith({
+      where: { experimentId: 1, variantId: 2, deviceSegment: "mobile" },
+      orderBy: { calculatedWhen: "desc" },
+      include: { goal: true },
+    });
+  });
+});
+
+describe("getImprovement", () => {
+  test("returns null when control variant does not exist", async () => {
+    db.variant.findFirst.mockResolvedValueOnce(null);
+
+    const result = await getImprovement(1);
+
+    expect(result).toBeNull();
+  });
+
+  test("returns null when no treatment variants exist", async () => {
+    db.variant.findFirst.mockResolvedValueOnce({
+      id: 10,
+      name: "Control",
+    });
+    db.variant.findMany.mockResolvedValueOnce([]);
+
+    const result = await getImprovement(1);
+
+    expect(result).toBeNull();
+  });
+
+  test("returns null when control rate is invalid", async () => {
+    db.variant.findFirst.mockResolvedValueOnce({
+      id: 10,
+      name: "Control",
+    });
+    db.variant.findMany.mockResolvedValueOnce([
+      { id: 20, name: "Variant A" },
+    ]);
+
+    db.analysis.findFirst.mockResolvedValueOnce({
+      id: 1,
+      conversionRate: 0,
+      goal: { id: 1, name: "Purchase" },
+    });
+
+    const result = await getImprovement(1);
+
+    expect(result).toBeNull();
+  });
+
+  test("returns improvement percentage for best treatment vs control", async () => {
+    db.variant.findFirst.mockResolvedValueOnce({
+      id: 10,
+      name: "Control",
+    });
+
+    db.variant.findMany.mockResolvedValueOnce([
+      { id: 20, name: "Variant A" },
+      { id: 21, name: "Variant B" },
+    ]);
+
+    db.analysis.findFirst
+      .mockResolvedValueOnce({
+        id: 100,
+        conversionRate: 0.10,
+        goal: { id: 1, name: "Purchase" },
+      }) // control
+      .mockResolvedValueOnce({
+        id: 101,
+        conversionRate: 0.12,
+        goal: { id: 1, name: "Purchase" },
+      }) // variant A
+      .mockResolvedValueOnce({
+        id: 102,
+        conversionRate: 0.15,
+        goal: { id: 1, name: "Purchase" },
+      }); // variant B
+
+    const result = await getImprovement(1);
+
+    expect(result).toBeCloseTo(50);
+  });
+});
+
+describe("createExperiment", () => {
+  test("creates control and treatment variants with generated names", async () => {
+    db.experiment.create.mockResolvedValueOnce({ id: 1, name: "Exp 1" });
+
+    const result = await createExperiment(
+      { name: "Exp 1" },
+      {
+        controlSectionId: "sec-control",
+        variants: [
+          { sectionId: "sec-a", trafficAllocation: 0.3 },
+          { sectionId: "sec-b", trafficAllocation: 0.2 },
+        ],
+      },
+    );
+
+    expect(db.experiment.create).toHaveBeenCalledWith({
+      data: {
+        name: "Exp 1",
+        variants: {
+          create: [
+            {
+              name: "Control",
+              configData: { sectionId: "sec-control" },
+              trafficAllocation: 0.5,
+            },
+            {
+              name: "Variant A",
+              configData: { sectionId: "sec-a" },
+              trafficAllocation: 0.3,
+            },
+            {
+              name: "Variant B",
+              configData: { sectionId: "sec-b" },
+              trafficAllocation: 0.2,
+            },
+          ],
+        },
+      },
+    });
+
+    expect(result).toEqual({ id: 1, name: "Exp 1" });
+  });
+
+  test("creates control with null configData when no controlSectionId is passed", async () => {
+    db.experiment.create.mockResolvedValueOnce({ id: 2 });
+
+    await createExperiment(
+      { name: "No Control Section" },
+      {
+        variants: [{ sectionId: "sec-a", trafficAllocation: 0.4 }],
+      },
+    );
+
+    expect(db.experiment.create).toHaveBeenCalledWith({
+      data: {
+        name: "No Control Section",
+        variants: {
+          create: [
+            {
+              name: "Control",
+              configData: null,
+              trafficAllocation: 0.6,
+            },
+            {
+              name: "Variant A",
+              configData: { sectionId: "sec-a" },
+              trafficAllocation: 0.4,
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  test("throws when treatment traffic allocations exceed 1.0", async () => {
+    await expect(
+      createExperiment(
+        { name: "Bad Exp" },
+        {
+          variants: [
+            { sectionId: "a", trafficAllocation: 0.7 },
+            { sectionId: "b", trafficAllocation: 0.4 },
+          ],
+        },
+      ),
+    ).rejects.toThrow("Treatment traffic allocations exceed 1.0");
+  });
+});
+
+describe("pauseExperiment", () => {
+  test("throws when experimentId is missing", async () => {
+    await expect(pauseExperiment()).rejects.toThrow(
+      "pauseExperiment: experimentId is required",
+    );
+  });
+
+  test("throws when experiment is not found", async () => {
+    db.experiment.findUnique.mockResolvedValueOnce(null);
+
+    await expect(pauseExperiment(123)).rejects.toThrow(
+      "pauseExperiment: Experiment with ID 123 not found",
+    );
+  });
+
+  test("returns original experiment when status cannot be paused", async () => {
+    const experiment = { id: 1, status: "draft" };
+    db.experiment.findUnique.mockResolvedValueOnce(experiment);
+
+    const result = await pauseExperiment(1);
+
+    expect(result).toEqual(experiment);
+    expect(db.experiment.update).not.toHaveBeenCalled();
+  });
+
+  test("updates active experiment to paused and adds history", async () => {
+    db.experiment.findUnique.mockResolvedValueOnce({
+      id: 1,
+      status: "active",
+    });
+
+    db.experiment.update.mockResolvedValueOnce({
+      id: 1,
+      status: "paused",
+      history: [],
+    });
+
+    const result = await pauseExperiment(1);
+
+    expect(db.experiment.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: {
+        status: "paused",
+        history: {
+          create: {
+            prevStatus: "active",
+            newStatus: "paused",
+          },
+        },
+      },
+      include: {
+        history: true,
+      },
+    });
+
+    expect(result).toEqual({
+      id: 1,
+      status: "paused",
+      history: [],
+    });
+  });
+});
+
+describe("startExperiment", () => {
+  test("throws when experimentId is missing", async () => {
+    await expect(startExperiment()).rejects.toThrow(
+      "startExperiment: experimentId is required",
+    );
+  });
+
+  test("throws when experiment is not found", async () => {
+    db.experiment.findUnique.mockResolvedValueOnce(null);
+
+    await expect(startExperiment(77)).rejects.toThrow(
+      "startExperiment: Experiment 77 not found",
+    );
+  });
+
+  test("returns original experiment when status cannot be started", async () => {
+    const experiment = { id: 1, status: "active" };
+    db.experiment.findUnique.mockResolvedValueOnce(experiment);
+
+    const result = await startExperiment(1);
+
+    expect(result).toEqual(experiment);
+    expect(db.experiment.update).not.toHaveBeenCalled();
+  });
+
+  test("throws when draft experiment endDate is in the past", async () => {
+    db.experiment.findUnique.mockResolvedValueOnce({
+      id: 1,
+      status: "draft",
+      endDate: new Date("2020-01-01T00:00:00.000Z"),
+    });
+
+    await expect(startExperiment(1)).rejects.toThrow(
+      /cannot be started/,
+    );
+  });
+
+  test("updates draft experiment to active", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-21T12:00:00.000Z"));
+
+    db.experiment.findUnique.mockResolvedValueOnce({
+      id: 1,
+      status: "draft",
+      endDate: new Date("2027-01-01T00:00:00.000Z"),
+    });
+
+    db.experiment.update.mockResolvedValueOnce({
+      id: 1,
+      status: "active",
+      startDate: new Date("2026-04-21T12:00:00.000Z"),
+      history: [],
+    });
+
+    const result = await startExperiment(1);
+
+    expect(db.experiment.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: {
+        status: "active",
+        startDate: new Date("2026-04-21T12:00:00.000Z"),
+        history: {
+          create: {
+            prevStatus: "draft",
+            newStatus: "active",
+          },
+        },
+      },
+      include: {
+        history: true,
+      },
+    });
+
+    expect(result.status).toBe("active");
+  });
+});
+
+describe("resumeExperiment", () => {
+  test("throws when experimentId is missing", async () => {
+    await expect(resumeExperiment()).rejects.toThrow(
+      "resumeExperiment: experimentId is required",
+    );
+  });
+
+  test("throws when experiment is not found", async () => {
+    db.experiment.findUnique.mockResolvedValueOnce(null);
+
+    await expect(resumeExperiment(5)).rejects.toThrow(
+      "resumeExperiment: Experiment 5 not found",
+    );
+  });
+
+  test("returns original experiment when status cannot be resumed", async () => {
+    const experiment = { id: 5, status: "active" };
+    db.experiment.findUnique.mockResolvedValueOnce(experiment);
+
+    const result = await resumeExperiment(5);
+
+    expect(result).toEqual(experiment);
+    expect(db.experiment.update).not.toHaveBeenCalled();
+  });
+
+  test("throws when paused experiment has past endDate", async () => {
+    db.experiment.findUnique.mockResolvedValueOnce({
+      id: 5,
+      status: "paused",
+      endDate: new Date("2020-01-01T00:00:00.000Z"),
+    });
+
+    await expect(resumeExperiment(5)).rejects.toThrow(/cannot be resumed/);
+  });
+
+  test("updates paused experiment to active", async () => {
+    db.experiment.findUnique.mockResolvedValueOnce({
+      id: 5,
+      status: "paused",
+      endDate: new Date("2030-01-01T00:00:00.000Z"),
+    });
+
+    db.experiment.update.mockResolvedValueOnce({
+      id: 5,
+      status: "active",
+      history: [],
+    });
+
+    const result = await resumeExperiment(5);
+
+    expect(db.experiment.update).toHaveBeenCalledWith({
+      where: { id: 5 },
+      data: {
+        status: "active",
+        history: {
+          create: {
+            prevStatus: "paused",
+            newStatus: "active",
+          },
+        },
+      },
+      include: {
+        history: true,
+      },
+    });
+
+    expect(result.status).toBe("active");
+  });
+});
+
+describe("deleteExperiment", () => {
+  test("throws when experimentId is missing", async () => {
+    await expect(deleteExperiment()).rejects.toThrow(
+      "deleteExperiment: experimentId is required",
+    );
+  });
+
+  test("throws when experiment is not found", async () => {
+    db.experiment.findUnique.mockResolvedValueOnce(null);
+
+    await expect(deleteExperiment(44)).rejects.toThrow(
+      "deleteExperiment: Experiment 44 not found",
+    );
+  });
+
+  test("returns original experiment when status cannot be deleted", async () => {
+    const experiment = { id: 44, status: "active" };
+    db.experiment.findUnique.mockResolvedValueOnce(experiment);
+
+    const result = await deleteExperiment(44);
+
+    expect(result).toEqual(experiment);
+    expect(db.experiment.delete).not.toHaveBeenCalled();
+  });
+
+  test("deletes draft experiment", async () => {
+    db.experiment.findUnique.mockResolvedValueOnce({
+      id: 44,
+      status: "draft",
+    });
+
+    db.experiment.delete.mockResolvedValueOnce({
+      id: 44,
+      status: "draft",
+    });
+
+    const result = await deleteExperiment(44);
+
+    expect(db.experiment.delete).toHaveBeenCalledWith({
+      where: { id: 44 },
+    });
+    expect(result).toEqual({
+      id: 44,
+      status: "draft",
+    });
+  });
+});
+
+describe("experimentListReport mapping", () => {
+  test("keeps only analyses with the latest calculatedWhen", async () => {
+    const latest = new Date("2026-01-20T00:00:00.000Z");
+    const older = new Date("2026-01-10T00:00:00.000Z");
+
+    db.experiment.findMany.mockResolvedValueOnce([
+      {
+        id: 1,
+        name: "Exp",
+        status: "active",
+        startDate: null,
+        endDate: null,
+        endCondition: "manual",
+        history: [],
+        analyses: [
+          { totalConversions: 5, totalUsers: 50, calculatedWhen: latest },
+          { totalConversions: 6, totalUsers: 60, calculatedWhen: latest },
+          { totalConversions: 1, totalUsers: 10, calculatedWhen: older },
+        ],
+      },
+    ]);
+
+    const result = await experimentListReport();
+
+    expect(result).toEqual([
+      {
+        id: 1,
+        name: "Exp",
+        status: "active",
+        startDate: null,
+        endDate: null,
+        endCondition: "manual",
+        history: [],
+        analyses: [
+          { totalConversions: 5, totalUsers: 50, calculatedWhen: latest },
+          { totalConversions: 6, totalUsers: 60, calculatedWhen: latest },
+        ],
+      },
+    ]);
+  });
+
+  test("uses the provided device segment filter", async () => {
+    db.experiment.findMany.mockResolvedValueOnce([]);
+
+    await experimentListReport("mobile");
+
+    expect(db.experiment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          analyses: expect.objectContaining({
+            where: { deviceSegment: "mobile" },
+          }),
+        }),
+      }),
+    );
+  });
+});
+
+describe("isExperimentActive boundaries", () => {
+  test("returns true when timeCheck equals startDate exactly", () => {
+    const t = new Date("2026-03-05T00:00:00.000Z");
+    const experiment = {
+      status: "active",
+      startDate: t,
+      endDate: new Date("2026-03-10T00:00:00.000Z"),
+    };
+
+    expect(isExperimentActive(experiment, t)).toBe(true);
+  });
+
+  test("returns true when timeCheck equals endDate exactly", () => {
+    const t = new Date("2026-03-10T00:00:00.000Z");
+    const experiment = {
+      status: "active",
+      startDate: new Date("2026-03-01T00:00:00.000Z"),
+      endDate: t,
+    };
+
+    expect(isExperimentActive(experiment, t)).toBe(true);
+  });
+
+  test("returns true for active experiment with no date limits", () => {
+    const experiment = {
+      status: "active",
+      startDate: null,
+      endDate: null,
+    };
+
+    expect(isExperimentActive(experiment, new Date("2026-03-05T00:00:00.000Z"))).toBe(true);
   });
 });

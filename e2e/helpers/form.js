@@ -1,8 +1,18 @@
 import { expect } from "vitest";
 
-export async function setFieldValueByLabel(driver, tagName, label, value) {
-  const changed = await driver.executeScript(
-    `
+const SET_FIELD_TIMEOUT_MS = 20_000;
+
+export async function setFieldValueByLabel(
+  driver,
+  tagName,
+  label,
+  value,
+  { timeout = SET_FIELD_TIMEOUT_MS } = {},
+) {
+  await driver.wait(
+    async () => {
+      const changed = await driver.executeScript(
+        `
       const [tagName, label, value] = arguments;
       const target = [...document.querySelectorAll(tagName)].find(
         (el) => el.getAttribute("label") === label,
@@ -15,12 +25,15 @@ export async function setFieldValueByLabel(driver, tagName, label, value) {
       target.dispatchEvent(new Event("blur", { bubbles: true, composed: true }));
       return true;
     `,
-    tagName,
-    label,
-    value,
+        tagName,
+        label,
+        value,
+      );
+      return changed === true;
+    },
+    timeout,
+    `Timed out setting ${tagName}[label="${label}"]`,
   );
-
-  expect(changed).toBe(true);
 }
 
 export async function clickButtonByText(driver, text, { exact = true } = {}) {

@@ -26,7 +26,8 @@ import {
  * Flows from the experiments list (reached via the in-app "Experiments" control from home).
  *
  * Preconditions: see e2e/README.md (cookies, dev server, .env.e2e). Several tests need
- * existing experiments; one test needs a draft row to run the full status workflow.
+ * existing experiments; the status workflow test needs a draft row (it asserts the active
+ * row menu right after Start, so no separate seeded Active experiment is required).
  */
 describe("Experiment list — UI flows", () => {
   let driver;
@@ -110,21 +111,6 @@ describe("Experiment list — UI flows", () => {
     await sleep(500);
   });
 
-  it("active experiment row menu offers Rename, Pause, and End (archive is only for completed in this app)", async () => {
-    await returnToExperimentList();
-    const rows = await getDataRowTexts(driver);
-    const hasActive = rows.some((r) => /\bActive\b/.test(r));
-    expect(hasActive).toBe(true);
-
-    const popoverId = await openRowMenuForRowContaining(driver, "Active");
-    const labels = await getPopoverMenuLabels(driver, popoverId);
-    expect(labels).toContain("Rename");
-    expect(labels).toContain("Pause");
-    expect(labels).toContain("End");
-    expect(labels).not.toContain("Archive");
-    await sleep(300);
-  });
-
   it("draft → Start becomes Active; Active → Pause becomes Paused; Paused → End becomes Completed; Completed → Archive becomes Archived", async () => {
     await returnToExperimentList();
     const rows = await getDataRowTexts(driver);
@@ -139,7 +125,13 @@ describe("Experiment list — UI flows", () => {
     await sleep(8000);
     await waitForRowContaining(driver, 90_000, experimentName, "Active");
 
+    // Active row: Archive is only for completed; menu should expose Rename, Pause, End.
     popoverId = await openRowMenuForRowContaining(driver, experimentName, "Active");
+    const activeMenuLabels = await getPopoverMenuLabels(driver, popoverId);
+    expect(activeMenuLabels).toContain("Rename");
+    expect(activeMenuLabels).toContain("Pause");
+    expect(activeMenuLabels).toContain("End");
+    expect(activeMenuLabels).not.toContain("Archive");
     await clickButtonWithExactLabel(driver, "Pause", popoverId);
     await sleep(8000);
     await waitForRowContaining(driver, 90_000, experimentName, "Paused");

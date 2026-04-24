@@ -76,6 +76,32 @@ export async function switchToParent(driver) {
 }
 
 /**
+ * App Bridge renders primary app nav (s-link, etc.) in the admin shell, not inside the app iframe.
+ * Walks shadow roots so links inside Polaris/admin UI are visible to the check.
+ */
+export async function waitForParentAppNav(driver, timeout = 30_000) {
+  await driver.switchTo().defaultContent();
+  await driver.wait(
+    async () => {
+      const count = await driver.executeScript(`
+        function countNavInRoot(root) {
+          let n = root.querySelectorAll("s-link").length;
+          n += root.querySelectorAll('a[href*="/app"]').length;
+          for (const el of root.querySelectorAll("*")) {
+            if (el.shadowRoot) n += countNavInRoot(el.shadowRoot);
+          }
+          return n;
+        }
+        return countNavInRoot(document);
+      `);
+      return count > 0;
+    },
+    timeout,
+    "App navigation not found in Shopify Admin parent frame",
+  );
+}
+
+/**
  * Wait for the app inside the iframe to be fully interactive.
  */
 export async function waitForAppReady(driver, timeout = 30_000) {

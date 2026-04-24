@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { By } from "selenium-webdriver";
 import { createDriver, quitDriver } from "../helpers/driver.js";
 import { loginToShopifyAdmin, navigateToApp, navigateToAppRoute } from "../helpers/auth.js";
-import { switchToAppIframe, waitForAppReady } from "../helpers/iframe.js";
+import { switchToAppIframe, waitForAppReady, waitForParentAppNav } from "../helpers/iframe.js";
 import { getTextContent } from "../helpers/shadow.js";
 
 describe("Smoke Test - App Loads in Shopify Admin", () => {
@@ -27,9 +27,8 @@ describe("Smoke Test - App Loads in Shopify Admin", () => {
   });
 
   it("should display the app navigation", async () => {
-    // s-link elements exist in the DOM (rendered by App Bridge in parent)
-    const navLinks = await driver.findElements(By.css("s-link, a[href*='/app']"));
-    expect(navLinks.length).toBeGreaterThan(0);
+    // Nav is rendered by App Bridge in the admin parent frame, not inside the app iframe.
+    await waitForParentAppNav(driver);
   });
 
   it("should navigate to the Experiments page", async () => {

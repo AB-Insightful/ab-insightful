@@ -270,6 +270,27 @@ export async function seedDemo(prisma) {
 
   await seedBase(prisma);
 
+  // Demo experience: mark all tutorial steps complete so walkthrough prompts stay hidden.
+  await prisma.tutorialData.upsert({
+    where: { id: 1 },
+    update: {
+      generalSettings: true,
+      createExperiment: true,
+      viewedListExperiment: true,
+      viewedReportsPage: true,
+      onSiteTracking: false,
+    },
+    create: {
+      id: 1,
+      sessionId: "dev-seed-session",
+      generalSettings: true,
+      createExperiment: true,
+      viewedListExperiment: true,
+      viewedReportsPage: true,
+      onSiteTracking: false,
+    },
+  });
+
   // Grab base project
   const project = await prisma.project.findUnique({
     where: { shop: "dev-example.myshopify.com" },

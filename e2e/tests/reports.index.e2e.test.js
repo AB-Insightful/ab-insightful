@@ -10,13 +10,13 @@ import { dismissExperimentListTutorialIfPresent } from "../helpers/experimentLis
 /**
  * Reports index (/app/reports) — overview cards, date range, table.
  *
- * Preconditions: e2e/README.md — cookies, .env.e2e, shopify app dev, seeded data recommended.
+ * Preconditions: e2e/README.md — cookies, .env.e2e, shopify app dev, seeded data.
  *
  * Intentionally not covered here (manual or other suites):
  * - `tutorial_viewed` POST / modal copy beyond dismiss helper
  * - Custom range + Apply / Cancel on `s-date-picker` (shadow-heavy)
  * - Real Full Report navigation (`shopify://…` without stub) — stubbed in tests to stay in-app
- * - Pixel-level Recharts assertions
+ * - Recharts assertions
  * - Default sort order (`createdAt` desc) as stable row sequence
  * - End Condition column cell values beyond incidental body text
  *
@@ -415,7 +415,7 @@ describe("Reports index — overview", () => {
     expect(prevButtons.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("pagination: Next disabled on single page; Next/Previous round-trip when more than six experiments", async () => {
+  it("pagination Next disabled on single page; Next/Previous round-trip when more than six experiments", async () => {
     const text = await bodyText();
     expect(text).toMatch(/Showing \d+[\u2013-]\d+ of \d+ experiments/);
 

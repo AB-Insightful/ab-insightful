@@ -600,13 +600,14 @@ export default function Index() {
                     <Tooltip />
                     <Legend />
                         {experiment.variants.map((v, index) => {
-                          const colors = ["#5C6AC4", "#9C6ADE", "#00A0AC", "#FFC447"];
-                          return (
+                  const colors = ["#0072B2", "#009E73", "#E69F00", "#D55E00"];
+                  return (
                             <Line
                               key={v.id}
                               type="monotone"
                               dataKey={v.name}
                               stroke={colors[index % colors.length]}
+                              strokeWidth={2}
                               activeDot={{ r: 8 }}
                               dot={false}
                             />

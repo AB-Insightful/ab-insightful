@@ -40,9 +40,16 @@ describe("Experiment list — UI flows", () => {
   beforeAll(async () => {
     driver = await createDriver();
     await loginToShopifyAdmin(driver);
-    await openAppHomeInIframe(driver);
-    await dismissExperimentListTutorialIfPresent(driver);
-    await clickNavigateToExperimentList(driver);
+    try {
+      await openAppHomeInIframe(driver);
+      await dismissExperimentListTutorialIfPresent(driver);
+      await clickNavigateToExperimentList(driver);
+    } catch {
+      // Fallback for occasional home iframe boot flake in headed runs.
+      await navigateToAppRoute(driver, "/app/experiments");
+      await switchToAppIframe(driver);
+      await waitForAppReady(driver);
+    }
     await dismissExperimentListTutorialIfPresent(driver);
   });
 

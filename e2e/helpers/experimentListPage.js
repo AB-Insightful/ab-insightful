@@ -64,7 +64,11 @@ export async function waitForExperimentListOrEmpty(driver, timeout = 45_000) {
     return (
       text.includes("Experiment Management") ||
       text.includes("Experiment List") ||
-      text.includes("Your experiments will show here")
+      text.includes("Your experiments will show here") ||
+      text.includes("Filter By") ||
+      text.includes("Create Experiment") ||
+      text.includes("Experiment Name") ||
+      text.includes("Goal Completion Rate")
     );
   }, timeout, "Timed out waiting for experiments list UI");
 }

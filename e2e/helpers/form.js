@@ -14,8 +14,13 @@ export async function setFieldValueByLabel(
       const changed = await driver.executeScript(
         `
       const [tagName, label, value] = arguments;
+      const normalize = (s) => (s || "").replace(/\\s+/g, " ").trim();
+      const wanted = normalize(label);
       const target = [...document.querySelectorAll(tagName)].find(
-        (el) => el.getAttribute("label") === label,
+        (el) => {
+          const current = normalize(el.getAttribute("label"));
+          return current === wanted || current.startsWith(wanted + " ");
+        },
       );
       if (!target) return false;
 

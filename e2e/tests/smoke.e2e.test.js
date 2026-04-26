@@ -50,8 +50,8 @@ describe("Smoke Test - App Loads in Shopify Admin", () => {
 
     const body = await driver.findElement(By.css("body"));
     const bodyText = await getTextContent(driver, body);
-    expect(bodyText).toContain("Reports");
-    expect(bodyText).toContain("Experiment Reports");
+    expect(bodyText).toContain("Experiment Name");
+    expect(bodyText).toContain("Conversions");
   });
 
   it("should navigate to the Settings page", async () => {
@@ -61,7 +61,7 @@ describe("Smoke Test - App Loads in Shopify Admin", () => {
 
     const body = await driver.findElement(By.css("body"));
     const bodyText = await getTextContent(driver, body);
-    expect(bodyText).toContain("Settings");
-    expect(bodyText).toContain("Notification Settings");
+    expect(bodyText).toContain("Email");
+    expect(bodyText).toContain("Maximum users per experiment");
   });
 });

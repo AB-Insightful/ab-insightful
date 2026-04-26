@@ -184,7 +184,8 @@ describe("Edit Experiment", () => {
         // Dynamically selected draft may or may not already have a section assigned.
         expect(text).toMatch(/Variant A:\s*(Section not selected|[^\n]+)/);
         expect(text).toContain("Active from");
-        expect(text).toContain("until —");
+        // Some drafts are open-ended ("until —"), others already have an end date.
+        expect(text).toMatch(/until\s+(—|[A-Za-z]+\s+\d{1,2},\s+\d{4})/);
 
         const saveDisabled = await getButtonDisabledByTextIncludes("Save Draft");
 

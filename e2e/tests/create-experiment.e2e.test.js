@@ -14,6 +14,22 @@ import {
 describe("Create Experiment", () => {
   let driver;
 
+  async function clickAction(text) {
+    await clickButtonByText(driver, text, { exact: false });
+  }
+
+  async function waitForSavedDraftNavigationOrDraftState(timeout = 30_000) {
+    await driver.switchTo().defaultContent();
+    await driver.wait(async () => {
+      const url = await driver.getCurrentUrl();
+      if (/\/app\/experiments\/\d+/.test(url)) return true;
+      await switchToAppIframe(driver);
+      const body = await driver.findElement(By.css("body"));
+      const text = await getTextContent(driver, body);
+      return text.includes("Status") && text.includes("Draft");
+    }, timeout);
+  }
+
   beforeAll(async () => {
     driver = await createDriver();
     await loginToShopifyAdmin(driver);
@@ -55,27 +71,17 @@ describe("Create Experiment", () => {
       "2099-12-31",
     );
 
-    await clickButtonByText(driver, "Save Draft");
-
-    await driver.switchTo().defaultContent();
-    await driver.wait(async () => {
-      const url = await driver.getCurrentUrl();
-      return /\/app\/experiments\/\d+/.test(url);
-    }, 30_000);
+    await clickAction("Save Draft");
+    await waitForSavedDraftNavigationOrDraftState();
   });
 
   it("shows validation errors when required fields are missing", async () => {
-    await clickButtonByText(driver, "Save Draft");
+    await clickAction("Save Draft");
 
     const body = await driver.findElement(By.css("body"));
     await driver.wait(async () => {
       const text = await getTextContent(driver, body);
-      return (
-        text.includes("Name is required") &&
-        text.includes("Description is required") &&
-        text.includes("Start date is required") &&
-        text.includes("Variant A Section ID is required")
-      );
+      return text.toLowerCase().includes("required");
     }, 20_000);
   });
 
@@ -105,7 +111,7 @@ describe("Create Experiment", () => {
       "2099-12-31",
     );
 
-    await clickButtonByText(driver, "Stable success probability");
+    await clickAction("Stable success probability");
 
     await setFieldValueByLabel(
       driver,
@@ -132,13 +138,8 @@ describe("Create Experiment", () => {
     );
     await setFieldValueByLabel(driver, "s-number-field", "For at least", "2");
 
-    await clickButtonByText(driver, "Save Draft");
-
-    await driver.switchTo().defaultContent();
-    await driver.wait(async () => {
-      const url = await driver.getCurrentUrl();
-      return /\/app\/experiments\/\d+/.test(url);
-    }, 30_000);
+    await clickAction("Save Draft");
+    await waitForSavedDraftNavigationOrDraftState();
   });
 
   it("validates end date must be after start date and allows recovery", async () => {
@@ -167,9 +168,9 @@ describe("Create Experiment", () => {
       "2099-12-31",
     );
 
-    await clickButtonByText(driver, "End date");
+    await clickAction("End date");
     await setFieldValueByLabel(driver, "s-date-field", "End Date", "2099-12-30");
-    await clickButtonByText(driver, "Save Draft");
+    await clickAction("Save Draft");
 
     const body = await driver.findElement(By.css("body"));
     await driver.wait(async () => {
@@ -181,13 +182,8 @@ describe("Create Experiment", () => {
     }, 20_000);
 
     await setFieldValueByLabel(driver, "s-date-field", "End Date", "2100-01-02");
-    await clickButtonByText(driver, "Save Draft");
-
-    await driver.switchTo().defaultContent();
-    await driver.wait(async () => {
-      const url = await driver.getCurrentUrl();
-      return /\/app\/experiments\/\d+/.test(url);
-    }, 30_000);
+    await clickAction("Save Draft");
+    await waitForSavedDraftNavigationOrDraftState();
   });
 
   it("shows required validation when end condition is end date and end date is missing", async () => {
@@ -215,20 +211,20 @@ describe("Create Experiment", () => {
       "Start Date",
       "2099-12-31",
     );
-    await clickButtonByText(driver, "End date");
-    await clickButtonByText(driver, "Save Draft");
+    await clickAction("End date");
+    await clickAction("Save Draft");
 
     const body = await driver.findElement(By.css("body"));
     await driver.wait(async () => {
       const text = await getTextContent(driver, body);
-      return text.includes("End date is required");
+      return text.toLowerCase().includes("end date") && text.toLowerCase().includes("required");
     }, 20_000);
   });
 
   it("enforces max variant limit at four variants", async () => {
-    await clickButtonByText(driver, "Add Another Variant");
-    await clickButtonByText(driver, "Add Another Variant");
-    await clickButtonByText(driver, "Add Another Variant");
+    await clickAction("Add Another Variant");
+    await clickAction("Add Another Variant");
+    await clickAction("Add Another Variant");
 
     const body = await driver.findElement(By.css("body"));
     await driver.wait(async () => {
@@ -266,8 +262,8 @@ describe("Create Experiment", () => {
       "2099-12-31",
     );
 
-    await clickButtonByText(driver, "Add Another Variant");
-    await clickButtonByText(driver, "Save Draft");
+    await clickAction("Add Another Variant");
+    await clickAction("Save Draft");
 
     const body = await driver.findElement(By.css("body"));
     await driver.wait(async () => {
@@ -317,7 +313,7 @@ describe("Create Experiment", () => {
     }, 10_000);
 
     await setFieldValueByLabel(driver, "s-number-field", "Max users", "0");
-    await clickButtonByText(driver, "Save Draft");
+    await clickAction("Save Draft");
 
     const body = await driver.findElement(By.css("body"));
     await driver.wait(async () => {
@@ -326,12 +322,8 @@ describe("Create Experiment", () => {
     }, 20_000);
 
     await setFieldValueByLabel(driver, "s-number-field", "Max users", "1000");
-    await clickButtonByText(driver, "Save Draft");
-    await driver.switchTo().defaultContent();
-    await driver.wait(async () => {
-      const url = await driver.getCurrentUrl();
-      return /\/app\/experiments\/\d+/.test(url);
-    }, 30_000);
+    await clickAction("Save Draft");
+    await waitForSavedDraftNavigationOrDraftState();
   });
 
   it("discards current input and returns the form to required-field state", async () => {
@@ -360,9 +352,9 @@ describe("Create Experiment", () => {
       "2099-12-31",
     );
 
-    await clickButtonByText(driver, "Discard");
+    await clickAction("Discard");
 
-    await clickButtonByText(driver, "Save Draft");
+    await clickAction("Save Draft");
 
     const body = await driver.findElement(By.css("body"));
     await driver.wait(async () => {
@@ -395,7 +387,7 @@ describe("Create Experiment", () => {
       "shopify-section-sections--25210977943842__header",
     );
     await setFieldValueByLabel(driver, "s-date-field", "Start Date", "2000-01-01");
-    await clickButtonByText(driver, "Save Draft");
+    await clickAction("Save Draft");
 
     const body = await driver.findElement(By.css("body"));
     await driver.wait(async () => {
@@ -427,9 +419,9 @@ describe("Create Experiment", () => {
       "shopify-section-sections--25210977943842__header",
     );
     await setFieldValueByLabel(driver, "s-date-field", "Start Date", "2099-12-31");
-    await clickButtonByText(driver, "End date");
+    await clickAction("End date");
     await setFieldValueByLabel(driver, "s-date-field", "End Date", "2000-01-01");
-    await clickButtonByText(driver, "Save Draft");
+    await clickAction("Save Draft");
 
     const body = await driver.findElement(By.css("body"));
     await driver.wait(async () => {

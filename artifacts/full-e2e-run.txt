@@ -1,0 +1,387 @@
+ry
+babyryry
+Invisible
+
+Ryan — Yesterday at 4:03 PM
+i get the following errors:
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  e2e/tests/help.page.e2e.test.js > Help Page
+TimeoutError: App content did not load inside iframe
+Wait timed out after 30180ms
+ ❯ node_modules/selenium-webdriver/lib/webdriver.js:929:22
+
+message.txt
+22 KB
+@Ben
+problem stems:
+line 243 in notification.server.js
+Ryan — Yesterday at 4:12 PM
+to solve this issue: ⁠random⁠, ensure you have these secrets:
+⁠breaking-changes-‼️⁠ however, remove the spaces between words an symbols. they are messing up the formatting.
+Tosh — Yesterday at 5:28 PM
+Demo is what I put in the doc too.
+Ryan — Yesterday at 5:29 PM
+awesome
+Tosh — Yesterday at 5:29 PM
+Not everyone needs to deploy the app to make it work too. Just one person can deploy and then everyone can install so we have the same version of the app
+DoorMatt — Yesterday at 8:57 PM
+what does skipped mean?
+
+Ryan — Yesterday at 8:57 PM
+i haven't figured that out
+DoorMatt — Yesterday at 8:57 PM
+im not passing any?
+Ryan — Yesterday at 8:58 PM
+i think it means something timed out
+we recommend using the demo seed, making sure your environment variables in .env and .env.e2e are correct, and you are following this workflow: ⁠general⁠
+
+I'm not really sure how I got mine to stop failing
+npx cross-env HEADED=true vitest run --config vitest.e2e.config.js e2e/tests/<file name>.js
+DoorMatt — 1:26 AM
+
+Ryan — 1:27 AM
+Problem is in your .env file
+Didn't specify that variable in there
+DoorMatt — 1:33 AM
+
+Paul — 5:05 AM
+I've ran into a fundamental bug with my storefront page where setting traffic to 0 or 100% doesn't guarantee the user will be dealt a particular variant. This makes it effectively impossible to reliablly functionally test since it will not always hide the expected element. To prevent it from being a failing test my current pr of the test is mostly the same approach but lies to always return an expected value. In-between the doc write-up tomorrow I'll be bug hunting this to see if I can find the source of the issue since it might be selenium related. Here's a report for more info. 
+
+Pleeeeeease let me know if there is some nuance of the code you know of that might indicate the source of the issue.
+Attachment file type: acrobat
+functionalBugSchizoReport.pdf
+229.00 KB
+Bogus tests for posterity https://github.com/AB-Insightful/ab-insightful/pull/244
+GitHub
+UI Experience tests: functional test suite with more robust testing...
+Functional test suite for the storefront. run npm run test:e2e:headed -- e2e\tests\uiExp.e2e.test.js
+
+Tatiana — 7:20 AM
+Currently when running npm run test:e2e:headed we're failing on experimentListFlows.e2e.test.js, I was trying to patch it but unfortunately have hit a wall as I'm not trying to make changes that are large enough to warrant a change to the current documentation in our report. I think the issue has to do with some iframe weirdness. Test no longer passes even after reseeding and resetting db with demo seed. 
+
+Hopefully my issues are just local and someone else can run all tests together successfully. If not we could also record outputs for all the tests separately (I had started doing so in one of the recent closed branches but my patch for the failed test stopped working so I closed that branch, there exists raw versions of the test outputs and a lightly cleaned one where I was taking care of ugly formatting)
+
+Still need to do for submission
+Save output from tests into a artifact file
+Testing section 10 - Frontend Experience (Paul)
+Team signatures on document
+One last editing and formatting pass through
+
+My portion of the testing doc is done aside from output files. 
+Tatiana — 8:31 AM
+Testing section
+Current tester - observer pairs
+
+Section 1: Homepage
+Tester Matt, Observer required
+
+Section 2: Experiments List
+Tester Ryan, Observer Paul
+Section 3: Create Experiment
+Tester Tosh, Observer required
+
+Section 4: Edit Experiment
+Tester Tatiana, Observer Ben
+Section 5: Reports Overview
+Tester Emmanuel, Observer Tatiana
+Section 6: Individual Report
+Tester Emmanuel, Observer Tatiana
+Section 7: Help Page
+Tester Ben, Observer Emmanuel
+Section 8: Help Page Article
+Tester Ryan, Observer Paul
+Section 9: Settings Page
+Tester Ben, Observer Emmanuel
+Section 10: Frontend Experience
+Tester Paul, Observer required 
+
+
+Bolded sections require an observer, I went through doc and tweaked some formatting and left some comments on sections that needed to be filled 
+Ryan — 8:32 AM
+Paul is my observer for help page article and experiment list. Did something happen last night haha
+Tatiana — 8:35 AM
+when you have time could you see if the tests for the experiment list work? I'm wondering if my problems are just something weird locally. Mostly I was just trying to get it to the point where I could get the output into a file but the test kept failing and skipping itself c.c;
+Ryan — 8:36 AM
+Yees
+Will hop on that soon
+Tatiana — 8:37 AM
+if it works for you I might have you just generate the output file and I can do the others 🤔
+Ryan — 8:38 AM
+Sounds good, whatever you need
+You want the output of a full run through of all the tests right not just mine
+Tatiana — 8:39 AM
+if possible that would be the best option, except we have like two sets of test locked behind PRs
+Ryan — 8:40 AM
+Oof
+Tatiana — 8:40 AM
+I'm thinking you could do one ryan and then tosh could do the other so then everyone has at least one tester role and one observer role 
+Ryan — 8:41 AM
+Okie dokie, I'm gonna stumble out of bed and get freshened up
+Give me like an hour
+Tosh — 9:52 AM
+Fosho I can observe whoever
+Tatiana — 9:59 AM
+Image
+Tosh — 10:24 AM
+Redeploying app, demo seed was not loaded on it
+Which I'm guessing is why 2 of the tests failed, I think they were trying to navigate and manipulate an experiment from the demo data. 
+
+As a side note, when you're writing tests it's generally better to not assume that data will be present unless you are explicitly testing that data. For example, if you're writing a test that you can start or stop an experiment, part of the setup would be creating an experiment. That keeps the scope of the test clean also. 
+
+Obviously we're all rushing and doing this for the first time so it's no big deal but just dropping that note here from stuff I learned
+Ryan — 10:31 AM
+that's a really good idea.
+Tosh — 10:38 AM
+@DoorMatt I just ran your tests on my machine. Your PR is approved, merged, closed, and old branch deleted. I will be observer for your code.
+Also the entire test suite seems to work on my Mac testing against the deployed app as of this morning so yay! I did have to deploy with the actual demo script to make edit related scripts work but otherwise good
+Ryan — 10:41 AM
+if we had the time I'd probably try to pivot to making the tests self-seed like that
+Tosh — 10:43 AM
+I also added myself as observer in the test report and closed the need observer comments in that section
+Tatiana — 10:52 AM
+Hmm idk why this didn't occur to me yesterday, I could probably rewrite the tests fairly quickly to use the experiments made during create experiment 🤔 or to self seed, which would probably be safer to avoid having to enforce which test was run first etc
+Tosh — 10:54 AM
+It's good to keep it all contained in a single test in case you are just running a single test file. But not a big deal. The app requires that the demo seed be used so we should be safe
+Paul — 11:06 AM
+I'll get that written up now if it hasn't already.
+Ryan — 11:16 AM
+many things fail in settings
+but a lot also passes
+im chugging through it, no worries
+Paul — 11:28 AM
+Could I get my PR merged?
+Ryan — 12:13 PM
+currently making sure it all works together and fixing things when it doesnt pr up soonish
+@Tatiana pr approved
+Tatiana — 12:30 PM
+God tier
+Ryan — 12:33 PM
+merged a lot of things and the full test suite broke, fixing and I'll send a new artifact.
+Paul — 12:51 PM
+Question for @Tosh when you create a test storefront does it always default to the test-data theme or is it configured when you set up? I ask because my tests work under the assumption of it being the test-data theme and cannot be set for anything else. So I'm wondering if I should specify in the setup how to configure the theme or if I just need to specify that you should leave it as the default.
+Tosh — 12:53 PM
+If you create a store with pre-populated test data, then yes it always has that test-data theme. The test report environment setup requires that you make a store with pre-populated test data so you should be safe to assume that theme handle exists 👍
+Tatiana — 1:01 PM
+@DoorMatt You're the one we really need, get in hereeeee
+Ryan — 1:06 PM
+Full Run Through Artifact
+ab-insightful on  robustness_and_waits_fixes [!] via  v22.17.0 took 10m32s
+❯ npm run test:e2e:headed
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm.
+
+> test:e2e:headed
+> cross-env HEADED=true vitest run --config vitest.e2e.config.js
+
+message.txt
+11 KB
+Image
+﻿
+ab-insightful on  robustness_and_waits_fixes [!] via  v22.17.0 took 10m32s
+❯ npm run test:e2e:headed
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm.
+
+> test:e2e:headed
+> cross-env HEADED=true vitest run --config vitest.e2e.config.js
+
+
+ RUN  v4.0.8 C:/Users/timef/ab-insightful
+
+stdout | e2e/tests/home.e2e.test.js > Home Page
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/home.e2e.test.js > Home Page
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/home.e2e.test.js > Home Page
+[e2e-auth] Cookie login successful
+
+ ✓ e2e/tests/home.e2e.test.js (14 tests) 59767ms
+     ✓ should navigate to Create Experiment page  3507ms
+     ✓ should navigate to Reports page  3363ms
+     ✓ should navigate to Experiments page  4775ms
+     ✓ should render the latest results table headers  3458ms
+     ✓ should include experiment details and a report link  3528ms
+     ✓ should navigate to a specific report page  6780ms
+     ✓ should navigate to Settings page  3126ms
+       ✓ should show the Mandatory Setup heading and description  3822ms
+       ✓ should show Step 1 with the correct heading and tracking button state  3364ms
+       ✓ should show Step 1 status icon reflecting tracking state  3406ms
+       ✓ should show Step 2 with the correct heading and both action buttons  3313ms
+       ✓ should show feedback after clicking Verify Installation  3324ms
+stdout | e2e/tests/edit-experiment-status.e2e.test.js > Edit Experiment Status Views
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/edit-experiment-status.e2e.test.js > Edit Experiment Status Views
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/edit-experiment-status.e2e.test.js > Edit Experiment Status Views
+[e2e-auth] Cookie login successful
+
+ ✓ e2e/tests/edit-experiment-status.e2e.test.js (6 tests) 100734ms
+     ✓ should render a draft experiment  11266ms
+     ✓ should show draft status actions when Change Status is opened  12237ms
+     ✓ should render an active experiment with status controls  20413ms
+     ✓ should render a paused experiment with status controls  20487ms
+     ✓ should render a completed experiment safely  20076ms
+stdout | e2e/tests/experimentListFlows.e2e.test.js > Experiment list — UI flows
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/experimentListFlows.e2e.test.js > Experiment list — UI flows
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/experimentListFlows.e2e.test.js > Experiment list — UI flows
+[e2e-auth] Cookie login successful
+
+ ✓ e2e/tests/experimentListFlows.e2e.test.js (5 tests) 72210ms
+     ✓ opens the app home, clicks Experiments, then Create Experiment, and reaches the create page  10655ms
+     ✓ from the list, clicking an experiment name opens that experiment’s report  10552ms
+     ✓ kebab menu → Rename opens inline rename (not navigation to a separate edit route)  9130ms
+     ✓ draft → Start becomes Active; Active → Pause becomes Paused; Paused → End becomes Completed; Completed → Archive becomes Archived  14712ms
+     ✓ Filter By shows only rows matching the selected status  11413ms
+stdout | e2e/tests/uiExp.e2e.test.js > Create Experiment
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/uiExp.e2e.test.js > Create Experiment
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/uiExp.e2e.test.js > Create Experiment
+[e2e-auth] Cookie login successful
+
+stdout | e2e/tests/uiExp.e2e.test.js > Create Experiment > Verifies 100% allocation displays selected element for testing on storefront 
+SHOPIFY_TEST_STOREFRONT_HOST: https://friends-test-store.myshopify.com/
+
+ ✓ e2e/tests/uiExp.e2e.test.js (4 tests) 67185ms
+     ✓ creates a viewed-page experiment with Variant A traffic allocation set to 0%  17116ms
+     ✓ Verifies 100% allocation displays selected element for testing on storefront  12285ms
+     ✓ Verifies allocation hides Specified Variant for N Variant  17065ms
+     ✓ control section id test  12140ms
+stdout | e2e/tests/helpArticles.e2e.test.js > Help articles
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/helpArticles.e2e.test.js > Help articles
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/helpArticles.e2e.test.js > Help articles
+[e2e-auth] Cookie login successful
+
+ ✓ e2e/tests/helpArticles.e2e.test.js (6 tests) 62367ms
+     ✓ opens "getting-started" from help page, validates markdown content, and returns via both All Help Articles buttons  10005ms      
+     ✓ opens "manage-experiments" from help page, validates markdown content, and returns via both All Help Articles buttons  10098ms   
+     ✓ opens "understanding-results" from help page, validates markdown content, and returns via both All Help Articles buttons  10069ms
+     ✓ opens "viewing-reports" from help page, validates markdown content, and returns via both All Help Articles buttons  15447ms      
+     ✓ article page exposes both All Help Articles buttons  5649ms
+     ✓ shows fallback content for a missing help article slug  2666ms
+stdout | e2e/tests/create-experiment.e2e.test.js > Create Experiment
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/create-experiment.e2e.test.js > Create Experiment
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/create-experiment.e2e.test.js > Create Experiment
+[e2e-auth] Cookie login successful
+
+ ✓ e2e/tests/create-experiment.e2e.test.js (11 tests) 49678ms
+     ✓ saves a valid draft experiment with manual end condition  4465ms
+     ✓ shows validation errors when required fields are missing  3399ms
+     ✓ validates stable success probability inputs and recovers with valid values  4417ms
+     ✓ validates end date must be after start date and allows recovery  4319ms
+     ✓ shows required validation when end condition is end date and end date is missing  3222ms
+     ✓ enforces max variant limit at four variants  3204ms
+     ✓ shows required validation for Variant B section ID when second variant is added  3578ms
+     ✓ validates custom max users and allows recovery with a valid value  4174ms
+     ✓ discards current input and returns the form to required-field state  3830ms
+     ✓ shows validation when start date/time is in the past  3291ms
+     ✓ shows validation when end date is in the past  3415ms
+stdout | e2e/tests/reports.id.e2e.test.js > Report detail — /app/reports/:id
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/reports.id.e2e.test.js > Report detail — /app/reports/:id
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/reports.id.e2e.test.js > Report detail — /app/reports/:id
+[e2e-auth] Cookie login successful
+
+ ✓ e2e/tests/reports.id.e2e.test.js (8 tests) 32048ms
+     ✓ segment routes are stable and keep report shell rendered  8825ms
+     ✓ reports index still exposes at least one report link  6065ms
+stdout | e2e/tests/edit-experiment.e2e.test.js > Edit Experiment
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/edit-experiment.e2e.test.js > Edit Experiment
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/edit-experiment.e2e.test.js > Edit Experiment
+[e2e-auth] Cookie login successful
+
+ ✓ e2e/tests/edit-experiment.e2e.test.js (5 tests) 26185ms
+     ✓ should allow editing draft fields in the UI  1115ms
+     ✓ should show fallback preview text when the experiment name is cleared  3927ms
+     ✓ should update the allocation summary when variant traffic changes  4169ms
+stdout | e2e/tests/smoke.e2e.test.js > Smoke Test - App Loads in Shopify Admin
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/smoke.e2e.test.js > Smoke Test - App Loads in Shopify Admin
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/smoke.e2e.test.js > Smoke Test - App Loads in Shopify Admin
+[e2e-auth] Cookie login successful
+
+ ✓ e2e/tests/smoke.e2e.test.js (5 tests) 23081ms
+     ✓ should navigate to the Experiments page  4703ms
+     ✓ should navigate to the Reports page  3301ms
+     ✓ should navigate to the Settings page  3223ms
+stdout | e2e/tests/settings.e2e.test.js > Settings Page
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/settings.e2e.test.js > Settings Page
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/settings.e2e.test.js > Settings Page
+[e2e-auth] Cookie login successful
+
+ ✓ e2e/tests/settings.e2e.test.js (15 tests) 22009ms
+     ✓ should save a new default experiment goal and show a success message  5744ms
+     ✓ should add a new contact email and display it as a chip  876ms
+     ✓ should remove a contact email when its chip is clicked  636ms
+     ✓ should add a new contact phone and display it as a chip  668ms
+     ✓ should remove a contact phone when its chip is clicked  647ms
+     ✓ should delete all contact info when the delete button is clicked  1754ms
+stdout | e2e/tests/experiments.e2e.test.js > Experiments
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/experiments.e2e.test.js > Experiments
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/experiments.e2e.test.js > Experiments
+[e2e-auth] Cookie login successful
+
+ ✓ e2e/tests/experiments.e2e.test.js (3 tests) 16745ms
+     ✓ should navigate to the create new experiment page  3179ms
+stdout | e2e/tests/reports.index.e2e.test.js > Reports index — overview
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/reports.index.e2e.test.js > Reports index — overview
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/reports.index.e2e.test.js > Reports index — overview
+[e2e-auth] Cookie login successful
+
+ ✓ e2e/tests/reports.index.e2e.test.js (15 tests) 14920ms
+stdout | e2e/tests/help.page.e2e.test.js > Help Page
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/help.page.e2e.test.js > Help Page
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/help.page.e2e.test.js > Help Page
+[e2e-auth] Cookie login successful
+
+ ✓ e2e/tests/help.page.e2e.test.js (4 tests) 11538ms
+
+ Test Files  13 passed (13)
+      Tests  101 passed (101)
+   Start at  12:56:21
+   Duration  562.92s (transform 162ms, setup 0ms, collect 2.13s, tests 558.47s, environment 2ms, prepare 103ms)
+message.txt
+11 KB

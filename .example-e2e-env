@@ -1,0 +1,3 @@
+SHOPIFY_TEST_STORE_URL=friends-test-store.myshopify.com
+SHOPIFY_TEST_APP_PATH=apps/ab-insightful-1/app
+STOREFRONT_PASSWORD=mypassword

@@ -1,6 +1,8 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import { sleep } from "./waits.js";
+import { By } from "selenium-webdriver";
+
 
 const COOKIE_FILE = resolve(process.cwd(), ".e2e-cookies.json");
 
@@ -174,4 +176,111 @@ export async function navigateToAppRoute(driver, appRoute) {
   }, 30_000, `Timed out navigating to ${appRoute}`);
 
   await sleep(5000);
+}
+
+export async function navigateToStorefront(driver, url, options = {}) {
+  const {
+    password = process.env.STOREFRONT_PASSWORD,
+    waitTimeout = 20_000,
+  } = options;
+
+  if (!url) {
+    throw new Error("navigateToStorefront requires a url");
+  }
+
+  const targetUrl = new URL(url);
+  const targetOrigin = targetUrl.origin;
+  const targetHost = targetUrl.host;
+
+  await driver.switchTo().defaultContent();
+
+  try {
+    await driver.get(url);
+  } catch (err) {
+    console.log("driver.get error:", err.message);
+  }
+
+  await driver.wait(async () => {
+    try {
+      const currentUrl = await driver.getCurrentUrl();
+      return currentUrl.includes(targetHost);
+    } catch {
+      return false;
+    }
+  }, waitTimeout);
+
+  let currentUrl = await driver.getCurrentUrl();
+
+  if (currentUrl.includes("/password")) {
+    if (!password) {
+      throw new Error("Missing STOREFRONT_PASSWORD in env");
+    }
+
+    const passwordSelectors = [
+      'input[type="password"]',
+      'input[name="password"]',
+      'input[id*="password"]',
+    ].join(", ");
+
+    const submitSelectors = [
+      'button[type="submit"]',
+      'input[type="submit"]',
+      'button[name="commit"]',
+      'button',
+    ].join(", ");
+
+    const input = await driver.findElement(By.css(passwordSelectors));
+    await input.clear();
+    await input.sendKeys(password);
+
+    const buttons = await driver.findElements(By.css(submitSelectors));
+    let clicked = false;
+
+    for (const button of buttons) {
+      const text = ((await button.getText()) || "").trim().toLowerCase();
+      const type = ((await button.getAttribute("type")) || "").toLowerCase();
+
+      if (
+        type === "submit" ||
+        text.includes("enter") ||
+        text.includes("submit") ||
+        text.includes("view") ||
+        text.includes("login")
+      ) {
+        await button.click();
+        clicked = true;
+        break;
+      }
+    }
+
+    if (!clicked && buttons.length > 0) {
+      await buttons[0].click();
+    }
+
+    await driver.wait(async () => {
+      try {
+        const nextUrl = await driver.getCurrentUrl();
+        return nextUrl.includes(targetHost) && !nextUrl.includes("/password");
+      } catch {
+        return false;
+      }
+    }, waitTimeout);
+
+    currentUrl = await driver.getCurrentUrl();
+  }
+
+  await driver.wait(async () => {
+    try {
+      const readyState = await driver.executeScript("return document.readyState");
+      return readyState === "interactive" || readyState === "complete";
+    } catch {
+      return false;
+    }
+  }, waitTimeout);
+
+  if (!currentUrl.includes(targetHost)) {
+    throw new Error(`Did not navigate to expected storefront host. Current URL: ${currentUrl}`);
+  }
+
+  return currentUrl;
 }

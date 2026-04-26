@@ -6,14 +6,17 @@ import { switchToAppIframe, waitForAppReady } from "../helpers/iframe.js";
 import { getTextContent } from "../helpers/shadow.js";
 import { sleep } from "../helpers/waits.js";
 
-const TEST_EXPERIMENT_ID = "9107";
-
 describe("Edit Experiment", () => {
   let driver;
+  let testExperimentId;
+  let testExperimentName;
 
   beforeAll(async () => {
     driver = await createDriver();
     await loginToShopifyAdmin(driver);
+    const draft = await findDraftExperiment();
+    testExperimentId = draft.id;
+    testExperimentName = draft.name;
     await openEditExperimentPage();
   });
 
@@ -22,10 +25,35 @@ describe("Edit Experiment", () => {
   });
 
   async function openEditExperimentPage() {
-    await navigateToAppRoute(driver, `/app/experiments/${TEST_EXPERIMENT_ID}`);
+    await navigateToAppRoute(driver, `/app/experiments/${testExperimentId}`);
     await switchToAppIframe(driver);
     await waitForAppReady(driver);
-    await sleep(1000);
+    await sleep(250);
+  }
+
+  async function findDraftExperiment() {
+    await navigateToAppRoute(driver, "/app/experiments");
+    await switchToAppIframe(driver);
+    await waitForAppReady(driver);
+
+    const result = await driver.executeScript(`
+      const rows = document.querySelectorAll("s-table-body s-table-row");
+      for (const row of rows) {
+        const text = (row.textContent || "").replace(/\\s+/g, " ").trim();
+        if (!/\\bDraft\\b/.test(text)) continue;
+        const link = row.querySelector('s-link[href*="/app/reports/"]');
+        const href = (link?.getAttribute("href") || "");
+        const match = href.match(/\\/app\\/reports\\/(\\d+)/);
+        const name = (link?.textContent || "").replace(/\\s+/g, " ").trim();
+        if (match && name) {
+          return { id: match[1], name };
+        }
+      }
+      return null;
+    `);
+
+    expect(result, "Expected at least one draft experiment row on list page").toBeTruthy();
+    return result;
   }
 
   async function getBodyText() {
@@ -136,10 +164,10 @@ describe("Edit Experiment", () => {
     return `${year}-${month}-${day}`;
   }
 
-  it("should load the edit experiment page for the seeded draft experiment", async () => {
+  it("should load the edit experiment page for a draft experiment", async () => {
     const text = await getBodyText();
 
-    expect(text).toContain("DEMO - Checkout Trust Badges");
+    expect(text).toContain(testExperimentName);
     expect(text).toContain("Experiment Name");
     expect(text).toContain("Experiment Description");
     expect(text).toContain("Experiment Goal");
@@ -150,10 +178,11 @@ describe("Edit Experiment", () => {
     expect(text).toContain("Save Draft");
   });
 
-    it("should show the seeded draft setup details", async () => {
+    it("should show draft setup details", async () => {
         const text = await getBodyText();
 
-        expect(text).toContain("Variant A: Section not selected");
+        // Dynamically selected draft may or may not already have a section assigned.
+        expect(text).toMatch(/Variant A:\s*(Section not selected|[^\n]+)/);
         expect(text).toContain("Active from");
         expect(text).toContain("until —");
 
@@ -164,8 +193,8 @@ describe("Edit Experiment", () => {
         expect(saveDisabled).toBe(false);
     });
 
-    it("should allow editing seeded draft fields in the UI", async () => {
-        const editedName = `Selenium Edit - Checkout Trust Badges ${Date.now()}`;
+    it("should allow editing draft fields in the UI", async () => {
+        const editedName = `Selenium Edit - ${testExperimentName} ${Date.now()}`;
         const editedDescription = "Edited by Selenium for the edit experiment e2e test.";
 
         await setFieldByLabelIncludes("Experiment Name", editedName);

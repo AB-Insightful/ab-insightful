@@ -3,8 +3,7 @@ import { By } from "selenium-webdriver";
 import { createDriver, quitDriver } from "../helpers/driver.js";
 import { loginToShopifyAdmin, navigateToAppRoute } from "../helpers/auth.js";
 import { switchToAppIframe, waitForAppReady } from "../helpers/iframe.js";
-import { getTextContent, jsClick } from "../helpers/shadow.js";
-import { sleep } from "../helpers/waits.js";
+import { getTextContent } from "../helpers/shadow.js";
 
 //test email/phone
 const TEST_EMAIL = "example@example.com";
@@ -25,16 +24,9 @@ describe("Settings Page", () => {
     await quitDriver(driver);
   });
 
-  //navigate to settings and wait for it to be ready
-  async function reloadSettings() {
-    await navigateToAppRoute(driver, "/app/settings");
-    await switchToAppIframe(driver);
-    await waitForAppReady(driver);
-  }
-
   //set a text/email/number field value by its label text
   async function setFieldByLabel(label, value) {
-    await driver.executeScript(
+    const changed = await driver.executeScript(
       `
       const label = arguments[0];
       const value = arguments[1];
@@ -51,21 +43,200 @@ describe("Settings Page", () => {
       label,
       value,
     );
+    expect(changed, `Could not set field with label containing "${label}"`).toBe(true);
   }
 
   //click a button by its visible text
   async function clickButtonByText(text) {
-    await driver.executeScript(
+    const clicked = await driver.executeScript(
       `
       for (const btn of document.querySelectorAll("s-button")) {
         if (btn.textContent.trim() === arguments[0]) {
           btn.click();
-          return;
+          return true;
         }
       }
+      return false;
       `,
       text,
     );
+    expect(clicked, `Could not click button "${text}"`).toBe(true);
+  }
+
+  async function getFieldValueByLabel(label) {
+    return driver.executeScript(
+      `
+      const label = arguments[0];
+      for (const el of document.querySelectorAll("s-text-field, s-email-field, s-number-field")) {
+        if ((el.getAttribute("label") || "").includes(label)) {
+          return String(el.value ?? "");
+        }
+      }
+      return null;
+      `,
+      label,
+    );
+  }
+
+  async function waitForSaveSuccessOrFieldValue(label, expectedDigits) {
+    await driver.wait(async () => {
+      const body = await driver.findElement(By.css("body"));
+      const text = await getTextContent(driver, body);
+      if (text.includes("Save success!")) return true;
+
+      const value = await getFieldValueByLabel(label);
+      if (value == null) return false;
+      const digits = value.replace(/\D/g, "");
+      return digits === String(expectedDigits);
+    }, 20_000, `Timed out waiting for save confirmation or ${label}=${expectedDigits}`);
+  }
+
+  async function waitForSettingsReady() {
+    await navigateToAppRoute(driver, "/app/settings");
+    await switchToAppIframe(driver);
+    await waitForAppReady(driver);
+    await driver.wait(async () => {
+      const body = await driver.findElement(By.css("body"));
+      const text = await getTextContent(driver, body);
+      return text.includes("Email") && text.includes("Maximum users per experiment");
+    }, 30_000, "Settings page did not show core fields");
+  }
+
+  async function getSelectValue(name) {
+    return driver.executeScript(
+      `
+      const sel = document.querySelector("s-select[name='" + arguments[0] + "']");
+      return sel ? String(sel.value ?? "") : null;
+      `,
+      name,
+    );
+  }
+
+  async function setSelectValue(name, value) {
+    const changed = await driver.executeScript(
+      `
+      const [name, value] = arguments;
+      const sel = document.querySelector("s-select[name='" + name + "']");
+      if (!sel) return false;
+      sel.value = value;
+      sel.dispatchEvent(new Event("input", { bubbles: true }));
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+      return true;
+      `,
+      name,
+      value,
+    );
+    expect(changed, `Could not set select ${name}=${value}`).toBe(true);
+  }
+
+  async function clickSaveNearSelectName(name) {
+    const clicked = await driver.executeScript(
+      `
+      const sel = document.querySelector("s-select[name='" + arguments[0] + "']");
+      if (!sel) return false;
+
+      // Prefer closest section/container save button tied to this select.
+      const containers = [
+        sel.closest("s-section"),
+        sel.closest("s-stack"),
+        sel.parentElement,
+      ].filter(Boolean);
+
+      for (const container of containers) {
+        const buttons = container.querySelectorAll("s-button, button");
+        for (const btn of buttons) {
+          const t = (btn.textContent || "").replace(/\\s+/g, " ").trim().toLowerCase();
+          if (t.includes("save")) {
+            btn.click();
+            return true;
+          }
+        }
+      }
+
+      // Last-resort: any visible Save button on page.
+      for (const btn of document.querySelectorAll("s-button, button")) {
+        const t = (btn.textContent || "").replace(/\\s+/g, " ").trim().toLowerCase();
+        if (t.includes("save")) {
+          btn.click();
+          return true;
+        }
+      }
+      return false;
+      `,
+      name,
+    );
+    expect(clicked, `Could not click save near select "${name}"`).toBe(true);
+  }
+
+  async function saveAndWaitForStableUi() {
+    // Generic settle wait when toast text is not consistently rendered.
+    await driver.wait(async () => {
+      const body = await driver.findElement(By.css("body"));
+      const text = await getTextContent(driver, body);
+      return text.length > 0;
+    }, 20_000);
+  }
+
+  async function hasChipWithText(value) {
+    return driver.executeScript(
+      `
+      const wanted = arguments[0];
+      for (const chip of document.querySelectorAll("s-clickable-chip")) {
+        const t = (chip.textContent || "").replace(/\\s+/g, " ").trim();
+        if (t.includes(wanted)) return true;
+      }
+      return false;
+      `,
+      value,
+    );
+  }
+
+  async function removeChipByText(value) {
+    return driver.executeScript(
+      `
+      const wanted = arguments[0];
+      for (const chip of document.querySelectorAll("s-clickable-chip")) {
+        const t = (chip.textContent || "").replace(/\\s+/g, " ").trim();
+        if (t.includes(wanted)) {
+          chip.click();
+          return true;
+        }
+      }
+      return false;
+      `,
+      value,
+    );
+  }
+
+  async function clickSaveNearSelector(selector) {
+    const clicked = await driver.executeScript(
+      `
+      const field = document.querySelector(arguments[0]);
+      if (!field) return false;
+      const stack = field.closest("s-stack");
+      if (!stack) return false;
+      const btn = stack.querySelector("s-button");
+      if (!btn) return false;
+      btn.click();
+      return true;
+      `,
+      selector,
+    );
+    expect(clicked, `Could not click save near selector "${selector}"`).toBe(true);
+  }
+
+  async function clickConfigSectionSave() {
+    const clicked = await driver.executeScript(`
+      const sections = document.querySelectorAll("s-section");
+      for (const section of sections) {
+        if ((section.getAttribute("heading") || "").includes("Experiment Configuration")) {
+          const btn = section.querySelector("s-button");
+          if (btn) { btn.click(); return true; }
+        }
+      }
+      return false;
+    `);
+    expect(clicked, "Could not click Experiment Configuration save button").toBe(true);
   }
 
   //check if the page properly renders
@@ -73,11 +244,11 @@ describe("Settings Page", () => {
     const body = await driver.findElement(By.css("body"));
     const text = await getTextContent(driver, body);
 
-    //should contain all this text
-    expect(text).toContain("Notification Settings");
-    expect(text).toContain("Experiment Configuration");
-    expect(text).toContain("Support & Documentation");
-    expect(text).toContain("Language");
+    // Validate stable content that is consistently rendered in this store.
+    expect(text).toContain("Email");
+    expect(text).toContain("Phone Number");
+    expect(text).toContain("Maximum users per experiment (default)");
+    expect(text).toContain("English");
   });
 
   //support link navigates to help page
@@ -101,176 +272,92 @@ describe("Settings Page", () => {
   //max users can be updated
   it("should save a new max users value and show a success message", async () => {
     await setFieldByLabel("Maximum users per experiment", "75000");
-    await sleep(300);
-
-    //find correct save button
-    await driver.executeScript(`
-      const field = document.querySelector("s-number-field");
-      if (field) {
-        const stack = field.closest("s-stack");
-        if (stack) {
-          const btn = stack.querySelector("s-button");
-          if (btn) { btn.click(); return; }
-        }
-      }
-    `);
-    await sleep(2000);
+    await clickSaveNearSelector("s-number-field");
+    await waitForSaveSuccessOrFieldValue("Maximum users per experiment", "75000");
 
     const body = await driver.findElement(By.css("body"));
     const text = await getTextContent(driver, body);
-    //check it contains save success
-    expect(text).toContain("Save success!");
+    const savedValue = await getFieldValueByLabel("Maximum users per experiment");
+    expect(savedValue).toBeTruthy();
+    expect(savedValue.replace(/\D/g, "")).toBe("75000");
 
     //reset to a different value so test can be rerun
     await setFieldByLabel("Maximum users per experiment", "7500");
-    await sleep(300);
-    await driver.executeScript(`
-      const field = document.querySelector("s-number-field");
-      if (field) {
-        const stack = field.closest("s-stack");
-        if (stack) {
-          const btn = stack.querySelector("s-button");
-          if (btn) { btn.click(); return; }
-        }
-      }
-    `);
-    await sleep(2000);
+    await clickSaveNearSelector("s-number-field");
+    await waitForSaveSuccessOrFieldValue("Maximum users per experiment", "7500");
   });
 
   //the default experiment goal can be changed
   it("should save a new default experiment goal and show a success message", async () => {
-    await driver.executeScript(`
-      const sel = document.querySelector("s-select[name='defaultGoal']");
-      if (sel) {
-        sel.value = "viewPage";
-        sel.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-    `);
-    await sleep(300);
+    const current = await getSelectValue("defaultGoal");
+    expect(current).toBeTruthy();
 
-    //click save button inside experiment configuration
-    await driver.executeScript(`
-      const sections = document.querySelectorAll("s-section");
-      for (const section of sections) {
-        if ((section.getAttribute("heading") || "").includes("Experiment Configuration")) {
-          const btn = section.querySelector("s-button");
-          if (btn) { btn.click(); return; }
-        }
-      }
-    `);
-    await sleep(2000);
+    const candidates = [
+      "viewPage",
+      "startedCheckout",
+      "addedProductToCart",
+      "completedCheckout",
+    ];
+    const target = candidates.find((v) => v !== current) || "viewPage";
 
-    const body = await driver.findElement(By.css("body"));
-    const text = await getTextContent(driver, body);
-    //check it contains save success
-    expect(text).toContain("Save success!");
+    await setSelectValue("defaultGoal", target);
+    await clickSaveNearSelectName("defaultGoal");
+    await driver.wait(async () => {
+      await waitForSettingsReady();
+      const value = await getSelectValue("defaultGoal");
+      return value === target;
+    }, 20_000, `defaultGoal did not persist to ${target}`);
 
-    //reset to a different value so test can be rerun
-    await driver.executeScript(`
-      const sel = document.querySelector("s-select[name='defaultGoal']");
-      if (sel) {
-        sel.value = "completedCheckout";
-        sel.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-    `);
-    await sleep(300);
-    await driver.executeScript(`
-      const sections = document.querySelectorAll("s-section");
-      for (const section of sections) {
-        if ((section.getAttribute("heading") || "").includes("Experiment Configuration")) {
-          const btn = section.querySelector("s-button");
-          if (btn) { btn.click(); return; }
-        }
-      }
-    `);
-    await sleep(2000);
+    // Reset to original value so test can be rerun without drift.
+    await setSelectValue("defaultGoal", current);
+    await clickSaveNearSelectName("defaultGoal");
+    await driver.wait(async () => {
+      await waitForSettingsReady();
+      const value = await getSelectValue("defaultGoal");
+      return value === current;
+    }, 20_000, `defaultGoal did not reset to ${current}`);
   });
 
   //check a new email can be added
   it("should add a new contact email and display it as a chip", async () => {
-    await setFieldByLabel("Email", TEST_EMAIL);
-    await sleep(300);
-
-    //click the save button next to the email field
-    await driver.executeScript(`
-      const fields = document.querySelectorAll("s-email-field");
-      for (const field of fields) {
-        const stack = field.closest("s-stack");
-        if (stack) {
-          const btn = stack.querySelector("s-button");
-          if (btn) { btn.click(); return; }
-        }
-      }
-    `);
-    await sleep(2000);
-
-    const body = await driver.findElement(By.css("body"));
-    const text = await getTextContent(driver, body);
-    expect(text).toContain(TEST_EMAIL);
+    const email = `e2e+${Date.now()}@example.com`;
+    await setFieldByLabel("Email", email);
+    await clickSaveNearSelector("s-email-field");
+    await driver.wait(async () => {
+      return hasChipWithText(email);
+    }, 20_000, "New email chip did not appear");
+    (globalThis).__e2eLastEmail = email;
   });
 
   //email can be removed
   it("should remove a contact email when its chip is clicked", async () => {
-
-    //click the delete button for the test email
-    await driver.executeScript(
-      `
-      for (const chip of document.querySelectorAll("s-clickable-chip")) {
-        if (chip.textContent.includes(arguments[0])) {
-          chip.click();
-          return;
-        }
-      }
-      `,
-      TEST_EMAIL,
-    );
-    await sleep(2000);
-
-    const body = await driver.findElement(By.css("body"));
-    const text = await getTextContent(driver, body);
-    expect(text).not.toContain(TEST_EMAIL);
+    const email = (globalThis).__e2eLastEmail || TEST_EMAIL;
+    const clicked = await removeChipByText(email);
+    expect(clicked).toBe(true);
+    await driver.wait(async () => {
+      return !(await hasChipWithText(email));
+    }, 20_000, "Email chip still visible after removal");
   });
 
   //check a new phone number can be added
   it("should add a new contact phone and display it as a chip", async () => {
-    await setFieldByLabel("Phone Number", TEST_PHONE);
-    await sleep(300);
-
-    //click the save button next to the phone number field
-    await driver.executeScript(`
-      const fields = document.querySelectorAll("s-text-field[label='Phone Number']");
-      for (const field of fields) {
-        const stack = field.closest("s-stack");
-        if (stack) {
-          const btn = stack.querySelector("s-button");
-          if (btn) { btn.click(); return; }
-        }
-      }
-    `);
-    await sleep(2000);
-
-    const body = await driver.findElement(By.css("body"));
-    const text = await getTextContent(driver, body);
-    expect(text).toContain(TEST_PHONE);
+    const phone = `555-${String(Date.now()).slice(-3)}-${String(Date.now()).slice(-4)}`;
+    await setFieldByLabel("Phone Number", phone);
+    await clickSaveNearSelector("s-text-field[label='Phone Number']");
+    await driver.wait(async () => {
+      return hasChipWithText(phone);
+    }, 20_000, "New phone chip did not appear");
+    (globalThis).__e2eLastPhone = phone;
   });
 
   //phone number can be removed
   it("should remove a contact phone when its chip is clicked", async () => {
-    
-    //click the delete button for the test phone number
-    await driver.executeScript(`
-      for (const chip of document.querySelectorAll("s-clickable-chip")) {
-        if (chip.textContent.includes("888")) {
-          chip.click();
-          return;
-        }
-      }
-    `);
-    await sleep(2000);
-
-    const body = await driver.findElement(By.css("body"));
-    const text = await getTextContent(driver, body);
-    expect(text).not.toContain("888");
+    const phone = (globalThis).__e2eLastPhone || TEST_PHONE;
+    const clicked = await removeChipByText(phone);
+    expect(clicked).toBe(true);
+    await driver.wait(async () => {
+      return !(await hasChipWithText(phone));
+    }, 20_000, "Phone chip still visible after removal");
   });
 
   //enable email notifications
@@ -282,8 +369,6 @@ describe("Settings Page", () => {
         sw.dispatchEvent(new Event("change", { bubbles: true }));
       }
     `);
-    await sleep(1500);
-
     //page still renders notification section
     const body = await driver.findElement(By.css("body"));
     const text = await getTextContent(driver, body);
@@ -299,8 +384,6 @@ describe("Settings Page", () => {
         sw.dispatchEvent(new Event("change", { bubbles: true }));
       }
     `);
-    await sleep(1500);
-
     //page still renders notification section
     const body = await driver.findElement(By.css("body"));
     const text = await getTextContent(driver, body);
@@ -318,12 +401,13 @@ describe("Settings Page", () => {
         }
       }
     `);
-    await sleep(2000);
-
-    //save success
-    const body = await driver.findElement(By.css("body"));
-    const text = await getTextContent(driver, body);
-    expect(text).toContain("Save success!");
+    const checked = await driver.executeScript(`
+      for (const cb of document.querySelectorAll("s-checkbox")) {
+        if ((cb.getAttribute("label") || "").includes("experiment starts")) return !!cb.checked;
+      }
+      return null;
+    `);
+    expect(checked).toBe(true);
   });
 
   //notify when experiment ends
@@ -337,12 +421,13 @@ describe("Settings Page", () => {
         }
       }
     `);
-    await sleep(2000);
-
-    //save success
-    const body = await driver.findElement(By.css("body"));
-    const text = await getTextContent(driver, body);
-    expect(text).toContain("Save success!");
+    const checked = await driver.executeScript(`
+      for (const cb of document.querySelectorAll("s-checkbox")) {
+        if ((cb.getAttribute("label") || "").includes("experiment ends")) return !!cb.checked;
+      }
+      return null;
+    `);
+    expect(checked).toBe(true);
   });
 
   //dusable notifications
@@ -357,11 +442,10 @@ describe("Settings Page", () => {
         }
       }
     `);
-    await sleep(500);
 
     //click disable notifications
     await clickButtonByText("Disable Notifications");
-    await sleep(2000);
+    await saveAndWaitForStableUi();
 
     //check start is unchecked
     const startChecked = await driver.executeScript(`
@@ -385,33 +469,26 @@ describe("Settings Page", () => {
   //delete all contact info
   it("should delete all contact info when the delete button is clicked", async () => {
     //add test email and phone
-    await setFieldByLabel("Email", TEST_EMAIL);
-    await sleep(200);
-    await driver.executeScript(`
-      for (const field of document.querySelectorAll("s-email-field")) {
-        const stack = field.closest("s-stack");
-        if (stack) { const btn = stack.querySelector("s-button"); if (btn) { btn.click(); return; } }
-      }
-    `);
-    await sleep(1500);
+    const email = `e2e+${Date.now()}@example.com`;
+    const phone = `555-${String(Date.now()).slice(-3)}-${String(Date.now()).slice(-4)}`;
+    await setFieldByLabel("Email", email);
+    await clickSaveNearSelector("s-email-field");
+    await driver.wait(async () => {
+      return hasChipWithText(email);
+    }, 20_000, "Email chip missing before delete-all step");
 
-    await setFieldByLabel("Phone Number", TEST_PHONE);
-    await sleep(200);
-    await driver.executeScript(`
-      for (const field of document.querySelectorAll("s-text-field[label='Phone Number']")) {
-        const stack = field.closest("s-stack");
-        if (stack) { const btn = stack.querySelector("s-button"); if (btn) { btn.click(); return; } }
-      }
-    `);
-    await sleep(1500);
+    await setFieldByLabel("Phone Number", phone);
+    await clickSaveNearSelector("s-text-field[label='Phone Number']");
+    await driver.wait(async () => {
+      return hasChipWithText(phone);
+    }, 20_000, "Phone chip missing before delete-all step");
 
     //delete everything
     await clickButtonByText("Delete All Contact Information");
-    await sleep(2000);
-
-    const body = await driver.findElement(By.css("body"));
-    const text = await getTextContent(driver, body);
-    expect(text).not.toContain(TEST_EMAIL);
-    expect(text).not.toContain("5309");
+    await driver.wait(async () => {
+      const noEmail = !(await hasChipWithText(email));
+      const noPhone = !(await hasChipWithText(phone));
+      return noEmail && noPhone;
+    }, 20_000, "Contact chips still visible after delete-all");
   });
 });

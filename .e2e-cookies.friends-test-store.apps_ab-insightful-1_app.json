@@ -1,0 +1,171 @@
+[
+  {
+    "domain": "admin.shopify.com",
+    "expiry": 1777233332,
+    "httpOnly": true,
+    "name": "koa.sid.sig",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": true,
+    "value": "8-IpK91RSmsG-fa-_ZJn1332h8U"
+  },
+  {
+    "domain": ".shopify.com",
+    "expiry": 1784425088,
+    "httpOnly": false,
+    "name": "_gcl_au",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": false,
+    "value": "1.1.1096520226.1776649088"
+  },
+  {
+    "domain": ".shopify.com",
+    "expiry": 1784425087,
+    "httpOnly": false,
+    "name": "FPAU",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": true,
+    "value": "1.1.1096520226.1776649088"
+  },
+  {
+    "domain": ".shopify.com",
+    "expiry": 1784934136,
+    "httpOnly": false,
+    "name": "_fbp",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": false,
+    "value": "fb.1.1777158136159.305278803611740968"
+  },
+  {
+    "domain": ".shopify.com",
+    "expiry": 1777225399,
+    "httpOnly": false,
+    "name": "_shopify_s",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": true,
+    "value": "9c5b801c-5bf7-470d-8907-237845522c03"
+  },
+  {
+    "domain": ".shopify.com",
+    "expiry": 1811782574,
+    "httpOnly": false,
+    "name": "_ga_W6NECZNE63",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": false,
+    "value": "GS2.1.s1777221163$o3$g1$t1777222574$j59$l0$h1123444978"
+  },
+  {
+    "domain": ".shopify.com",
+    "expiry": 1808759599,
+    "httpOnly": false,
+    "name": "_shopify_y",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": true,
+    "value": "aaac7d0f-4145-46bc-b371-bb0478276914"
+  },
+  {
+    "domain": ".shopify.com",
+    "expiry": 1808184611,
+    "httpOnly": true,
+    "name": "_merchant_marketing",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": true,
+    "value": ":AZ2ogm3aAAAASexC3vGSHDp8lwmdnjo8sZsYUwe9pE-V6NfzoQ:"
+  },
+  {
+    "domain": ".shopify.com",
+    "expiry": 1808759599,
+    "httpOnly": false,
+    "name": "_shopify_essential_",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": true,
+    "value": "5b2c6f8b-79d2-4d5c-8be6-48814090482d"
+  },
+  {
+    "domain": ".shopify.com",
+    "expiry": 1779814572,
+    "httpOnly": false,
+    "name": "li_fat_id_s",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": false,
+    "value": "undefined"
+  },
+  {
+    "domain": ".shopify.com",
+    "expiry": 1792427085,
+    "httpOnly": false,
+    "name": "v:a:3",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": true,
+    "value": "%7B%222b5690bf50ba854f549564309dea2a52%22%3A%7B%22variant%22%3A%22control%22%2C%22createdAt%22%3A1776648611569%7D%7D"
+  },
+  {
+    "domain": "admin.shopify.com",
+    "expiry": 1777233332,
+    "httpOnly": true,
+    "name": "koa.sid",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": true,
+    "value": "hXiVecbU25SCfLOJsVM7aPXfHSLjv4bh"
+  },
+  {
+    "domain": ".shopify.com",
+    "expiry": 1811782573,
+    "httpOnly": false,
+    "name": "_ga",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": false,
+    "value": "GA1.1.1989232785.1777147186"
+  },
+  {
+    "domain": ".shopify.com",
+    "expiry": 1811782574,
+    "httpOnly": true,
+    "name": "FPID",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": true,
+    "value": "FPID2.2.eetpQMcqyDaf26Cgpa1KigX5cSA8m514xurWpkbtZB4%3D.1777147186"
+  },
+  {
+    "domain": ".shopify.com",
+    "expiry": 1777293163,
+    "httpOnly": false,
+    "name": "FPLC",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": true,
+    "value": "El6Qjk%2B91GemJwQPWw4B93SUjPD0yr9uwHftmNkb%2FN83WdDylvz0zQvcyCoj76%2BpFJESFT3%2Bv%2BascYaF53EQaHZBEZv2uxtsGIWw8qvA7HwCaGSazyWeCJWmlOz9Hg%3D%3D"
+  },
+  {
+    "domain": ".shopify.com",
+    "httpOnly": false,
+    "name": "mto_pvs",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": false,
+    "value": "10"
+  },
+  {
+    "domain": ".shopify.com",
+    "expiry": 1808780528,
+    "httpOnly": true,
+    "name": "_merchant_essential",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": true,
+    "value": "%3AAZ3Kx6nAAAEADVS3oV4Uf0KTPU97J-AJ6jieX5SdUWx0lmPv2kKgQkGHJzASOHfGS86rHyvPuLYIvpn_JCu0m69beaxZGkIgia0aJdFTILg7r0AzmpEsCgJB4_IHgp9yCta6qNWMWkFCDW-klKGjKxkRI7OaKH5bXcIj9oj5EnaKDMue9ioe1CMFQ-hRst6e9KeEcTCK36LoBX04HilUN-RKZ512sfK7ep6RPH8ddr_gnmDbW9Nvr-UAWhXGgbcuoTQCS5G3bz3cBVHxry3Po1qn5pvZkQUN5kd9_kBtGBf_qzI90UZA_Gw6uZtqwzKHevBBzGe_GjeKfi2524OFcG88Qnm5ummAg4OJEVVGpHccJyLX-Nz4l0aiHWGmh_SesfMydNHClwJKoudjfXhEwDtivhfiA9lD-zVxYy_pObssM3P_AwIWYlaDxzSbFbajjOxM9Lt7RG_1lFp5e4HAq30K0O1K6jB1oyGl-KBqiXA_L-HRhFr5U6ApIiAbbqe8rGcoezW9eaDjgexyTnVLjl_c09-Pv0gHKEMblUVvu9j4IaXpD25DWl25ujFIRTV2zm7FDi6dHirLe1ML2F9bBnTXBFIn2Oh9CTVI_8qG22fRjr9Gie5TV0GYWhcBehWV_QOprlHnsQYrqBvSJpSW0AuUBOZo1l5Bs7nfrFxk90kG27iz4Yzqungh9fBqaThAKprC%3A"
+  }
+]

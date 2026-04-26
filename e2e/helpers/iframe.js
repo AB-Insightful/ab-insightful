@@ -1,6 +1,16 @@
 import { By } from "selenium-webdriver";
 import { sleep } from "./waits.js";
 
+function isExcludedIframeSource(src) {
+  const value = String(src || "").toLowerCase();
+  return (
+    value.includes("analytics") ||
+    value.includes("tracking") ||
+    value.includes("recaptcha") ||
+    value.includes("googletagmanager")
+  );
+}
+
 /**
  * Switch the driver context into the embedded app iframe.
  *
@@ -10,62 +20,87 @@ import { sleep } from "./waits.js";
 export async function switchToAppIframe(driver, timeout = 30_000) {
   await driver.switchTo().defaultContent();
 
-  let iframe = null;
-
   await driver.wait(async () => {
-    // Strategy 1: Regular CSS selectors
-    try {
-      const found = await driver.findElements(By.css("iframe"));
-      for (const f of found) {
-        const src = await f.getAttribute("src");
-        if (src && !src.includes("analytics") && !src.includes("tracking") && !src.includes("recaptcha")) {
-          iframe = f;
-          return true;
-        }
-      }
-    } catch { /* no regular iframes */ }
+    const iframes = await driver.findElements(By.css("iframe"));
+    return iframes.length > 0;
+  }, timeout, "No iframe elements found in Shopify Admin");
 
-    // Strategy 2: Search shadow DOMs via JavaScript
-    try {
-      iframe = await driver.executeScript(`
-        function findIframeInShadow(root) {
-          const iframes = root.querySelectorAll('iframe');
-          for (const iframe of iframes) {
-            const src = iframe.getAttribute('src') || '';
-            if (src && !src.includes('analytics') && !src.includes('tracking') && !src.includes('recaptcha')) {
-              return iframe;
-            }
-          }
-          for (const el of root.querySelectorAll('*')) {
-            if (el.shadowRoot) {
-              const found = findIframeInShadow(el.shadowRoot);
-              if (found) return found;
-            }
-          }
-          return null;
-        }
-        return findIframeInShadow(document);
-      `);
-      if (iframe) return true;
-    } catch {
-      // Shadow DOM search failed
+  const iframe = await driver.executeScript(`
+    function collectFrames(root, out) {
+      const localFrames = root.querySelectorAll("iframe");
+      for (const frame of localFrames) out.push(frame);
+      for (const el of root.querySelectorAll("*")) {
+        if (el.shadowRoot) collectFrames(el.shadowRoot, out);
+      }
     }
 
-    return false;
-  }, timeout, "App iframe not found in Shopify Admin");
+    function score(frame) {
+      const src = (frame.getAttribute("src") || "").toLowerCase();
+      const id = (frame.id || "").toLowerCase();
+      const name = (frame.getAttribute("name") || "").toLowerCase();
+      const title = (frame.getAttribute("title") || "").toLowerCase();
+      const cls = (frame.className || "").toString().toLowerCase();
+      const all = [src, id, name, title, cls].join(" ");
+      const rect = frame.getBoundingClientRect();
+
+      if (
+        all.includes("analytics") ||
+        all.includes("tracking") ||
+        all.includes("recaptcha") ||
+        all.includes("googletagmanager")
+      ) {
+        return -1;
+      }
+
+      let points = 0;
+      if (src.includes("/apps/")) points += 100;
+      if (all.includes("shopify")) points += 20;
+      if (all.includes("app")) points += 10;
+      if (rect.width > 200 && rect.height > 200) points += 10;
+      if (rect.width > 0 && rect.height > 0) points += 5;
+      return points;
+    }
+
+    const frames = [];
+    collectFrames(document, frames);
+    if (!frames.length) return null;
+
+    let best = null;
+    let bestScore = -1;
+    for (const frame of frames) {
+      const s = score(frame);
+      if (s > bestScore) {
+        bestScore = s;
+        best = frame;
+      }
+    }
+    return best;
+  `);
+
+  if (!iframe) {
+    throw new Error("App iframe not found in Shopify Admin");
+  }
 
   await driver.switchTo().frame(iframe);
 
-  // Wait for the app's React content to render
-  await driver.wait(async () => {
-    try {
-      const body = await driver.findElement(By.css("body"));
-      const text = await body.getText();
-      return text.length > 0;
-    } catch {
-      return false;
-    }
-  }, timeout, "App content did not load inside iframe");
+  // Wait for body render with meaningful app text content.
+  await driver.wait(
+    async () => {
+      try {
+        const body = await driver.findElement(By.css("body"));
+        const text = await body.getText();
+        const src = await driver.executeScript(
+          "return window.location.href || document.location.href || '';",
+        );
+        if (isExcludedIframeSource(src)) return false;
+        return (text || "").replace(/\s+/g, " ").trim().length > 8;
+      } catch {
+        return false;
+      }
+    },
+    timeout,
+    "App content did not load inside iframe",
+  );
 }
 
 /**
@@ -105,16 +140,26 @@ export async function waitForParentAppNav(driver, timeout = 30_000) {
  * Wait for the app inside the iframe to be fully interactive.
  */
 export async function waitForAppReady(driver, timeout = 30_000) {
-  await driver.wait(async () => {
-    try {
-      const elements = await driver.findElements(
-        By.css("s-app-nav, s-link, s-page, [class*='Polaris'], nav, a, h1, h2"),
-      );
-      return elements.length > 0;
-    } catch {
-      return false;
-    }
-  }, timeout, "App did not become ready inside iframe");
+  await driver.wait(
+    async () => {
+      try {
+        const readySignals = await driver.findElements(
+          By.css(
+            "s-page, s-section, s-card, s-table, s-button, s-link[href], main, [data-testid]",
+          ),
+        );
+        if (!readySignals.length) return false;
 
-  await sleep(2000);
+        const body = await driver.findElement(By.css("body"));
+        const text = await body.getText();
+        return (text || "").replace(/\s+/g, " ").trim().length > 12;
+      } catch {
+        return false;
+      }
+    },
+    timeout,
+    "App did not become ready inside iframe",
+  );
+
+  await sleep(250);
 }

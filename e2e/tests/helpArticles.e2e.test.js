@@ -3,7 +3,11 @@ import { By } from "selenium-webdriver";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { createDriver, quitDriver } from "../helpers/driver.js";
-import { loginToShopifyAdmin, navigateToAppRoute } from "../helpers/auth.js";
+import {
+  loginToShopifyAdmin,
+  navigateToAppRoute,
+  getExpectedAppUrlPath,
+} from "../helpers/auth.js";
 import { switchToAppIframe, switchToParent, waitForAppReady } from "../helpers/iframe.js";
 import { getTextContent, jsClick } from "../helpers/shadow.js";
 import { sleep } from "../helpers/waits.js";
@@ -50,6 +54,7 @@ function readArticleMarkdown(slug) {
 
 describe("Help articles", () => {
   let driver;
+  const helpPath = getExpectedAppUrlPath("/app/help");
 
   beforeAll(async () => {
     driver = await createDriver();
@@ -65,7 +70,7 @@ describe("Help articles", () => {
     await switchToParent(driver);
     await driver.wait(async () => {
       const url = await driver.getCurrentUrl();
-      return url.includes("/apps/ab-insightful-1/app/help");
+      return url.includes(helpPath);
     }, 30_000);
     await switchToAppIframe(driver);
     await waitForAppReady(driver);
@@ -94,7 +99,7 @@ describe("Help articles", () => {
     await switchToParent(driver);
     await driver.wait(async () => {
       const url = await driver.getCurrentUrl();
-      return url.includes(`/apps/ab-insightful-1/app/help/${slug}`);
+      return url.includes(getExpectedAppUrlPath(`/app/help/${slug}`));
     }, 30_000);
     await switchToAppIframe(driver);
     await waitForAppReady(driver);
@@ -108,7 +113,7 @@ describe("Help articles", () => {
     await switchToParent(driver);
     await driver.wait(async () => {
       const url = await driver.getCurrentUrl();
-      return url.includes("/apps/ab-insightful-1/app/help") && !/\/app\/help\/[^/?#]+/.test(url);
+      return url.includes(helpPath) && !/\/app\/help\/[^/?#]+/.test(url);
     }, 30_000);
     await switchToAppIframe(driver);
     await waitForAppReady(driver);
@@ -145,7 +150,7 @@ describe("Help articles", () => {
     await switchToParent(driver);
     await driver.wait(async () => {
       const url = await driver.getCurrentUrl();
-      return url.includes("/apps/ab-insightful-1/app/help/this-article-does-not-exist");
+      return url.includes(getExpectedAppUrlPath("/app/help/this-article-does-not-exist"));
     }, 30_000);
 
     await switchToAppIframe(driver);

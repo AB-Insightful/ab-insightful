@@ -1,7 +1,7 @@
 import { By } from "selenium-webdriver";
 import { until } from "selenium-webdriver";
 import { navigateToApp } from "./auth.js";
-import { switchToAppIframe, waitForAppReady } from "./iframe.js";
+import { switchToAppIframe, switchToParent, waitForAppReady } from "./iframe.js";
 import { getTextContent, jsClick } from "./shadow.js";
 import { sleep } from "./waits.js";
 
@@ -104,13 +104,32 @@ export async function clickCreateExperimentFromListPage(driver) {
  * Click the first experiment name link (s-link to /app/reports/:id).
  */
 export async function clickFirstExperimentNameLink(driver) {
-  const links = await driver.findElements(By.css('s-link[href*="/app/reports/"]'));
-  if (!links.length) {
+  const href = await driver.executeScript(`
+    const link = document.querySelector('s-link[href*="/app/reports/"]');
+    return link ? link.getAttribute("href") : null;
+  `);
+
+  if (!href) {
     throw new Error("No experiment name link (s-link to /app/reports/) found.");
   }
-  await jsClick(driver, links[0]);
+
+  await driver.executeScript(`
+    const link = document.querySelector('s-link[href*="/app/reports/"]');
+    if (link) link.click();
+  `);
+
   await sleep(6000);
-  await waitForAppReady(driver);
+
+  // App Bridge navigation can replace/reload the iframe, so reset to parent first.
+  await switchToParent(driver);
+
+  await driver.wait(async () => {
+    const url = await driver.getCurrentUrl();
+    return url.includes("/app/reports/");
+  }, 45_000, "Timed out waiting for report route after clicking experiment name");
+
+  await switchToAppIframe(driver);
+  await waitForAppReady(driver, 45_000);
 }
 
 /**

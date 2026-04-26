@@ -1,0 +1,24 @@
+﻿
+ RUN  v4.0.8 C:/Users/Tatiana/Documents/shopify_apps/ab-insightful
+
+stdout | e2e/tests/helpArticles.e2e.test.js > Help articles
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/helpArticles.e2e.test.js > Help articles
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/helpArticles.e2e.test.js > Help articles
+[e2e-auth] Cookie login successful
+
+ Γ£ô e2e/tests/helpArticles.e2e.test.js (5 tests) 182746ms
+     Γ£ô opens "getting-started" from help page, validates markdown content, and returns via both All Help Articles buttons  41593ms
+     Γ£ô opens "manage-experiments" from help page, validates markdown content, and returns via both All Help Articles buttons  41603ms
+     Γ£ô opens "understanding-results" from help page, validates markdown content, and returns via both All Help Articles buttons  41701ms
+     Γ£ô opens "viewing-reports" from help page, validates markdown content, and returns via both All Help Articles buttons  41766ms
+     Γ£ô shows fallback content for a missing help article slug  7622ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  06:36:05
+   Duration  182.98s (transform 33ms, setup 0ms, collect 120ms, tests 182.75s, environment 0ms, prepare 4ms)
+

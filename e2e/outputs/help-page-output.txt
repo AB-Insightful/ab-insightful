@@ -1,0 +1,19 @@
+﻿
+ RUN  v4.0.8 C:/Users/Tatiana/Documents/shopify_apps/ab-insightful
+
+stdout | e2e/tests/help.page.e2e.test.js > Help Page
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/help.page.e2e.test.js > Help Page
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/help.page.e2e.test.js > Help Page
+[e2e-auth] Cookie login successful
+
+ Γ£ô e2e/tests/help.page.e2e.test.js (4 tests) 16415ms
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  06:34:14
+   Duration  16.67s (transform 43ms, setup 0ms, collect 133ms, tests 16.41s, environment 0ms, prepare 4ms)
+

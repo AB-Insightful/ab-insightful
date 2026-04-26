@@ -1,0 +1,23 @@
+﻿
+ RUN  v4.0.8 C:/Users/Tatiana/Documents/shopify_apps/ab-insightful
+
+stdout | e2e/tests/edit-experiment.e2e.test.js > Edit Experiment
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/edit-experiment.e2e.test.js > Edit Experiment
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/edit-experiment.e2e.test.js > Edit Experiment
+[e2e-auth] Cookie login successful
+
+ [PASS] e2e/tests/edit-experiment.e2e.test.js (5 tests) 35745ms
+     [PASS] should allow editing seeded draft fields in the UI  1065ms
+     [PASS] should show fallback preview text when the experiment name is cleared  8973ms
+     [PASS] should update the allocation summary when variant traffic changes  8975ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  05:58:59
+   Duration  35.98s (transform 31ms, setup 0ms, collect 117ms, tests 35.74s, environment 0ms, prepare 4ms)
+
+

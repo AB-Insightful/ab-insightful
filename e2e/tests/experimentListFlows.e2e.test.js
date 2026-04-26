@@ -98,7 +98,7 @@ describe("Experiment list — UI flows", () => {
   expect(isReportPage).toBe(true);
 });
 
-  it("kebab menu → Rename opens inline rename (not navigation to a separate edit route)", async () => {
+  it("kebab menu -> Rename opens inline rename (not navigation to a separate edit route)", async () => {
     await returnToExperimentList();
     const rows = await getDataRowTexts(driver);
     expect(rows.length).toBeGreaterThan(0);
@@ -118,7 +118,7 @@ describe("Experiment list — UI flows", () => {
     await sleep(500);
   });
 
-  it("draft → Start becomes Active; Active → Pause becomes Paused; Paused → End becomes Completed; Completed → Archive becomes Archived", async () => {
+  it("draft -> Start becomes Active; Active -> Pause becomes Paused; Paused -> End becomes Completed; Completed -> Archive becomes Archived", async () => {
     await returnToExperimentList();
     const rows = await getDataRowTexts(driver);
     const hasDraft = rows.some((r) => /\bDraft\b/.test(r));

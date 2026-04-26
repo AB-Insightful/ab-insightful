@@ -1,0 +1,30 @@
+﻿
+ RUN  v4.0.8 C:/Users/Tatiana/Documents/shopify_apps/ab-insightful
+
+stdout | e2e/tests/create-experiment.e2e.test.js > Create Experiment
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/create-experiment.e2e.test.js > Create Experiment
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/create-experiment.e2e.test.js > Create Experiment
+[e2e-auth] Cookie login successful
+
+ Γ£ô e2e/tests/create-experiment.e2e.test.js (11 tests) 94850ms
+     Γ£ô saves a valid draft experiment with manual end condition  8418ms
+     Γ£ô shows validation errors when required fields are missing  7678ms
+     Γ£ô validates stable success probability inputs and recovers with valid values  8267ms
+     Γ£ô validates end date must be after start date and allows recovery  8266ms
+     Γ£ô shows required validation when end condition is end date and end date is missing  7722ms
+     Γ£ô enforces max variant limit at four variants  7476ms
+     Γ£ô shows required validation for Variant B section ID when second variant is added  7712ms
+     Γ£ô validates custom max users and allows recovery with a valid value  8389ms
+     Γ£ô discards current input and returns the form to required-field state  7741ms
+     Γ£ô shows validation when start date/time is in the past  7478ms
+     Γ£ô shows validation when end date is in the past  7523ms
+
+ Test Files  1 passed (1)
+      Tests  11 passed (11)
+   Start at  05:55:11
+   Duration  95.11s (transform 47ms, setup 0ms, collect 137ms, tests 94.85s, environment 0ms, prepare 5ms)
+

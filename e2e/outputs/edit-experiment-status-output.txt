@@ -1,0 +1,25 @@
+﻿
+ RUN  v4.0.8 C:/Users/Tatiana/Documents/shopify_apps/ab-insightful
+
+stdout | e2e/tests/edit-experiment-status.e2e.test.js > Edit Experiment Status Views
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/edit-experiment-status.e2e.test.js > Edit Experiment Status Views
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/edit-experiment-status.e2e.test.js > Edit Experiment Status Views
+[e2e-auth] Cookie login successful
+
+ Γ£ô e2e/tests/edit-experiment-status.e2e.test.js (6 tests) 59973ms
+     Γ£ô should render an active experiment with status controls  8489ms
+     Γ£ô should render a paused experiment with status controls  8459ms
+     Γ£ô should render a completed experiment safely  8616ms
+     Γ£ô should render an archived experiment safely  8472ms
+     Γ£ô should render another seeded draft experiment  8458ms
+     Γ£ô should show draft status actions when Change Status is opened  8989ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  05:57:28
+   Duration  60.22s (transform 41ms, setup 0ms, collect 130ms, tests 59.97s, environment 0ms, prepare 5ms)
+

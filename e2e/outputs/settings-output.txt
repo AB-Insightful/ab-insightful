@@ -1,0 +1,31 @@
+﻿
+ RUN  v4.0.8 C:/Users/Tatiana/Documents/shopify_apps/ab-insightful
+
+stdout | e2e/tests/settings.e2e.test.js > Settings Page
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/settings.e2e.test.js > Settings Page
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/settings.e2e.test.js > Settings Page
+[e2e-auth] Cookie login successful
+
+ Γ£ô e2e/tests/settings.e2e.test.js (15 tests) 49741ms
+     Γ£ô should save a new max users value and show a success message  4665ms
+     Γ£ô should save a new default experiment goal and show a success message  4667ms
+     Γ£ô should add a new contact email and display it as a chip  2341ms
+     Γ£ô should remove a contact email when its chip is clicked  2032ms
+     Γ£ô should add a new contact phone and display it as a chip  2338ms
+     Γ£ô should remove a contact phone when its chip is clicked  2028ms
+     Γ£ô should toggle email notifications on and reflect the change  1519ms
+     Γ£ô should toggle SMS notifications on and reflect the change  1517ms
+     Γ£ô should check 'Notify when an experiment starts' and show a success message  2031ms
+     Γ£ô should check 'Notify when an experiment ends' and show a success message  2029ms
+     Γ£ô should uncheck both notification checkboxes when Disable Notifications is clicked  2523ms
+     Γ£ô should delete all contact info when the delete button is clicked  5464ms
+
+ Test Files  1 passed (1)
+      Tests  15 passed (15)
+   Start at  06:41:38
+   Duration  49.99s (transform 45ms, setup 0ms, collect 134ms, tests 49.74s, environment 0ms, prepare 4ms)
+

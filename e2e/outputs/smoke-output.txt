@@ -1,0 +1,22 @@
+﻿
+ RUN  v4.0.8 C:/Users/Tatiana/Documents/shopify_apps/ab-insightful
+
+stdout | e2e/tests/smoke.e2e.test.js > Smoke Test - App Loads in Shopify Admin
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/smoke.e2e.test.js > Smoke Test - App Loads in Shopify Admin
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/smoke.e2e.test.js > Smoke Test - App Loads in Shopify Admin
+[e2e-auth] Cookie login successful
+
+ Γ£ô e2e/tests/smoke.e2e.test.js (5 tests) 39834ms
+     Γ£ô should navigate to the Experiments page  7870ms
+     Γ£ô should navigate to the Reports page  7769ms
+     Γ£ô should navigate to the Settings page  7781ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  06:44:27
+   Duration  40.08s (transform 32ms, setup 0ms, collect 121ms, tests 39.83s, environment 0ms, prepare 5ms)
+

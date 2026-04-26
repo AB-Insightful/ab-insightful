@@ -1,0 +1,21 @@
+﻿
+ RUN  v4.0.8 C:/Users/Tatiana/Documents/shopify_apps/ab-insightful
+
+stdout | e2e/tests/experiments.e2e.test.js > Experiments
+[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+stdout | e2e/tests/experiments.e2e.test.js > Experiments
+[e2e-driver] Connected to running Chrome
+
+stdout | e2e/tests/experiments.e2e.test.js > Experiments
+[e2e-auth] Cookie login successful
+
+ [PASS] e2e/tests/experiments.e2e.test.js (3 tests) 26321ms
+     [PASS] should navigate to the create new experiment page  10493ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  06:04:57
+   Duration  26.57s (transform 33ms, setup 0ms, collect 123ms, tests 26.32s, environment 0ms, prepare 4ms)
+
+

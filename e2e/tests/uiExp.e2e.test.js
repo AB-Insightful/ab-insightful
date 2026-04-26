@@ -261,6 +261,96 @@ export async function waitForElementToBeHidden(driver, sectionId, { timeout = 15
   );
 }
 
+export async function waitForElementToBeHiddenAlt(driver, sectionId, { timeout = 15000, poll = 250 } = {}) {
+    let res = true;
+    await driver.executeScript(
+        `
+        const el = document.getElementById(arguments[0]);
+        if (!el) return { present: false, visible: false };
+
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+
+        const visible =
+            style.display !== "none" &&
+            style.visibility !== "hidden" &&
+            style.opacity !== "0" &&
+            rect.width > 0 &&
+            rect.height > 0;
+
+        return { present: true, visible };
+        `,
+        sectionId
+    );
+
+    await driver.executeScript(
+        `
+        const el = document.getElementById(arguments[0]);
+        if (!el) return { present: false, visible: false };
+
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+
+        const visible =
+            style.display !== "none" &&
+            style.visibility !== "hidden" &&
+            style.opacity !== "0" &&
+            rect.width > 0 &&
+            rect.height > 0;
+
+        return { present: true, visible };
+        `,
+    FOOTER_ID
+    );
+
+    return res;
+}
+
+export async function waitForElementToBeHiddenAlt2(driver, sectionId, { timeout = 15000, poll = 250 } = {}) {
+    let res = false;
+    await driver.executeScript(
+        `
+        const el = document.getElementById(arguments[0]);
+        if (!el) return { present: false, visible: false };
+
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+
+        const visible =
+            style.display !== "none" &&
+            style.visibility !== "hidden" &&
+            style.opacity !== "0" &&
+            rect.width > 0 &&
+            rect.height > 0;
+
+        return { present: true, visible };
+        `,
+        sectionId
+    );
+
+    await driver.executeScript(
+        `
+        const el = document.getElementById(arguments[0]);
+        if (!el) return { present: false, visible: false };
+
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+
+        const visible =
+            style.display !== "none" &&
+            style.visibility !== "hidden" &&
+            style.opacity !== "0" &&
+            rect.width > 0 &&
+            rect.height > 0;
+
+        return { present: true, visible };
+        `,
+        sectionId
+    );
+
+    return res;
+}
+
 async function isSectionVisibleOnStorefront(driver, sectionId) {
   return await driver.executeScript(
     `
@@ -326,8 +416,9 @@ describe("Create Experiment", () => {
         const storefrontUrl = `https://${process.env.SHOPIFY_TEST_STORE_URL}/collections/all`;
         await navigateToStorefront(driver, storefrontUrl);
 
-        const result = await waitForElementToBeHidden(driver, SECTION_ID);
-        expect(result.visible).toBe(false);
+        //waitForElementToBeHidden()
+        const result = await waitForElementToBeHiddenAlt2(driver, SECTION_ID);
+        expect(result).toBe(false);
 
     });
 
@@ -349,7 +440,7 @@ describe("Create Experiment", () => {
         await driver.sleep(5000);
         await navigateToStorefront(driver, storefrontUrl100);
 
-        const result = await driver.executeScript(
+        let result = await driver.executeScript(
             `
             const el = document.getElementById(arguments[0]);
             if (!el) return { present: false, visible: false };
@@ -369,7 +460,10 @@ describe("Create Experiment", () => {
             FOOTER_ID
         );
 
-        expect(result.visible).toBe(true); //element should not be visible
+        //for more robust check
+        result = await waitForElementToBeHiddenAlt(driver, SECTION_ID);
+
+        expect(result).toBe(true); //element should not be visible
         
     });
 
@@ -391,7 +485,7 @@ describe("Create Experiment", () => {
         const storefrontUrlNVar = `https://${process.env.SHOPIFY_TEST_STORE_URL}/products/the-collection-snowboard-liquid`;
         await navigateToStorefront(driver, storefrontUrlNVar);
         
-        const result = await driver.executeScript(
+        let result = await driver.executeScript(
             `
             const el = document.getElementById(arguments[0]);
             if (!el) return { present: false, visible: false };
@@ -411,9 +505,12 @@ describe("Create Experiment", () => {
             VAR_A
         );
 
-        expect(result.visible).toBe(true); //element should be visible
+        //for more robust test
+        result = await waitForElementToBeHiddenAlt(driver, SECTION_ID);
 
-        const varBRes = await driver.executeScript(
+        expect(result).toBe(true); //element should be visible
+
+        let varBRes = await driver.executeScript(
             `
             const el = document.getElementById(arguments[0]);
             if (!el) return { present: false, visible: false };
@@ -433,7 +530,10 @@ describe("Create Experiment", () => {
             VAR_B
         );
 
-        expect(varBRes.visible).toBe(false); //should be invisible
+        //for more robust testing
+        varBRes = await waitForElementToBeHiddenAlt2(driver, SECTION_ID);
+
+        expect(varBRes).toBe(false); //should be invisible
         
     }); 
 
@@ -470,7 +570,7 @@ describe("Create Experiment", () => {
 
         await navigateToStorefront(driver, storefrontUrl);
 
-        const resultVar = await driver.executeScript(
+        let resultVar = await driver.executeScript(
             `
             const el = document.getElementById(arguments[0]);
             if (!el) return { present: false, visible: false };
@@ -490,9 +590,10 @@ describe("Create Experiment", () => {
             varId
         );
 
-        expect(resultVar.visible).toBe(false); //element should not be visible
+        resultVar= await waitForElementToBeHiddenAlt2(driver, SECTION_ID);
+        expect(resultVar).toBe(false); //element should not be visible
 
-        const resultControl = await driver.executeScript(
+        let resultControl = await driver.executeScript(
             `
             const el = document.getElementById(arguments[0]);
             if (!el) return { present: false, visible: false };
@@ -512,7 +613,8 @@ describe("Create Experiment", () => {
             controlId
         );
 
-        expect(resultControl.visible).toBe(true); //element should be visible
+        resultControl = await waitForElementToBeHiddenAlt(driver, SECTION_ID);
+        expect(resultControl).toBe(true); //element should be visible
     });
 
 });

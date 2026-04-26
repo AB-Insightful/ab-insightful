@@ -1,0 +1,13 @@
+
+[1m[46m RUN [49m[22m [36mv4.0.8 [39m[90mC:/Users/timef/ab-insightful[39m
+
+[90mstdout[2m | e2e/tests/experimentListFlows.e2e.test.js[2m > [22m[2mExperiment list — UI flows
+[22m[39m[e2e-driver] Connecting to Chrome on 127.0.0.1:9222...
+
+[90mstdout[2m | e2e/tests/experimentListFlows.e2e.test.js[2m > [22m[2mExperiment list — UI flows
+[22m[39m[e2e-driver] Connected to running Chrome
+
+[90mstdout[2m | e2e/tests/experimentListFlows.e2e.test.js[2m > [22m[2mExperiment list — UI flows
+[22m[39m[e2e-auth] Cookie login successful
+
+Terminate batch job (Y/N)? 

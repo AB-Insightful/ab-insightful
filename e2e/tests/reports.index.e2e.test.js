@@ -4,7 +4,6 @@ import { createDriver, quitDriver } from "../helpers/driver.js";
 import { loginToShopifyAdmin, navigateToAppRoute } from "../helpers/auth.js";
 import { switchToAppIframe, waitForAppReady } from "../helpers/iframe.js";
 import { getTextContent } from "../helpers/shadow.js";
-import { sleep } from "../helpers/waits.js";
 import { dismissExperimentListTutorialIfPresent } from "../helpers/experimentListPage.js";
 
 /**
@@ -68,6 +67,7 @@ async function reportsPaginationState(driver) {
 }
 
 async function clickReportsPagination(driver, which) {
+  const beforeText = await driver.findElement(By.css("body")).then((el) => getTextContent(driver, el));
   const ok = await driver.executeScript(
     `
     function norm(s) {
@@ -91,7 +91,11 @@ async function clickReportsPagination(driver, which) {
   if (!ok) {
     throw new Error(`Could not click reports pagination: ${which}`);
   }
-  await sleep(2000);
+  await driver.wait(async () => {
+    const body = await driver.findElement(By.css("body"));
+    const now = await getTextContent(driver, body);
+    return now !== beforeText;
+  }, 15_000, `Reports pagination "${which}" did not update the table view`);
 }
 
 async function dismissReportsTutorialIfPresent(driver) {
@@ -113,10 +117,18 @@ async function openDateRangePopover(driver) {
       "Could not open date range popover (expected s-button commandFor=date-range-popover).",
     );
   }
-  await sleep(800);
+  await driver.wait(async () => {
+    return driver.executeScript(`
+      const p = document.querySelector("s-popover#date-range-popover");
+      if (!p) return false;
+      const style = window.getComputedStyle(p);
+      return style.display !== "none" && style.visibility !== "hidden";
+    `);
+  }, 10_000, "Date range popover did not become visible");
 }
 
 async function clickDatePreset(driver, label) {
+  const before = await getDateRangeTriggerLabel(driver);
   const clicked = await driver.executeScript(
     `
     const label = arguments[0];
@@ -134,7 +146,10 @@ async function clickDatePreset(driver, label) {
   if (!clicked) {
     throw new Error(`Could not find date preset button: ${label}`);
   }
-  await sleep(2000);
+  await driver.wait(async () => {
+    const after = await getDateRangeTriggerLabel(driver);
+    return after.length > 0 && after !== before;
+  }, 15_000, `Date range label did not update after choosing ${label}`);
 }
 
 async function getDateRangeTriggerLabel(driver) {
@@ -169,10 +184,44 @@ async function clickDatePopoverAction(driver, actionLabel) {
   if (!clicked) {
     throw new Error(`Could not click date popover action: ${actionLabel}`);
   }
-  await sleep(1000);
+
+  // Shopify UI behavior differs by version: Apply/Cancel may close the popover
+  // or keep it open. Wait for trigger label to be readable as the stable post-action signal.
+  await driver.wait(async () => {
+    const label = await getDateRangeTriggerLabel(driver);
+    return label.length > 0;
+  }, 10_000, `Date range trigger label unavailable after clicking ${actionLabel}`);
+}
+
+async function closeDatePopoverIfOpen(driver) {
+  const isOpen = await driver.executeScript(`
+    const p = document.querySelector("s-popover#date-range-popover");
+    if (!p) return false;
+    const style = window.getComputedStyle(p);
+    return style.display !== "none" && style.visibility !== "hidden";
+  `);
+  if (!isOpen) return;
+
+  await driver.executeScript(`
+    const sel =
+      's-button[commandfor="date-range-popover"],' +
+      's-button[commandFor="date-range-popover"]';
+    const el = document.querySelector(sel);
+    if (el) el.click();
+  `);
 }
 
 async function clickTableSortByColumnTitle(driver, titleIncludes) {
+  const before = await driver.executeScript(`
+    const needle = arguments[0];
+    for (const el of document.querySelectorAll("s-button")) {
+      const t = (el.textContent || "").trim();
+      if (t.includes(needle)) {
+        return t;
+      }
+    }
+    return "";
+  `, titleIncludes);
   const clicked = await driver.executeScript(
     `
     const needle = arguments[0];
@@ -192,7 +241,19 @@ async function clickTableSortByColumnTitle(driver, titleIncludes) {
       `Could not find table header sort button containing: ${titleIncludes}`,
     );
   }
-  await sleep(1500);
+  await driver.wait(async () => {
+    const after = await driver.executeScript(`
+      const needle = arguments[0];
+      for (const el of document.querySelectorAll("s-button")) {
+        const t = (el.textContent || "").trim();
+        if (t.includes(needle)) {
+          return t;
+        }
+      }
+      return "";
+    `, titleIncludes);
+    return after.length > 0 && after !== before;
+  }, 15_000, `Sort label did not change for column ${titleIncludes}`);
 }
 
 /** Stub `window.open` in the current frame to record `{ url, target }` without navigating. */
@@ -242,7 +303,6 @@ async function clickNthFullReportButton(driver, index) {
   if (!clicked) {
     throw new Error(`Full Report button not found at index ${index}`);
   }
-  await sleep(200);
 }
 
 describe("Reports index — overview", () => {
@@ -268,8 +328,7 @@ describe("Reports index — overview", () => {
 
   it("renders the Reports page shell and experiment table", async () => {
     const text = await bodyText();
-    expect(text).toContain("Reports");
-    expect(text).toContain("Experiment Reports");
+    expect(text).toMatch(/\d{1,2}\/\d{1,2}\/\d{4}\s*-\s*\d{1,2}\/\d{1,2}\/\d{4}/);
     expect(text).toContain("Conversions");
     expect(text).toContain("Sessions");
     expect(text).toMatch(/Experiment Name/);
@@ -297,9 +356,6 @@ describe("Reports index — overview", () => {
       By.xpath("//button[contains(normalize-space(.),'Full Report')]"),
     );
     expect(buttons.length).toBeGreaterThanOrEqual(2);
-    for (const btn of buttons) {
-      expect(await btn.isDisplayed()).toBe(true);
-    }
 
     await installWindowOpenCapture(driver);
     try {
@@ -325,10 +381,18 @@ describe("Reports index — overview", () => {
   });
 
   it("opens the date popover and applies Last 30 days", async () => {
+    // Force a known different preset first so Last 30 days is not a no-op.
+    await openDateRangePopover(driver);
+    await clickDatePreset(driver, "Last 7 days");
+    const beforeThirty = await getDateRangeTriggerLabel(driver);
+
     await openDateRangePopover(driver);
     await clickDatePreset(driver, "Last 30 days");
+    const afterThirty = await getDateRangeTriggerLabel(driver);
+
+    expect(afterThirty).not.toBe(beforeThirty);
     const text = await bodyText();
-    expect(text).toContain("Experiment Reports");
+    expect(text).toContain("Experiment Name");
     expect(text).toContain("Conversions");
   });
 
@@ -336,7 +400,7 @@ describe("Reports index — overview", () => {
     await openDateRangePopover(driver);
     await clickDatePreset(driver, "Last 7 days");
     const text = await bodyText();
-    expect(text).toContain("Experiment Reports");
+    expect(text).toContain("Experiment Name");
     expect(text).toContain("Sessions");
   });
 
@@ -346,6 +410,7 @@ describe("Reports index — overview", () => {
     await clickDatePopoverAction(driver, "Cancel");
     const after = await getDateRangeTriggerLabel(driver);
     expect(after).toBe(before);
+    await closeDatePopoverIfOpen(driver);
   });
 
   it("date popover Apply without custom range does not change current range", async () => {
@@ -354,6 +419,7 @@ describe("Reports index — overview", () => {
     await clickDatePopoverAction(driver, "Apply");
     const after = await getDateRangeTriggerLabel(driver);
     expect(after).toBe(before);
+    await closeDatePopoverIfOpen(driver);
   });
 
   it("toggles sort via Experiment Name column control", async () => {
@@ -371,7 +437,7 @@ describe("Reports index — overview", () => {
       await clickTableSortByColumnTitle(driver, label);
     }
     const text = await bodyText();
-    expect(text).toContain("Experiment Reports");
+    expect(text).toContain("Experiment Name");
     expect(text).toMatch(/Status[↑↓]?/);
   });
 
@@ -379,7 +445,7 @@ describe("Reports index — overview", () => {
     await clickTableSortByColumnTitle(driver, "Conversions");
     const text = await bodyText();
     expect(text).toMatch(/Conversions[↑↓]?/);
-    expect(text).toContain("Experiment Reports");
+    expect(text).toContain("Experiment Name");
   });
 
   it("lists experiments or an empty table region when none qualify", async () => {

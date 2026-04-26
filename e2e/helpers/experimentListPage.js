@@ -1,6 +1,6 @@
 import { By } from "selenium-webdriver";
 import { until } from "selenium-webdriver";
-import { navigateToApp } from "./auth.js";
+import { navigateToApp, navigateToAppRoute } from "./auth.js";
 import { switchToAppIframe, waitForAppReady } from "./iframe.js";
 import { getTextContent, jsClick } from "./shadow.js";
 import { sleep } from "./waits.js";
@@ -53,7 +53,6 @@ export async function clickNavigateToExperimentList(driver) {
       "Could not find Experiments navigation control (expected s-button or s-link href=/app/experiments).",
     );
   }
-  await sleep(6000);
   await waitForAppReady(driver);
   await waitForExperimentListOrEmpty(driver);
 }
@@ -65,7 +64,11 @@ export async function waitForExperimentListOrEmpty(driver, timeout = 45_000) {
     return (
       text.includes("Experiment Management") ||
       text.includes("Experiment List") ||
-      text.includes("Your experiments will show here")
+      text.includes("Your experiments will show here") ||
+      text.includes("Filter By") ||
+      text.includes("Create Experiment") ||
+      text.includes("Experiment Name") ||
+      text.includes("Goal Completion Rate")
     );
   }, timeout, "Timed out waiting for experiments list UI");
 }
@@ -82,21 +85,21 @@ export async function waitForBodyContains(driver, substring, timeout = 30_000) {
  * Primary "Create Experiment" on the list page (not empty-state duplicate).
  */
 export async function clickCreateExperimentFromListPage(driver) {
-  const clicked = await driver.executeScript(`
+  const targetHref = await driver.executeScript(`
     for (const el of document.querySelectorAll("s-button")) {
       const href = (el.getAttribute("href") || "").trim();
       const t = (el.textContent || "").trim();
       if (href.includes("/app/experiments/new") && t.includes("Create Experiment")) {
-        el.click();
-        return true;
+        return href;
       }
     }
-    return false;
+    return null;
   `);
-  if (!clicked) {
+  if (!targetHref) {
     throw new Error('Could not find "Create Experiment" button on experiments list.');
   }
-  await sleep(6000);
+  await navigateToAppRoute(driver, targetHref);
+  await switchToAppIframe(driver);
   await waitForAppReady(driver);
 }
 
@@ -104,12 +107,15 @@ export async function clickCreateExperimentFromListPage(driver) {
  * Click the first experiment name link (s-link to /app/reports/:id).
  */
 export async function clickFirstExperimentNameLink(driver) {
-  const links = await driver.findElements(By.css('s-link[href*="/app/reports/"]'));
-  if (!links.length) {
+  const targetHref = await driver.executeScript(`
+    const link = document.querySelector('s-link[href*="/app/reports/"]');
+    return (link && link.getAttribute("href")) ? link.getAttribute("href").trim() : null;
+  `);
+  if (!targetHref) {
     throw new Error("No experiment name link (s-link to /app/reports/) found.");
   }
-  await jsClick(driver, links[0]);
-  await sleep(6000);
+  await navigateToAppRoute(driver, targetHref);
+  await switchToAppIframe(driver);
   await waitForAppReady(driver);
 }
 
@@ -298,7 +304,7 @@ export async function selectFilterByOption(driver, optionLabel) {
     15_000,
   );
   await jsClick(driver, option);
-  await sleep(2500);
+  await waitForExperimentListOrEmpty(driver);
 }
 
 /**
@@ -326,7 +332,3 @@ export async function waitForRowContaining(driver, timeout, ...tokens) {
     return rows.some((t) => tokens.every((tok) => t.includes(tok)));
   }, timeout, `Timed out waiting for a table row containing: ${tokens.join(", ")}`);
 }
-
-/**
- * Labels on s-buttons inside the first popover that looks visible (kebab menu).
- */

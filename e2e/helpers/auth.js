@@ -4,7 +4,9 @@ import { sleep } from "./waits.js";
 import { By } from "selenium-webdriver";
 
 
-const COOKIE_FILE = resolve(process.cwd(), ".e2e-cookies.json");
+function sanitizePathSegment(value) {
+  return String(value || "default").replace(/[^a-zA-Z0-9_-]/g, "_");
+}
 
 function getStoreConfig() {
   const storeUrl = process.env.SHOPIFY_TEST_STORE_URL;
@@ -18,32 +20,72 @@ function getStoreConfig() {
   const cleanStore = storeUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
   const storeName = cleanStore.replace(".myshopify.com", "");
   const appPath = process.env.SHOPIFY_TEST_APP_PATH || "apps/ab-insightful-1/app";
+  const cookieFile = resolve(
+    process.cwd(),
+    `.e2e-cookies.${sanitizePathSegment(storeName)}.${sanitizePathSegment(appPath)}.json`,
+  );
 
-  return { storeUrl: cleanStore, storeName, appPath };
+  return { storeUrl: cleanStore, storeName, appPath, cookieFile };
+}
+
+function normalizeRouteSuffix(appRoute) {
+  return (appRoute || "").replace(/^\/?app\/?/, "").replace(/^\/+|\/+$/g, "");
+}
+
+function buildAdminAppUrl(storeName, appPath, appRoute = "") {
+  const routeSuffix = normalizeRouteSuffix(appRoute);
+  const fullPath = routeSuffix ? `${appPath}/${routeSuffix}` : appPath;
+  return `https://admin.shopify.com/store/${storeName}/${fullPath}`;
+}
+
+function buildExpectedAppPath(appPath, appRoute = "") {
+  const routeSuffix = normalizeRouteSuffix(appRoute);
+  return `/${routeSuffix ? `${appPath}/${routeSuffix}` : appPath}`;
+}
+
+export function getExpectedAppUrlPath(appRoute = "") {
+  const { appPath } = getStoreConfig();
+  return buildExpectedAppPath(appPath, appRoute);
+}
+
+async function waitForAdminRoute(driver, expectedPath, timeout, failureMessage) {
+  await driver.wait(async () => {
+    const url = await driver.getCurrentUrl();
+    if (!url.includes("/apps/")) return false;
+    return url.includes(expectedPath);
+  }, timeout, failureMessage);
 }
 
 async function saveCookies(driver) {
+  const { cookieFile } = getStoreConfig();
   const cookies = await driver.manage().getCookies();
-  writeFileSync(COOKIE_FILE, JSON.stringify(cookies, null, 2));
-  console.log(`[e2e-auth] Saved ${cookies.length} cookies`);
+  writeFileSync(cookieFile, JSON.stringify(cookies, null, 2));
+  console.log(`[e2e-auth] Saved ${cookies.length} cookies to ${cookieFile}`);
 }
 
 async function loadCookies(driver) {
-  if (!existsSync(COOKIE_FILE)) {
+  const { cookieFile } = getStoreConfig();
+  if (!existsSync(cookieFile)) {
+    console.log(`[e2e-auth] No cookie file found at ${cookieFile}`);
     return false;
   }
 
   try {
-    const cookies = JSON.parse(readFileSync(COOKIE_FILE, "utf-8"));
-    if (!cookies.length) return false;
+    const cookies = JSON.parse(readFileSync(cookieFile, "utf-8"));
+    if (!Array.isArray(cookies) || !cookies.length) {
+      console.log(`[e2e-auth] Cookie file is empty or invalid: ${cookieFile}`);
+      return false;
+    }
 
     const byDomain = {};
     for (const cookie of cookies) {
+      if (!cookie?.domain || !cookie?.name || !cookie?.value) continue;
       const domain = cookie.domain.replace(/^\./, "");
       if (!byDomain[domain]) byDomain[domain] = [];
       byDomain[domain].push(cookie);
     }
 
+    let addedCount = 0;
     for (const [domain, domainCookies] of Object.entries(byDomain)) {
       try {
         await driver.get(`https://${domain}`);
@@ -60,17 +102,31 @@ async function loadCookies(driver) {
             };
             if (cookie.expiry) cleanCookie.expiry = cookie.expiry;
             await driver.manage().addCookie(cleanCookie);
-          } catch {
+            addedCount += 1;
+          } catch (err) {
             // Some cookies may fail (e.g., SameSite restrictions)
+            const message = err?.message || String(err);
+            console.log(
+              `[e2e-auth] Skipped cookie "${cookie.name}" for ${domain}: ${message}`,
+            );
           }
         }
-      } catch {
+      } catch (err) {
         // Domain may not be reachable
+        const message = err?.message || String(err);
+        console.log(`[e2e-auth] Could not prime domain ${domain}: ${message}`);
       }
     }
 
+    if (!addedCount) {
+      console.log("[e2e-auth] Cookie file loaded but no cookies were accepted by browser");
+      return false;
+    }
+
     return true;
-  } catch {
+  } catch (err) {
+    const message = err?.message || String(err);
+    console.log(`[e2e-auth] Failed to parse cookie file ${cookieFile}: ${message}`);
     return false;
   }
 }
@@ -140,16 +196,19 @@ export async function loginToShopifyAdmin(driver) {
  */
 export async function navigateToApp(driver) {
   const { storeName, appPath } = getStoreConfig();
-  const appUrl = `https://admin.shopify.com/store/${storeName}/${appPath}`;
+  const appUrl = buildAdminAppUrl(storeName, appPath);
+  const expectedPath = buildExpectedAppPath(appPath);
 
   await driver.get(appUrl);
 
-  await driver.wait(async () => {
-    const url = await driver.getCurrentUrl();
-    return url.includes("/apps/");
-  }, 30_000, "Timed out navigating to app");
+  await waitForAdminRoute(
+    driver,
+    expectedPath,
+    30_000,
+    `Timed out navigating to app route ${expectedPath}`,
+  );
 
-  await sleep(5000);
+  await sleep(2000);
 }
 
 /**
@@ -163,19 +222,20 @@ export async function navigateToApp(driver) {
  */
 export async function navigateToAppRoute(driver, appRoute) {
   const { storeName, appPath } = getStoreConfig();
-  const routeSuffix = appRoute.replace(/^\/app\/?/, "");
-  const fullPath = routeSuffix ? `${appPath}/${routeSuffix}` : appPath;
-  const fullUrl = `https://admin.shopify.com/store/${storeName}/${fullPath}`;
+  const fullUrl = buildAdminAppUrl(storeName, appPath, appRoute);
+  const expectedPath = buildExpectedAppPath(appPath, appRoute);
 
   await driver.switchTo().defaultContent();
   await driver.get(fullUrl);
 
-  await driver.wait(async () => {
-    const url = await driver.getCurrentUrl();
-    return url.includes("/apps/");
-  }, 30_000, `Timed out navigating to ${appRoute}`);
+  await waitForAdminRoute(
+    driver,
+    expectedPath,
+    30_000,
+    `Timed out navigating to ${appRoute} (expected path ${expectedPath})`,
+  );
 
-  await sleep(5000);
+  await sleep(1500);
 }
 
 export async function navigateToStorefront(driver, url, options = {}) {

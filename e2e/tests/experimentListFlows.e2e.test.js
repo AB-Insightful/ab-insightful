@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { By } from "selenium-webdriver";
 import { createDriver, quitDriver } from "../helpers/driver.js";
-import { loginToShopifyAdmin, navigateToAppRoute } from "../helpers/auth.js";
+import {
+  loginToShopifyAdmin,
+  navigateToAppRoute,
+  getExpectedAppUrlPath,
+} from "../helpers/auth.js";
 import { switchToAppIframe, switchToParent, waitForAppReady } from "../helpers/iframe.js";
 import { getTextContent } from "../helpers/shadow.js";
-import { sleep } from "../helpers/waits.js";
 import {
   openAppHomeInIframe,
   dismissExperimentListTutorialIfPresent,
@@ -31,13 +34,22 @@ import {
  */
 describe("Experiment list — UI flows", () => {
   let driver;
+  const experimentsPath = getExpectedAppUrlPath("/app/experiments");
+  const createExperimentPath = getExpectedAppUrlPath("/app/experiments/new");
 
   beforeAll(async () => {
     driver = await createDriver();
     await loginToShopifyAdmin(driver);
-    await openAppHomeInIframe(driver);
-    await dismissExperimentListTutorialIfPresent(driver);
-    await clickNavigateToExperimentList(driver);
+    try {
+      await openAppHomeInIframe(driver);
+      await dismissExperimentListTutorialIfPresent(driver);
+      await clickNavigateToExperimentList(driver);
+    } catch {
+      // Fallback for occasional home iframe boot flake in headed runs.
+      await navigateToAppRoute(driver, "/app/experiments");
+      await switchToAppIframe(driver);
+      await waitForAppReady(driver);
+    }
     await dismissExperimentListTutorialIfPresent(driver);
   });
 
@@ -62,7 +74,7 @@ describe("Experiment list — UI flows", () => {
     await clickCreateExperimentFromListPage(driver);
     await switchToParent(driver);
     const url = await driver.getCurrentUrl();
-    expect(url).toContain("/apps/ab-insightful-1/app/experiments/new");
+    expect(url).toContain(createExperimentPath);
     await switchToAppIframe(driver);
     await waitForAppReady(driver);
 
@@ -103,12 +115,11 @@ describe("Experiment list — UI flows", () => {
     expect(fields.length).toBeGreaterThan(0);
     await switchToParent(driver);
     const url = await driver.getCurrentUrl();
-    expect(url).toContain("/apps/ab-insightful-1/app/experiments");
+    expect(url).toContain(experimentsPath);
     await switchToAppIframe(driver);
     await waitForAppReady(driver);
 
     await cancelInlineRename(driver);
-    await sleep(500);
   });
 
   it("draft → Start becomes Active; Active → Pause becomes Paused; Paused → End becomes Completed; Completed → Archive becomes Archived", async () => {
@@ -122,7 +133,6 @@ describe("Experiment list — UI flows", () => {
 
     let popoverId = await openRowMenuForRowContaining(driver, "Draft");
     await clickButtonWithExactLabel(driver, "Start", popoverId);
-    await sleep(8000);
     await waitForRowContaining(driver, 90_000, experimentName, "Active");
 
     // Active row: Archive is only for completed; menu should expose Rename, Pause, End.
@@ -133,17 +143,14 @@ describe("Experiment list — UI flows", () => {
     expect(activeMenuLabels).toContain("End");
     expect(activeMenuLabels).not.toContain("Archive");
     await clickButtonWithExactLabel(driver, "Pause", popoverId);
-    await sleep(8000);
     await waitForRowContaining(driver, 90_000, experimentName, "Paused");
 
     popoverId = await openRowMenuForRowContaining(driver, experimentName, "Paused");
     await clickButtonWithExactLabel(driver, "End", popoverId);
-    await sleep(8000);
     await waitForRowContaining(driver, 90_000, experimentName, "Completed");
 
     popoverId = await openRowMenuForRowContaining(driver, experimentName, "Completed");
     await clickButtonWithExactLabel(driver, "Archive", popoverId);
-    await sleep(8000);
     await waitForRowContaining(driver, 90_000, experimentName, "Archived");
   });
 

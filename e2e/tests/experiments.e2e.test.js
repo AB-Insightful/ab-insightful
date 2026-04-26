@@ -3,8 +3,7 @@ import { By } from "selenium-webdriver";
 import { createDriver, quitDriver } from "../helpers/driver.js";
 import { loginToShopifyAdmin, navigateToAppRoute } from "../helpers/auth.js";
 import { switchToAppIframe, waitForAppReady } from "../helpers/iframe.js";
-import { getTextContent, jsClick } from "../helpers/shadow.js";
-import { sleep } from "../helpers/waits.js";
+import { getTextContent } from "../helpers/shadow.js";
 
 describe("Experiments", () => {
   let driver;
@@ -44,17 +43,11 @@ describe("Experiments", () => {
     await switchToAppIframe(driver);
     await waitForAppReady(driver);
 
-    await sleep(3000);
     const body = await driver.findElement(By.css("body"));
     const text = await getTextContent(driver, body);
 
-    // The new experiment page should have form-related content
-    const isNewPage =
-      text.includes("New") ||
-      text.includes("Create") ||
-      text.includes("Name") ||
-      text.includes("Experiment");
-
-    expect(isNewPage).toBe(true);
+    expect(text).toContain("Experiment Name");
+    expect(text).toContain("Experiment Goal");
+    expect(text).toContain("Save Draft");
   });
 });

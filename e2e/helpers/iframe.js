@@ -56,12 +56,15 @@ export async function switchToAppIframe(driver, timeout = 30_000) {
 
   await driver.switchTo().frame(iframe);
 
-  // Wait for the app's React content to render
+  // Wait for the app's React content to render.
+  // body.getText() returns "" for shadow-DOM content (Shopify web components),
+  // so use textContent via JS which walks into shadow roots.
   await driver.wait(async () => {
     try {
-      const body = await driver.findElement(By.css("body"));
-      const text = await body.getText();
-      return text.length > 0;
+      const text = await driver.executeScript(
+        `return (document.body ? document.body.textContent : "").trim();`
+      );
+      return typeof text === "string" && text.length > 0;
     } catch {
       return false;
     }

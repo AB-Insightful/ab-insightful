@@ -391,7 +391,7 @@ export async function seedDemo(prisma) {
       status: ExperimentStatus.draft,
       trafficSplit: "1.0",
       sectionId: "checkout-badges",
-      startDate: null,
+      startDate: addDays(today, 7),
       endDate: null,
       projectId: project.id,
     },

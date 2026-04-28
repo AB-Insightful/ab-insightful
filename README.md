@@ -1,8 +1,12 @@
 # AB Insightful 
+![Page Logo](./docs/images/ExpTable.png)
+
 ## Synopsis
 
 
-Ab-Insightful helps Shopify merchants analyze customer engagement and customer conversion. AB-Insightful is unique from other A/B testing platforms because it is the first completely native-to-Shopify solution on the market that still offers robust customer tracking and insights. Our product utilizes Shopify’s theme extensions and Polaris Web Components Library to give merchants a familiar user interface and process for creating and deploying alternative websites that can be used for A/B testing. A core feature of our application is robust reporting. Merchants who install our app are able to view metrics such as conversion rates through intuitive UI and easy to read reports.
+Welcome to AB-Insightful!  AB-Insightful helps Shopify merchants analyze customer engagement and customer conversion. AB-Insightful is unique from other A/B testing platforms because it is the first completely native-to-Shopify solution on the market that still offers robust customer tracking and insights. Our product utilizes Shopify’s theme extensions and Polaris Web Components Library to give merchants a familiar user interface and process for creating and deploying alternative websites that can be used for A/B testing. A core feature of our application is robust reporting. Merchants who install our app are able to view metrics such as conversion rates through intuitive UI and easy to read reports.
+
+Our client was in need of an A/B testing application for conversion rate optimization to help improve sales on their platform.  However, other options at the time were not as fully featured as they would have liked, and costed enterprise level annual fees.  Therefore, AB-Insightful was created as an application that will which will improve the ability to objectively understand and optimize their website design.  This application offers better web performance by integrating with the Shopify development framework while simultaneously being a more affordable application than the alternative implementations.  Additionally, our team of students was able to treat this as an incredible learning experience, creating a new embedded application from start to scratch using software development strategies and techniques.
 
 ## Product Features
 - [ ] Administrator interface – _Easily navigable interface that adheres to shopify style conventions.  Contains important links and all necessary information for using the product effectively_
@@ -11,38 +15,6 @@ Ab-Insightful helps Shopify merchants analyze customer engagement and customer c
 - [ ] Reporting features  – _Statistical analysis, insights and experiment level reports help the user to gauge experiment success.  Users are able to see experiment status, modify experiments and view experiment progress_
 - [ ] Database features – _Includes the ability to store experiment data, customer tracking data and performance metrics for later access
 
-
-
-
-
-## Project Timeline
-| Sprint | Dates         | Milestone                                      | Description                                                                 |
-|--------|---------------|------------------------------------------------|-----------------------------------------------------------------------------|
-| 1      | 10/1–10/12    | Client Discovery & Figma Design                | Assembled a team of developers and found a client for a job. Designed UI.  |
-| 2      | 10/13–10/19   | Initial Epic Planning & Environment Setup      | Creation of initial user stories and development environment for programming |
-| 3      | 10/22–11/02   | Database Testing Environment & Experiment Creation Table | Created programmatic infrastructure for seeding and experiment creation page functionality |
-| 4      | 11/06–11/16   | Reporting Calculation & Reporting              | Reporting calculation and polish.                                           |
-| 5      | 02/02–02/15   | Database Integration with Front-end            | Completes frontend display of relevant experiment list & reporting data from the database |
-| 6      | 02/17–03/01   | Reporting Data Graphing and Database Seeding   | Finalization of report graphing. Additional database seeding for depicting graphing |
-| 7      | 03/03–03/15   | Settings Page & Experiment Distribution        | Completion of Settings page and user interaction features. Experiment distribution to customers and tracking completed. |
-| 8      | 03/17–03/29   | Bug Testing & Stretch Features                 | Creation of unit tests and bug fixes. Add A/B/C testing.                    |
-| 9      | 03/31–04/12   | Stretch Features, Bug Testing                  | Additional unit tests and fixes. Creation of full conversion report.        |
-
-
-Sprint 2 & 3
-![sprint2N3Image](./docs/images/sprint2N3.png)
-Sprint 4
-![sprint4Image](./docs/images/sprint4.png)
-
-Sprint 5 & 6
-![sprint4N5Image](./docs/images/sprint5N6.png)
-
-
-Sprint 7 & 8
-![sprint7N8](./docs/images/sprint7N8.png)
-
-Sprint 9 
-![sprint9Images](./docs/images/sprint9.png)
 
 ## Developer Instructions
 Will provide development insight in greater detail during CSC 191. 
@@ -93,11 +65,31 @@ Will further describe how to deploy the project (e.g., using Docker, Shopify App
 
 ## Product Design
 
+### Home Page
+The first thing the user sees when opening the app, contains a quick look of the application, tutorial data and links to other pages
 ![Home Page](./docs/images/homePage.png)
-
+### Create Experiment Page
+Create a new experiment: walks through selecting a web component to test, setting variant distribution, runtime settings, and more.
 ![Create Experiment Page](./docs/images/createExperiment.png)
+### Experiment List Page
+A list of all experiments created by the userex, current and past
 ![Experiment List Page](./docs/images/experimentsList.png)
+### Experiment Info Page
+Contains information about experiment status, reccomended course of action, success rate and more.
+![Experiment Info Page](./docs/images/experimentInfo.png)
+### Reports Page
+Reporting data for an experiment, shows currently running experiments and their status
 ![Reports Page](./docs/images/reportsPage.png)
+### Help Page
+A list of help page articles, breaks down functionality and information about the application
+![Help Page](./docs/images/helpPage.png)
+![Help Page Article](./docs/images/helpPageArticle.png)
+### Settings Page
+Contains notification settings, default experiment goal, maximum users per experiment, links to doccumentation and language.
+![Settings Page](./docs/images/settingsPage.png)
+### Notifications
+Email notifications are set up for starting and stopping of experiment, containing the experiment name, result, and a link to details.
+![AWSNotify](./docs/images/AWSNotify.png)
 
 
 

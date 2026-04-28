@@ -1,5 +1,6 @@
 # AB Insightful 
 <img width="1505" height="1964" alt="ExpTable" src="https://github.com/user-attachments/assets/f7bc70a4-91c0-4975-86fb-1a11aed007fb" />
+![LOGO](./docs/images/ExpTable.png)
 
 ## Synopsis
 
@@ -74,7 +75,22 @@ Create a new experiment: walks through selecting a web component to test, settin
 ### Experiment List Page
 A list of all experiments created by the userex, current and past
 ![Experiment List Page](./docs/images/experimentsList.png)
+### Experiment Info Page
+Contains information about experiment status, reccomended course of action, success rate and more.
+![Experiment Info Page](./docs/images/experimentInfo.png)
+### Reports Page
+Reporting data for an experiment, shows currently running experiments and their status
 ![Reports Page](./docs/images/reportsPage.png)
+### Help Page
+A list of help page articles, breaks down functionality and information about the application
+![Help Page](./docs/images/helpPage.png)
+![Help Page Article](./docs/images/helpPageArticle.png)
+### Settings Page
+Contains notification settings, default experiment goal, maximum users per experiment, links to doccumentation and language.
+![Settings Page](./docs/images/settingsPage.png)
+### Notification
+Email notifications are set up for starting and stopping of experiment, containing the experiment name, result, and a link to details.
+![AWSNotify](./docs/images/AWSNotify.png)
 
 
 

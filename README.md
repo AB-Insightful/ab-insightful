@@ -65,8 +65,9 @@ Will further describe how to deploy the project (e.g., using Docker, Shopify App
 
 ## Product Design
 
+### Home Page
+The first thing the user sees when opening the app, contains a quick look of the application, tutorial data and links to other pages
 ![Home Page](./docs/images/homePage.png)
-
 ![Create Experiment Page](./docs/images/createExperiment.png)
 ![Experiment List Page](./docs/images/experimentsList.png)
 ![Reports Page](./docs/images/reportsPage.png)

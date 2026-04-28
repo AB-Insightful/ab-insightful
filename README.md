@@ -16,38 +16,6 @@ Our client was in need of an A/B testing application for conversion rate optimiz
 - [ ] Database features – _Includes the ability to store experiment data, customer tracking data and performance metrics for later access
 
 
-
-
-
-## Project Timeline
-| Sprint | Dates         | Milestone                                      | Description                                                                 |
-|--------|---------------|------------------------------------------------|-----------------------------------------------------------------------------|
-| 1      | 10/1–10/12    | Client Discovery & Figma Design                | Assembled a team of developers and found a client for a job. Designed UI.  |
-| 2      | 10/13–10/19   | Initial Epic Planning & Environment Setup      | Creation of initial user stories and development environment for programming |
-| 3      | 10/22–11/02   | Database Testing Environment & Experiment Creation Table | Created programmatic infrastructure for seeding and experiment creation page functionality |
-| 4      | 11/06–11/16   | Reporting Calculation & Reporting              | Reporting calculation and polish.                                           |
-| 5      | 02/02–02/15   | Database Integration with Front-end            | Completes frontend display of relevant experiment list & reporting data from the database |
-| 6      | 02/17–03/01   | Reporting Data Graphing and Database Seeding   | Finalization of report graphing. Additional database seeding for depicting graphing |
-| 7      | 03/03–03/15   | Settings Page & Experiment Distribution        | Completion of Settings page and user interaction features. Experiment distribution to customers and tracking completed. |
-| 8      | 03/17–03/29   | Bug Testing & Stretch Features                 | Creation of unit tests and bug fixes. Add A/B/C testing.                    |
-| 9      | 03/31–04/12   | Stretch Features, Bug Testing                  | Additional unit tests and fixes. Creation of full conversion report.        |
-
-
-Sprint 2 & 3
-![sprint2N3Image](./docs/images/sprint2N3.png)
-Sprint 4
-![sprint4Image](./docs/images/sprint4.png)
-
-Sprint 5 & 6
-![sprint4N5Image](./docs/images/sprint5N6.png)
-
-
-Sprint 7 & 8
-![sprint7N8](./docs/images/sprint7N8.png)
-
-Sprint 9 
-![sprint9Images](./docs/images/sprint9.png)
-
 ## Developer Instructions
 Will provide development insight in greater detail during CSC 191. 
 ### Prerequisites

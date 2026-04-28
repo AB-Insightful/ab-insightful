@@ -1,4 +1,6 @@
 # AB Insightful 
+<img width="1505" height="1964" alt="ExpTable" src="https://github.com/user-attachments/assets/f7bc70a4-91c0-4975-86fb-1a11aed007fb" />
+
 ## Synopsis
 
 

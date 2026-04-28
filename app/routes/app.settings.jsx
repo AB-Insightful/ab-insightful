@@ -783,7 +783,7 @@ export default function Settings() {
 
       {/*language*/}
       <s-section heading="Language">
-        <s-select name="language" label="language">
+        <s-select name="Language" label="Language">
           <s-option value="English">English</s-option>
         </s-select>
       </s-section>

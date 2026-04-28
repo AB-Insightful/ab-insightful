@@ -87,7 +87,7 @@ A list of help page articles, breaks down functionality and information about th
 ### Settings Page
 Contains notification settings, default experiment goal, maximum users per experiment, links to doccumentation and language.
 ![Settings Page](./docs/images/settingsPage.png)
-### Notification
+### Notifications
 Email notifications are set up for starting and stopping of experiment, containing the experiment name, result, and a link to details.
 ![AWSNotify](./docs/images/AWSNotify.png)
 

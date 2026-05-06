@@ -288,14 +288,82 @@ shopify app deploy
 
 ## Testing
 
-_Include steps for running automated or manual tests._
+### How to Run End-to-End Tests
+
+End-to-end tests validate functional requirements. The E2E workflow uses two scripts:
+
+- A setup script that launches Google Chrome with remote debugging enabled.
+- A test script that connects to the debugging session and runs the functional suite.
+
+#### Run Setup Script
+
+Before running E2E tests, start the setup script from the project root:
 
 ```bash
-# Run unit tests
-npm test
+npm run test:e2e:setup
 ```
 
-_Add any test coverage notes or frameworks used (e.g., Jest, Mocha)._
+This opens a Google Chrome window. Keep that Chrome window open for the duration of the test run.
+
+#### Run Full E2E Suite
+
+From the project root, run:
+
+```bash
+npm run test:e2e:headed
+```
+
+When Chrome opens Shopify login:
+
+1. Log in manually with your Shopify credentials.
+2. Complete any captchas, recovery prompts, or verification pages.
+3. Wait until Shopify is fully logged in; the test suite then continues automatically.
+
+Notes:
+
+- Monitor progress in the terminal output.
+- You can also watch test execution in the Chrome window.
+- Full runs can take a long time (up to about an hour) depending on machine, deployment, and network speed.
+
+#### Run a Single E2E Test File
+
+Use one of the following commands, replacing `e2e/tests/filename.js` with your target file path:
+
+Mac/Linux:
+
+```bash
+HEADED=true npx vitest run --config vitest.e2e.config.js e2e/tests/filename.js
+```
+
+Windows:
+
+```bash
+cross-env HEADED=true npx vitest run --config vitest.e2e.config.js e2e/tests/filename.js
+```
+
+### How to Run Component and Unit Tests
+
+Component and unit tests validate individual components and units of code.
+
+#### Run Full Unit Test Suite
+
+From the project root, run:
+
+```bash
+npm run test
+```
+
+Results are printed in the terminal. This run typically completes in a few minutes.
+
+#### Run a Single Unit Test File
+
+From the project root, run:
+
+```bash
+npm run test -- app/__tests__/analysis.server.test.js
+```
+
+Replace `app/__tests__/analysis.server.test.js` with the test file path you want to run.
 
 ## Product Design
 

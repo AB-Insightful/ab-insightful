@@ -1,20 +1,32 @@
-# AB Insightful
+# AB-Insightful
 
 ![Page Logo](./docs/images/ExpTable.png)
 
+## Table of Contents
+
+* [Synopsis](#synopsis)
+* [Product Features](#product-features)
+* [Developer Instructions](#developer-instructions)
+* [Deployment](#deployment)
+* [Testing](#testing)
+* [Product Design](#product-design)
+* [Database](#database)
+* [Contributors](#contributors)
+
+---
 ## Synopsis
 
 Welcome to AB-Insightful! AB-Insightful helps Shopify merchants analyze customer engagement and customer conversion. AB-Insightful is unique from other A/B testing platforms because it is the first completely native-to-Shopify solution on the market that still offers robust customer tracking and insights. Our product utilizes Shopify’s theme extensions and Polaris Web Components Library to give merchants a familiar user interface and process for creating and deploying alternative websites that can be used for A/B testing. A core feature of our application is robust reporting. Merchants who install our app are able to view metrics such as conversion rates through intuitive UI and easy to read reports.
 
-Our client was in need of an A/B testing application for conversion rate optimization to help improve sales on their platform. However, other options at the time were not as fully featured as they would have liked, and costed enterprise level annual fees. Therefore, AB-Insightful was created as an application that will which will improve the ability to objectively understand and optimize their website design. This application offers better web performance by integrating with the Shopify development framework while simultaneously being a more affordable application than the alternative implementations. Additionally, our team of students was able to treat this as an incredible learning experience, creating a new embedded application from start to scratch using software development strategies and techniques.
+Our client was in need of an A/B testing application for conversion rate optimization to help improve sales on their platform. However, other options at the time were not as fully featured as they would have liked, and cost enterprise-level annual fees. Therefore, AB-Insightful was created as an application that will improve the ability to objectively understand and optimize their website design. This application offers better web performance by integrating with the Shopify development framework while simultaneously being a more affordable application than the alternative implementations. Additionally, our team of students was able to treat this as an incredible learning experience, creating a new embedded application from scratch using software development strategies and techniques.
 
 ## Product Features
 
-- [ ] Administrator interface – _Easily navigable interface that adheres to shopify style conventions. Contains important links and all necessary information for using the product effectively_
-- [ ] Built in app – _Easily downloadable and connectable with any shopify store_
-- [ ] Core AB testing algorithm – _On site customer behavior tracking, allowing the user to see site visitors and track key events to help determine success of experiment_
-- [ ] Reporting features – _Statistical analysis, insights and experiment level reports help the user to gauge experiment success. Users are able to see experiment status, modify experiments and view experiment progress_
-- [ ] Database features – _Includes the ability to store experiment data, customer tracking data and performance metrics for later access_
+- Administrator interface – Easily navigable interface that adheres to Shopify style conventions. Contains important links and all necessary information for using the product effectively
+- Built in app – Easily downloadable and connectable with any Shopify store
+- Core AB testing algorithm – On site customer behavior tracking, allowing the user to see site visitors and track key events to help determine success of experiment
+- Reporting features – Statistical analysis, insights and experiment level reports help the user to gauge experiment success. Users are able to see experiment status, modify experiments and view experiment progress
+- Database features – Includes the ability to store experiment data, customer tracking data and performance metrics for later access
 
 ## Developer Instructions
 
@@ -369,7 +381,7 @@ Replace `app/__tests__/analysis.server.test.js` with the test file path you want
 
 ### Home Page
 
-The first thing the user sees when opening the app, contains a quick look of the application, tutorial data and links to other pages
+The first thing the user sees when opening the app, contains a quick look of the application, tutorial data and links to other pages.
 ![Home Page](./docs/images/homePage.png)
 
 ### Create Experiment Page
@@ -379,28 +391,28 @@ Create a new experiment: walks through selecting a web component to test, settin
 
 ### Experiment List Page
 
-A list of all experiments created by the userex, current and past
+A list of all experiments created by the user, current and past.
 ![Experiment List Page](./docs/images/experimentsList.png)
 
 ### Experiment Info Page
 
-Contains information about experiment status, reccomended course of action, success rate and more.
+Contains information about experiment status, recommended course of action, success rate and more.
 ![Experiment Info Page](./docs/images/experimentInfo.png)
 
 ### Reports Page
 
-Reporting data for an experiment, shows currently running experiments and their status
+Reporting data for an experiment, shows currently running experiments and their status.
 ![Reports Page](./docs/images/reportsPage.png)
 
 ### Help Page
 
-A list of help page articles, breaks down functionality and information about the application
+A list of help page articles, breaks down functionality and information about the application.
 ![Help Page](./docs/images/helpPage.png)
 ![Help Page Article](./docs/images/helpPageArticle.png)
 
 ### Settings Page
 
-Contains notification settings, default experiment goal, maximum users per experiment, links to doccumentation and language.
+Contains notification settings, default experiment goal, maximum users per experiment, links to documentation and language.
 ![Settings Page](./docs/images/settingsPage.png)
 
 ### Notifications
@@ -410,7 +422,7 @@ Email notifications are set up for starting and stopping of experiment, containi
 
 ## Database
 
-_The database is capable of storing experiment data, analysis of the experiment, and relevant user and cookie data. Experiment data is used to track the current experiment, the relevant changes between the main and base cases, and settings for end condition, status, and more. During the runtime of the experiment, specified goal data is stored to help calculate the analysis of the data. This is able to determine if the experiment variant is successful or detrimental. Finally, users and their relevant cookie data are stored to store if they are a part of the experiment, if they are a part of the base or variant, and if they complete the specified goal._
+The database is capable of storing experiment data, analysis of the experiment, and relevant user and cookie data. Experiment data is used to track the current experiment, the relevant changes between the main and base cases, and settings for end condition, status, and more. During the runtime of the experiment, specified goal data is stored to help calculate the analysis of the data. This is able to determine if the experiment variant is successful or detrimental. Finally, users and their relevant cookie data are stored to store if they are a part of the experiment, if they are a part of the base or variant, and if they complete the specified goal.
 
 ![ERD](./docs/images/ERD.png)
 
@@ -420,12 +432,12 @@ _The database is capable of storing experiment data, analysis of the experiment,
 
 | Name                    | Role                            | GitHub                                 |
 | ----------------------- | ------------------------------- | -------------------------------------- |
-| _Benjamin Church_       | _Full Stack / Graphic Designer_ | _@ChurchDuck1_                         |
-| _Emmanuel Rodriguez_    | _Full Stack_                    | _@HeadlessChickenFajita_ & @melRodCSUS |
-| _Matthew Tagintsev_     | _Full Stack_                    | _@tagintsevm_                          |
-| _Paul Felker_           | _Full Stack_                    | _@pfelker13_                           |
-| _Ryan Martinez_         | _Architecture / Backend_        | _@ryanmart25_                          |
-| _Tatiana Neville_       | _Project Manager / Full Stack_  | _@RicePaperDolls_                      |
-| _Tosh Brockway Roberts_ | _Technical Lead / Full Stack_   | _@toshrb_                              |
+| Benjamin Church         | Full Stack / Graphic Designer   | @ChurchDuck1                           |
+| Emmanuel Rodriguez      | Full Stack                      | @HeadlessChickenFajita & @melRodCSUS   |
+| Matthew Tagintsev       | Full Stack                      | @tagintsevm                            |
+| Paul Felker             | Full Stack                      | @pfelker13                             |
+| Ryan Martinez           | Architecture / Backend          | @ryanmart25                            |
+| Tatiana Neville         | Project Manager / Full Stack    | @RicePaperDolls                        |
+| Tosh Brockway Roberts   | Technical Lead / Full Stack     | @toshrb                                |
 
 ---
